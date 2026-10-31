@@ -9,7 +9,7 @@
     <RootNamespace>Tsuki.App</RootNamespace>
     <ApplicationIcon>..\..\assets\icon\tsukihime.ico</ApplicationIcon>
     <TsukiUsesFFmpeg>true</TsukiUsesFFmpeg>
-    <Version>0.1.0</Version>
+    <Version>0.1.1</Version>
     <Product>Tsukihime PC port</Product>
     <AssemblyTitle>Tsukihime -A piece of blue glass moon- (PC port)</AssemblyTitle>
   </PropertyGroup>

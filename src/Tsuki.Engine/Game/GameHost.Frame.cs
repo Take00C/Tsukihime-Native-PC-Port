@@ -205,6 +205,9 @@ public sealed partial class GameHost
             UpdateSound();
             UpdateWindowFades(Math.Max(1, mode.Step));
             UpdateEffects(step);
+
+            // 4. the HUD process (0x53CF0, priority 0x50) runs after the ADV update: the click-wait icon's alpha and anchor (package K34)
+            UpdateClickIcon();
         }
 
         if (list is not null)

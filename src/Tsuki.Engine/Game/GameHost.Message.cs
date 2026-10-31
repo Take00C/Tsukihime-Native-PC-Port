@@ -86,6 +86,7 @@ public sealed partial class GameHost
         _zmStartedVoice = false;
         ContinueByte = false;
         _windowHidden = false;
+        ResetClickIcon();
     }
 
     /// <summary>The message currently being shown or waiting for a click, or null.</summary>

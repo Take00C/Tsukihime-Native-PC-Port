@@ -308,6 +308,7 @@ public sealed class GamePlayTests(ITestOutputHelper output)
         host.Step(default, list);
         int glyphs = 0;
         int sheets = 0;
+        int icons = 0;
         foreach (DrawCmd c in list.Commands)
         {
             if (c.Texture.Kind == TextureKind.GlyphPage)
@@ -318,12 +319,21 @@ public sealed class GamePlayTests(ITestOutputHelper output)
             }
             else if (c.Texture.Kind == TextureKind.UiTile)
             {
-                sheets++;
+                // the window picture (DISP_PARTS children 11..13); the click-wait mark (children 4 / 9 / 53, package K34) joins the list once the text is complete
+                if (c.Texture.C is GameHost.LineIconChild or GameHost.PageIconChild or GameHost.BubbleIconChild)
+                {
+                    icons++;
+                }
+                else
+                {
+                    sheets++;
+                }
             }
         }
 
-        output.WriteLine($"{list.Count} commands: {glyphs} glyph quads, {sheets} window sheet quads");
+        output.WriteLine($"{list.Count} commands: {glyphs} glyph quads, {sheets} window sheet quads, {icons} click-wait mark");
         Assert.Equal(1, sheets);
+        Assert.InRange(icons, 0, 1);
         Assert.True(glyphs >= 2 * 43, $"only {glyphs} glyph quads");        // the first line of 00_00 (id 107) has 43 glyphs: outline + fill per glyph
     }
 

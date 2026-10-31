@@ -48,6 +48,9 @@ public sealed partial class GameHost
         }
 
         SceneCommandCount = list.Count;
+        // the icon report is per drawn frame: a hidden window, a page with the fade at 0 or a frame outside the story draws no mark (package K35: the
+        // verification log used to show the last drawn mark while the window was at 0)
+        LastClickIcon = default;
         if (Phase == GamePhase.Running)
         {
             if (!_windowHidden)
@@ -174,13 +177,10 @@ public sealed partial class GameHost
         return pos;
     }
 
-    /// <summary>The messages of the page (textbox.md 5.8): the earlier ones dimmed, the current one revealed up to head and tail.</summary>
+    /// <summary>The messages of the page (textbox.md 5.8): the earlier ones dimmed, the current one revealed up to head and tail; then the click-wait icon (7.1).</summary>
     private void DrawPage(DisplayList list)
     {
-        // F1103 ("the text is hidden until the next message": _CLO2 / _CLO3, a story movie, a layer change that hides the text, the two-button prompts) hides the whole
-        // page: the HUD draws the current message (VA 0x54BD8: `cmp F1103, 0; jne` over the three block draws at 0x54C2F / 0x54C71 / 0x54CAC) and the earlier ones
-        // (VA 0x550F7 / 0x551D9: the history loop at 0x55930 runs only with F1103 == 0) only then (package K15: the last message used to stay over a story movie)
-        if (_page.Count == 0 || Wait.WindowAlpha <= 0f || F(1103) != 0)
+        if (_page.Count == 0 || Wait.WindowAlpha <= 0f)
         {
             return;
         }
@@ -191,27 +191,38 @@ public sealed partial class GameHost
         // the quake offsets are 640 x 448 canvas units added after the (1, 1.3) scale; the converting instruction truncates them (text_vertical_scale.md 3)
         double offX = Math.Truncate(qx) * TextScale;
         double offY = Math.Truncate(qy) * HudUnitY;
-        DrawNamePlate(list, offX, offY);
-        for (int j = 0; j < _page.Count; j++)
-        {
-            PageMessage m = _page[j];
-            bool current = j == _page.Count - 1;
-            double alpha = Wait.WindowAlpha;
-            if (!current)
-            {
-                double dim = m.DimTimer < 0 ? t / 255.0 : 1.0 - ((255.0 - t) / 255.0 * Math.Min(1.0, m.DimTimer / Math.Max(1.0, m.DimLimit)));
-                alpha *= dim;
-            }
 
-            double head = current ? Wait.Head : BlockDraw.RevealAll;
-            double tail = current ? Wait.Tail : BlockDraw.RevealAll;
-            AddBlock(list, m.Block, pos[j].X, pos[j].Y, alpha, head, tail, PageScaleY, offX, offY);
+        // F1103 ("the text is hidden until the next message": _CLO2 / _CLO3, a story movie, a layer change that hides the text, the two-button prompts) hides the whole
+        // page: the HUD draws the current message (VA 0x54BD8: `cmp F1103, 0; jne` over the three block draws at 0x54C2F / 0x54C71 / 0x54CAC) and the earlier ones
+        // (VA 0x550F7 / 0x551D9: the history loop at 0x55930 runs only with F1103 == 0) only then (package K15: the last message used to stay over a story movie)
+        if (F(1103) == 0)
+        {
+            DrawNamePlate(list, offX, offY);
+            for (int j = 0; j < _page.Count; j++)
+            {
+                PageMessage m = _page[j];
+                bool current = j == _page.Count - 1;
+                double alpha = Wait.WindowAlpha;
+                if (!current)
+                {
+                    double dim = m.DimTimer < 0 ? t / 255.0 : 1.0 - ((255.0 - t) / 255.0 * Math.Min(1.0, m.DimTimer / Math.Max(1.0, m.DimLimit)));
+                    alpha *= dim;
+                }
+
+                double head = current ? Wait.Head : BlockDraw.RevealAll;
+                double tail = current ? Wait.Tail : BlockDraw.RevealAll;
+                AddBlock(list, m.Block, pos[j].X, pos[j].Y, alpha, head, tail, PageScaleY, offX, offY);
+            }
         }
+
+        // the jump over the hidden blocks lands on the icon code (VA 0x54CB1), so the position store and the icon draw run with F1103 set too (package K34)
+        DrawClickIcon(list, pos[^1], offX, offY);
     }
 
     /// <summary>
-    /// The click-icon y the HUD stores at 0xDF0890 every frame (VA 0x54CC7): the y of the page's last message plus the offset of the last revealed
-    /// line of its block (<c>0xCA690</c>, only while the window fade is positive). With no message the HUD stores the origin of the first one.
+    /// The click-icon y the HUD stores at 0xDF0890 every frame (VA 0x54CC7): the y of the page's last message plus the y output of
+    /// <c>0xCA690</c> (<see cref="MessageWindow.ClickIconAnchor"/>: the line of the last revealed glyph, only while the window fade is positive).
+    /// With no message the HUD stores the origin of the first one.
     /// </summary>
     private double ClickIconY()
     {
@@ -223,7 +234,7 @@ public sealed partial class GameHost
 
         (double X, double Y)[] pos = PageOrigins();
         PageMessage last = _page[^1];
-        double lastLine = Wait.WindowAlpha > 0f ? MessageWindow.RevealedLastLineOffset(last.Block, Wait.Head) : 0;
+        double lastLine = Wait.WindowAlpha > 0f && !last.Block.Empty ? MessageWindow.ClickIconAnchor(last.Block, Wait.Head, Wait.Tail, _language).Y : 0;
         return (float)(pos[^1].Y + lastLine);
     }
 

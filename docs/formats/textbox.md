@@ -113,7 +113,7 @@ movie build [H]. `tsuki.textbox.PROLOGUE_TRANSFORM` is the fitted movie mapping.
 9. Voice and message flags: if a voice is queued (VA 0x16541FC >= 0) and enabled for the
    character, it is started (0xC3A80) and, if mode != 1, VA 0x1653E70 |= 4. Then E70 |= 1. If
    mode == 1: continue byte VA 0x16541F4 = 1. E00 |= 0x100, and E00 |= 0x400 if mode == 0 (VA 0x92AE6..0x92B2F). In the HUD, flag 0x400
-   makes the click-wait icon alpha (VA 0xDF08E4) rise by 0.1 per frame (VA 0x53FD5..0x5400C).
+   makes the click-wait icon alpha (VA 0xDF08E4) rise by 0.1 per frame (VA 0x53FD5..0x5400C) once the text is complete; section 7.1 has the icon.
 
 `normal_window` is VA 0x53860: `w = F1105; if English and F1109 > 0: w = F1109; return w < 3`.
 
@@ -532,6 +532,96 @@ With F822 == 0 (not used by story scripts) the HUD instead draws slots 13 and 5 
 rect `0x200B20[config+0x12 "window design" (0 -> F989), < 5]` at (0, 5.807) [E; textures not
 traced].
 
+### 7.1 Click-wait icon (the text-break marks) [E, V-emu; package K34]
+
+The marks the console shows at the end of a message are drawn by the HUD process 0x53CF0 into
+the text list 0x1E (so at 3.0 x 3.1339 px per unit with the page's quake offsets, text_vertical_scale.md 1),
+right after the current message's block draws (VA 0x54CB1..0x54F94; the `jne 0x54CB1` at 0x54BE2 that
+skips the blocks while F1103 != 0 lands here too). Every number below was read back from the eboot
+under emulation (`tests/Tsuki.Tests.Data/Oracle/gen_click_icon_golden.py`, docs/status/knife/K34.md).
+
+**Pictures.** The UI registration table VA 0x780C90 (archives_ui_movies.md 7.2) loads DISP_PARTS children
+into UI texture slots 2, 3 and 4 (records 0x780FC0 / 0x780FD8 / 0x780FF0):
+
+| UI slot | DISP_PARTS child | sheet | cells | frame table | mark |
+|---|---|---|---|---|---|
+| 2 | 4 | 4095 x 39 | 105 of 39 x 39 | VA 0x781760 | **line end**: a wait inside a page (F799 == 0): a crescent moon that waxes, glows and wanes (blue-white) |
+| 3 | 9 | 4095 x 39 | 105 of 39 x 39 (the 105th blank) | VA 0x781410 | **page end**: the last message of a page (F799 == 1, `_WNTY(1)`), and every wait outside page mode: four stacked lines, drawn at half alpha |
+| 4 | 53 | 2537 x 46 | 59 of 43 x 46 | VA 0x781230 | **speech bubble** (window index 3..55): a round badge with lines |
+
+The frame tables are rows of 4 x i16 `(x0, 0, x1, h)`, row k = cell k (`39k, 0, 39k + 39, 39` and
+`43k, 0, 43k + 43, 46`); row 104 of the page icon's table repeats cell 103 (`4017, 0, 4056, 39`). The
+sheets have depth byte 0x14 (size modes 0), so a cell draws at exactly 0.333 units per texel (float32
+0x3EAA7EFA at VA 0x1A7094 / 0x1A7170): 38.96 px wide and 40.70 px tall on the page.
+
+**Which mark.** The end mode decides whether a mark shows at all: only mode 0 (a `)` message that is not
+the page option's no-click case) sets wait bit 0x400 (3.1 item 9); `@n` and `@e` set no 0x400 and show
+nothing. F799 (`_WNTY`) decides which: 0 -> the line mark, 1 -> the page mark; a speech bubble window
+always uses the bubble mark; F822 != 1 always the page mark. Auto mode (0x17DB230 bit 0) draws no mark on
+any path (the alpha still rises).
+
+**Alpha** (VA 0x53F8B..0x5400C, once a frame while the window fade 0xDF0730 > 0): the HUD calls
+`0xCA690(block slot+4, 0x30, &x, &y, head, tail)` and, when it returns "complete" and E00 & 0x400 is set,
+`0xDF08E4 = min(0xDF08E4 + 0.1, 1.0)`; otherwise `0xDF08E4 = 0`. So the mark appears in the frame the
+reveal completes (0.1) and is fully in nine frames later; the advance clears 0x400 in Adv_Update and the
+HUD of that frame sets it back to 0. A skip or fast-forward advances the message the frame after its
+reveal, so the alpha never passes 0.1 (0.2 when the next message is complete in the same frame).
+
+**Anchor, VA 0xCA690** [V-emu]: the line origins of the block draw (6.1) with x = 88 (float32 VA 0x2D3048 and
+the eight copies at 0x2D3460) and y = 0, then one pass over the glyph records in order: a zeroed control
+record is skipped; a record whose counter is above the head leaves alpha 0; otherwise its alpha is 1 when
+the tail is above the counter or `head - tail <= 0`, else `(head - ctr) / (head - tail)`; a ruby record
+counts for the alpha but not for the position. Position of a plain glyph:
+`x = (x2 - x0) * sx + (dx + x_line) + 3` (VA 0xCAB6E..0xCABA0, 3.0 at 0x2D3058), of an `@b` glyph
+`x = MirrorX - dx - w' * sx + x_line - 16` (0xCAC14..0xCACAA); `y = dy + y_line`. Both outputs are
+truncated toward zero; the result is "the alpha of the last record equals 1". Example `$000003` (en,
+two lines, last glyph dx 79.4267, 26 texels wide at sx 0.24667): x = trunc(88 + 79.4267 + 6.4133 + 3) =
+176, y = 26; ja (one line, last glyph dx 198.32, 72 wide): 307, 0.
+
+**Stored position** (VA 0x54B6A..0x54B80, 0x54CB1..0x54CD7): the x is shifted by the window's text origin,
+`x = trunc(x + origin_x - (87 if the window or F1111 is >= 3 else the page origin x))`: 0 for the full-screen
+page (origin 30 or 87 with F1106 = 0), `origin_x - 87` for a bubble (window 5: 213.5 - 87 = 126.5, so
+245 -> 371). With F822 != 1 the origin code is skipped (0x54A37 -> 0x54BD8, the bottom-window origin
+169.333 / 43.1407) and x stays. Then `0xDF088C = float(x)` and `0xDF0890 = y + message y` (the value the
+choice screen reads for its first line, system_flow.md 5.3).
+
+**Draw** (VA 0x54CDF..0x54F94, helper 0x53630), while 0xDF08E4 > 0 and `x >= 0 or y > 0`, with
+`a = 0xDF08E4 x fade`:
+
+| case | mark | position in text units | alpha |
+|---|---|---|---|
+| window > 2 | bubble (slot 4, 59 cells, modulo 118) | `(x - 2, y + msg_y + 2)` | a |
+| F822 == 1, F799 == 1 | page (slot 3, 105 cells, modulo 210) | `(x - 57 (English only) - 3.7, y + msg_y + 4.3)` | 0.5 a |
+| F822 == 1, F799 == 0 | line (slot 2, 105 cells, modulo 210) | same | a |
+| F822 != 1 | page (slot 3) | `(x + 115, y + msg_y + 2)` | 0.5 a |
+
+(-57 at 0x1A7178, -3.7 at 0x1A717C, 4.3 at 0x1A7180, 115 at 0x1A7174, 2 / -2 at 0x1A7168 / 0x1A716C.) The
+English -57 undoes the 88 origin of 0xCA690 for the English page origin 30 (88 - 57 = 31). The mark is one
+`TexDrawRect(slot, 0x10, 0, &row, x, y)` (0xEB890) after `colour(a x factor, 1, 1, 1)` (0xD9D20) and the
+picture scale (0.333, 0.333) (0xD9DD0); the list 0x1E alpha (fade x 2 max(0, T - 0.5) x HUD alpha) multiplies
+it again, so the mark fades with the square of the window fade.
+
+**Animation.** One tick counter at VA 0x78122C (-1 in the data segment) serves all three marks: it advances by
+the frame delta (0xD47C0, 1 at 60 Hz) only while a mark is drawn, modulo twice the mark's cell count, and the
+row is its half: each cell shows for two frames (30 cells a second), a 105-cell mark loops in 3.5 s, the
+bubble's 59 cells in 1.97 s, and a new mark carries on from where the last one stopped. There is no blink or
+bob: the motion is in the cells (the crescent's phases, the lines fading in).
+
+Worked example (en, `$000003`, the first message of a page at (30, 35), text complete, F799 = 0): anchor
+(176, 26); stored (176, 61); the line mark at (115.3, 65.3) units = (345.9, 204.6) px, 38.96 x 40.70 px, cell
+0 in frames 0..1, cell 1 in 2..3, ...; alpha 0.1, 0.2, ... 1.0 in frames 0..9. ja: anchor (307, 0), the mark at
+(303.3, 53.3) = (909.9, 167.0) px. Bubble window 5: stored (371, 270.5), the bubble mark at (369, 272.5) =
+(1107.0, 854.0) px, 42.96 x 48.01 px.
+
+**Mode indicator.** There is none on the PS4 HUD: the banner function VA 0x564A0 (called from the HUD draw
+0x57550) draws DISP_PARTS child 10 rows through three banner slots (0xDF0EF4..0xDF0EFC with the timers
+0xDF0F00..0xDF0F08, raised by 0x562D0(k), ticked by 0x56300: 0.04 per frame to 7, then 1 falling to 0,
+scale keys 0x781AC0), but the only callers of 0x562D0 pass k = 0 (quick save: 0x60710 at 0x61BB2, 0x6EB60 at
+0x6F250; row `8, 72, 424, 128` = "Quicksaving", drawn at (-10, 50)) and k = 1 (the save paths 0x6D450 /
+0x6D540 / 0x6D600; row `0, 0, 1, 1` drawn at (2000, 2000): a disabled "Autosaving"). Slot 2 (row
+`8, 136, 424, 192` = "Auto") is never raised, and "Skip" has no row. The auto / skip state shows only in the
+mode panel's buttons (0x56740, DISP_PARTS child 5). The port's Auto / Skip banners are knife's (Switch).
+
 ---
 
 ## 8. Timing: reveal, fades, waits
@@ -568,7 +658,7 @@ to 0 (0x92659).
   and F799. **F799 = 1 marks the last message of a page** (15,663 of 15,759 WNTY(1) are
   followed by the page-reset block, text.md / script.md) [E, D].
 - End modes (3.1): mode 0 sets message flag 0x400, which brings in the click-wait icon (VA
-  0xDF08E4). Mode 1 (`@n`) sets the continue byte: the next `_MSAD` appends and no icon is
+  0xDF08E4; the marks, their pictures, position and animation: 7.1). Mode 1 (`@n`) sets the continue byte: the next `_MSAD` appends and no icon is
   shown. Mode 2 (`@e`, or `)` with WNTY 0 and the page option [0xDF0EF0] set) sets neither.
   0x56140 = [0xDF0EF0] is latched on the first message of each page from config byte +0x9C
   (unread) / +0x9D (read) == 1 [E; which menu item these bytes are: H, CONF_PARTS "Display End

@@ -172,7 +172,8 @@ public sealed class GameRig
         dh["get_ScriptCount"] = _ => Scripts.Count;
         dh["Script"] = a => Scripts.Script((int)a[0]!);
         dh["get_TextLineCount"] = _ => 43_969;
-        dh["UiSheetSize"] = _ => (1000, 300);                    // package K12: the app runtime draws the window, which needs the size of its sheet
+        // package K12: the app runtime draws the window, which needs the size of its sheet; package K34: the click-wait icon sheets have their retail sizes
+        dh["UiSheetSize"] = a => (int)a[2]! switch { GameHost.LineIconChild or GameHost.PageIconChild => (4095, 39), GameHost.BubbleIconChild => (2537, 46), _ => (1000, 300) };
         dh["TextLine"] = a => (ReadOnlyMemory<byte>)Encoding.UTF8.GetBytes(_lines.GetValueOrDefault((int)a[1]!, string.Empty));
         var services = new GameServices(data, Scripts) { SeLookup = (name, _) => name.StartsWith("SE", StringComparison.Ordinal) ? 1 : null };
         Data = data;

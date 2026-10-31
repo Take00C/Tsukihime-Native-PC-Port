@@ -31,9 +31,6 @@ when it is done (the commit that fixes it should say so).
   Owner: oracle.
 - **Real-data oracle tests leave game-derived output in pytest's tmp_path** (283 MB was found and
   deleted from %TEMP% on 2026-10-25). Make the tests delete their export directories. Owner: oracle.
-- **Click-wait icon source undocumented** (textbox.md 3.1/8.3, flag 0x400 raises icon alpha at
-  VA 0xDF08E4). Needed if the M2 page-1 checkpoint is captured while waiting for input. Owner:
-  textbox / UI.
 - **Pre-commit allow-list gaps** reported by the setup agent: binaries such as .png are accepted
   outside samples/ (ARCHITECTURE 10.8 wants them blocked unless documented). Owner: lead.
 - **`ps4_capture_targets.py` has no test.** Owner: lead.

@@ -67,6 +67,9 @@ public static class BlockDraw
     /// <summary>The <c>@b</c> mirrored x origin, non-English / English (VA 0x2D3260).</summary>
     private static readonly float[] MirrorX = [463f, 565f];
 
+    /// <summary>The <c>@b</c> mirrored x origin of <paramref name="lang"/> (VA 0x2D3260 / 0x2D3270: 565 in English, 463 otherwise).</summary>
+    public static float MirrorOrigin(Contracts.Language lang) => MirrorX[lang == Contracts.Language.En ? 1 : 0];
+
     /// <summary>Fill colour bytes 1..3 built from the record colour word (VA 0xC9C87..0xC9D06).</summary>
     public static (int R, int G, int B) Rgb565Bytes(int c) => ((c >> 8) & 0xF8, (c >> 3) & 0xF8, (c << 3) & 0xF8);
 

@@ -1739,8 +1739,12 @@ internal sealed class GameApp : IDisposable
             $"script {h.Script} (scene {(h.Phase == GamePhase.Running ? h.SceneId : -1)}) cursor {h.Machine.Cursor}, F823 {h.F(823)}, F22 {h.F(22)}, auto {h.AutoMode} skip {h.SkipLatch}, " +
             $"cfg [lang {_services.Config.Language} bgm {_services.Config.MusicVolume} se {_services.Config.SfxVolume} sys {_services.Config.SystemSeVolume} voice {_services.Config.PlayAllVoices} unseen {_services.Config.UnseenTextSpeed} seen {_services.Config.SeenTextSpeed} auto {_services.Config.AutoModeWait} ffRead {_services.Config.FastForwardReadOnly} endInstant {_services.Config.PageEndInstantUnseen}/{_services.Config.PageEndInstantSeen} anim {_services.Config.TextAnimations}/{_services.Config.SeenTextAnimations} win {_services.Config.Bytes[WindowModeOffset]}], " +
             $"history {(h.History is { } hist ? hist.Count : 0)}, restores {h.RestoreCount}, page {h.PageMessages.Count} [{PageSummary(h)}], window {h.Wait.WindowAlpha:F2}, text fade {h.TextFade:F2} (step {h.Wait.TextFadeStep:F4}), F1103 {h.F(1103)}, G10 {_services.Global(10)}, choice {(h.ChoiceOpen ? h.ChoiceKind.ToString() : "-")}, plays {_player.PlaysPosted}, voice {h.Sound.LastVoice}, movies {_movies.OpenSlots}, " +
-            $"toast {(_runtime.Ui.Toast is { } toast ? $"\"{toast.Text}\" a {toast.Alpha:F2}" : "-")}, master gain {_mixer.MasterGain:F2} -> {_mixer.MasterGainTarget:F0}, copies {_copier?.Copies ?? 0}, hooked {_hook?.Emitted ?? 0}, websocket {_webSocket?.State ?? "-"} sent {_webSocket?.Sent ?? 0}, opacity {h.Config.Hud10}, text \"{text}\"");
+            $"toast {(_runtime.Ui.Toast is { } toast ? $"\"{toast.Text}\" a {toast.Alpha:F2}" : "-")}, master gain {_mixer.MasterGain:F2} -> {_mixer.MasterGainTarget:F0}, copies {_copier?.Copies ?? 0}, hooked {_hook?.Emitted ?? 0}, websocket {_webSocket?.State ?? "-"} sent {_webSocket?.Sent ?? 0}, opacity {h.Config.Hud10}, " +
+            $"icon [alpha {h.ClickIconAlpha:F2} tick {h.ClickIconTick} anchor ({h.ClickIconAnchor.X}, {h.ClickIconAnchor.Y}) stored ({h.ClickIconStored.X:F1}, {h.ClickIconStored.Y:F1}) F799 {h.F(799)} {IconSummary(h.LastClickIcon)}], text \"{text}\"");
     }
+
+    private static string IconSummary(ClickIconDraw d) =>
+        d.Kind == ClickIconKind.None ? "none" : $"{d.Kind} child {d.DispChild} cell {d.Frame} at ({d.X:F2}, {d.Y:F2}) units = ({d.X * 3.0:F1}, {d.Y * GameHost.PageScaleY:F1}) px a {d.Alpha:F3}";
 
     private static string PageSummary(GameHost h)
     {

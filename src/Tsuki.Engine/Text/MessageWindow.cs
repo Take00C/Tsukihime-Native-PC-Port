@@ -39,12 +39,95 @@ public readonly record struct WindowDraw(
     int Index, int Slot, int DispChild, double XPx, double YPx, double ScaleX, double ScaleY, double Alpha, bool Bubble);
 
 /// <summary>
+/// The outputs of the HUD's call of VA 0xCA690 (at VA 0x53FC4, docs/formats/textbox.md 7.1): the position after the last revealed glyph of
+/// the current message in block units with the function's own x origin of 88, truncated to whole units, and whether the text is complete.
+/// </summary>
+/// <param name="X"><c>trunc(88 + dx + (x2 - x0) * sx + 3)</c> of the last revealed non-ruby glyph (the mirrored <c>@b</c> rule for those glyphs); 88 with no glyph.</param>
+/// <param name="Y"><c>trunc(y_line + dy)</c> of that glyph; 0 with no glyph.</param>
+/// <param name="Complete">The last glyph record (ruby included) is revealed at alpha 1: <c>tail &gt; ctr</c>, or <c>head - tail &lt;= 0</c>.</param>
+public readonly record struct ClickAnchor(int X, int Y, bool Complete);
+
+/// <summary>
 /// The ADV message window: parameters of the main text box, the window and bubble tables and how the
 /// messages of one page are stacked (docs/formats/textbox.md 5, 8; tools/tsuki/textbox.py
 /// <c>main_box_params</c>, <c>page_positions</c>, <c>window_for</c>, <c>bubble_text_origin</c>).
 /// </summary>
 public static class MessageWindow
 {
+    /// <summary>The x origin VA 0xCA690 lays its lines out from (float32 at VA 0x2D3048 and the eight copies at 0x2D3460).</summary>
+    public const float AnchorOriginX = 88f;
+
+    /// <summary>
+    /// VA 0xCA690 as the HUD calls it (<c>block, 0x30, &amp;x, &amp;y, head, tail</c> at VA 0x53FC4): the line origins of <see cref="BlockDraw.LineOffsets"/>
+    /// with x = 88 and y = 0 (the draw flags OR-ed with the block's), then one pass over the glyph records in order. A zeroed control record is
+    /// skipped; a record whose counter is above <paramref name="head"/> leaves alpha 0 (VA 0xCABDB..0xCABE7); otherwise its alpha is 1 when
+    /// <paramref name="tail"/> is above the counter or <c>head - tail &lt;= 0</c>, else <c>(head - ctr) / (head - tail)</c>; a ruby record (flag 2) counts for
+    /// the alpha but not for the position. The position of a plain glyph is <c>x = (x2 - x0) * sx + (dx + x_line) + 3</c> (VA 0xCAB6E..0xCABA0), of an
+    /// <c>@b</c> glyph <c>x = MirrorX - dx - w' * sx + x_line - 16</c> (VA 0xCAC14..0xCACAA, w' = x2 - x0 minus 5 for the 67-wide page-61 pieces), and
+    /// <c>y = dy + y_line</c>; both outputs are truncated toward zero (<c>vcvttss2si</c>, VA 0xCACCB / 0xCACDB). The result is the alpha of the last
+    /// record compared with 1 (VA 0xCACCF).
+    /// </summary>
+    public static ClickAnchor ClickIconAnchor(TextBlock block, double head, double tail, Contracts.Language lang, int drawFlags = 0x30)
+    {
+        ArgumentNullException.ThrowIfNull(block);
+        float x = AnchorOriginX;
+        float y = 0f;
+        float alpha = 0f;
+        if (block.N > 0 && block.Records.Length > 0)
+        {
+            (float[] xs, float[] ys, _) = BlockDraw.LineOffsets(block, AnchorOriginX, 0f, drawFlags);
+            float h = (float)head;
+            float t = (float)tail;
+            float span = h - t;
+            foreach (GlyphRecord r in block.Records)
+            {
+                if (r.Index == 0 && r.Flags == 0)
+                {
+                    continue;
+                }
+
+                float ctr = r.Ctr;
+                if (ctr > h)
+                {
+                    alpha = 0f;
+                    continue;
+                }
+
+                alpha = t > ctr || !(0f < span) ? 1f : (h - ctr) / span;
+                if ((r.Flags & 2) != 0)
+                {
+                    continue;
+                }
+
+                int line = Math.Clamp(r.Line, 0, Math.Max(0, xs.Length - 1));
+                if (xs.Length == 0)
+                {
+                    continue;
+                }
+
+                float w = r.X2 - r.X;
+                if ((r.Flags & 0x10000) != 0)
+                {
+                    float wq = w == 0x43 && r.Tex == 0x5E ? w + -5f : w;
+                    float gx = BlockDraw.MirrorOrigin(lang) - r.Dx;
+                    gx -= wq * r.Sx;
+                    gx += xs[line];
+                    x = gx + -16f;
+                }
+                else
+                {
+                    float after = r.Dx + xs[line];
+                    float wsx = w * r.Sx;
+                    x = (wsx + after) + 3f;
+                }
+
+                y = r.Dy + ys[line];
+            }
+        }
+
+        return new ClickAnchor((int)x, (int)y, alpha == 1f);
+    }
+
     // Window table (VA 0x2006C0, 56 x {i32 slot, f32 x, f32 y} in a 1280 x 720 space).
     private static readonly (int Slot, int X, int Y)[] WindowTable =
     [
