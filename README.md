@@ -1,3 +1,10 @@
+<img width="1922" height="1112" alt="Screenshot 2026-10-30 204551" src="https://github.com/user-attachments/assets/17b113af-6c33-4785-964b-e635377908fa" />
+<img width="1922" height="1112" alt="Screenshot 2026-10-30 171103" src="https://github.com/user-attachments/assets/78e890b9-9da2-4d87-817c-40601b702f6f" />
+<img width="1922" height="1112" alt="Screenshot 2026-10-30 205237" src="https://github.com/user-attachments/assets/b424d8e7-3434-41b7-ae4e-70e6535355f2" />
+<img width="1922" height="1112" alt="Screenshot 2026-10-30 171243" src="https://github.com/user-attachments/assets/16ec727f-6bc6-49cc-9dcb-201d9c2febca" />
+<img width="1922" height="1112" alt="Screenshot 2026-10-30 171523" src="https://github.com/user-attachments/assets/00a63570-0757-447a-b95c-a61624800b5f" />
+<img width="1593" height="926" alt="Screenshot 2026-10-30 171957" src="https://github.com/user-attachments/assets/28158d84-44d7-4974-b643-5d64e7fd4577" />
+
 # Tsukihime PC port
 
 > **Players: start with the [setup guide](docs/SETUP_GUIDE.md)** (`docs/SETUP_GUIDE.md`; the same text travels beside the programs as `SETUP_GUIDE.txt`, and the
