@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Dev builds only: JSON command channel into the running app (ARCHITECTURE 10.1; stream H). -->
+  <ItemGroup>
+    <ProjectReference Include="..\Tsuki.Engine\Tsuki.Engine.csproj" />
+    <ProjectReference Include="..\Tsuki.Data\Tsuki.Data.csproj" />
+    <ProjectReference Include="..\Tsuki.Ui\Tsuki.Ui.csproj" />
+  </ItemGroup>
+</Project>

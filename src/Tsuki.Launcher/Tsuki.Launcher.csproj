@@ -1,0 +1,90 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    The launcher (package K17): a WPF window that checks the game folder, edits the PC port's settings.ini, backs up saves and starts Tsukihime.exe from its own folder.
+    It is Windows-only and WPF needs culture data, so it is the one project that overrides the central target framework and invariant-globalization setting (ProjectRulesTests allows exactly these two, for this project only).
+    The logic that needs no window lives in Core/ (no WPF types); the Synthetic tests compile those files too, because a net10.0 test project cannot reference a -windows project.
+    Package K20: the program is TsukihimeLauncher.exe and carries the port's icon (assets/icon, drawn by tools/setup/make_icon.py) in its resources and as the window icon.
+  -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <!-- WPF's font cache creates cultures by name (CultureInfo("en")); the central invariant-globalization setting would make it throw -->
+    <InvariantGlobalization>false</InvariantGlobalization>
+    <AssemblyName>TsukihimeLauncher</AssemblyName>
+    <RootNamespace>Tsuki.Launcher</RootNamespace>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>..\..\assets\icon\tsukihime.ico</ApplicationIcon>
+    <AllowUnsafeBlocks>false</AllowUnsafeBlocks>
+    <Version>0.1.0</Version>
+    <Product>Tsukihime PC port</Product>
+    <AssemblyTitle>Tsukihime Launcher</AssemblyTitle>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- the same .ico as the window icon (WPF picks the 16 and 32 px frames of it for the title bar and the taskbar) -->
+    <Resource Include="..\..\assets\icon\tsukihime.ico" Link="Assets\tsukihime.ico" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- the WPF SDK leaves System.IO out of the implicit usings (Path would clash with System.Windows.Shapes.Path); this project never uses the shapes' Path in code -->
+    <Using Include="System.IO" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Tsuki.Data\Tsuki.Data.csproj" />
+    <ProjectReference Include="..\Tsuki.Engine\Tsuki.Engine.csproj" />
+    <ProjectReference Include="..\Tsuki.Ui\Tsuki.Ui.csproj" />
+    <!-- Builds the game first so that its output can be copied next to TsukiLauncher.exe (and published into the same folder). The assembly is not referenced. -->
+    <ProjectReference Include="..\Tsuki.App\Tsuki.App.csproj" ReferenceOutputAssembly="false" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- The one settings reader / writer is shared with the game: the same file is compiled into both programs (the launcher cannot reference Tsuki.App: it pulls SDL, OpenGL and FFmpeg). -->
+    <Compile Include="..\Tsuki.App\Services\AppSettings.cs" Link="Core\Shared\AppSettings.cs" />
+    <!-- Package K19: the window-size presets and the clamp to the monitor's work area, the same arithmetic as the game's (no SDL in that file). -->
+    <Compile Include="..\Tsuki.Platform\WindowFit.cs" Link="Core\Shared\WindowFit.cs" />
+    <!-- Package K23's Arcueid icon (FaceIcon, FaceIconCache) comes through Tsuki.Data since package K28 (src/Tsuki.Data/Icons). -->
+  </ItemGroup>
+  <!-- Package K28: `-p:TsukiPersonalIcon=<game folder>` makes a PERSONAL build whose executable carries the Arcueid icon (never to be shared); see the file. -->
+  <Import Project="..\Tsuki.PersonalIcon.targets" />
+  <ItemGroup>
+    <!--
+      What travels with the published folder besides the programs (package R1; the Help page points at these): the licence texts of the third-party code (FFmpeg's LGPL v3
+      with the GPL v3 whose terms it incorporates and its source notice, knife's MPL-2.0, SDL3's zlib), docs/THIRD_PARTY.md, the root LICENSE (the port's own MPL-2.0)
+      and the README. The licence texts are tracked copies in Licenses/ (package K30: they used to be copied from the git-ignored third_party/ and ref/ folders, which a
+      clean clone does not have); the knife header in every translated file names the MPL URL as well.
+    -->
+    <None Include="Licenses\LGPL-3.0.txt" Link="licenses\FFmpeg-LGPL.txt" CopyToPublishDirectory="PreserveNewest" />
+    <None Include="Licenses\GPL-3.0.txt" Link="licenses\FFmpeg-GPL-3.0.txt" CopyToPublishDirectory="PreserveNewest" />
+    <None Include="Licenses\MPL-2.0.txt" Link="licenses\knife-MPL-2.0.txt" CopyToPublishDirectory="PreserveNewest" />
+    <None Include="..\..\LICENSE" Link="licenses\LICENSE.txt" CopyToPublishDirectory="PreserveNewest" Visible="false" />
+    <None Include="Licenses\FFmpeg-SOURCE.txt" Link="licenses\FFmpeg-SOURCE.txt" CopyToPublishDirectory="PreserveNewest" />
+    <None Include="Licenses\SDL3-zlib.txt" Link="licenses\SDL3-zlib.txt" CopyToPublishDirectory="PreserveNewest" />
+    <None Include="..\..\docs\THIRD_PARTY.md" Link="licenses\THIRD_PARTY.md" CopyToPublishDirectory="PreserveNewest" Visible="false" />
+    <None Include="..\..\README.md" Link="README.md" CopyToPublishDirectory="PreserveNewest" Visible="false" />
+    <!-- the player's setup guide (package K29): the plain-text copy of docs/SETUP_GUIDE.md travels next to the programs, where a player who never opens a Markdown file finds it; the Help page's button opens it, so the build output carries it too (K27) -->
+    <None Include="..\..\docs\SETUP_GUIDE.txt" Link="SETUP_GUIDE.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" Visible="false" />
+  </ItemGroup>
+
+  <!--
+    Next to TsukihimeLauncher.exe the folder must hold Tsukihime.exe and what it needs (the launcher starts it from its own folder). A build copies the game's build output
+    here; `dotnet publish` of the launcher publishes the game into the same folder (see README, "Launcher").
+  -->
+  <Target Name="TsukiCopyAppOutput" AfterTargets="Build" Condition="'$(TsukiSkipAppCopy)' != 'true'">
+    <MSBuild Projects="..\Tsuki.App\Tsuki.App.csproj" Targets="GetTargetPath" Properties="Configuration=$(Configuration)">
+      <Output TaskParameter="TargetOutputs" ItemName="_TsukiAppDll" />
+    </MSBuild>
+    <PropertyGroup>
+      <_TsukiAppDir>@(_TsukiAppDll->'%(RootDir)%(Directory)')</_TsukiAppDir>
+    </PropertyGroup>
+    <ItemGroup>
+      <_TsukiAppFiles Include="$(_TsukiAppDir)**\*" Exclude="$(_TsukiAppDir)**\*.pdb;$(_TsukiAppDir)**\*.xml;$(_TsukiAppDir)**\TsukihimeLauncher.*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_TsukiAppFiles)" DestinationFiles="@(_TsukiAppFiles->'$(OutDir)%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
+  </Target>
+  <Target Name="TsukiPublishApp" AfterTargets="Publish" Condition="'$(TsukiSkipAppCopy)' != 'true'">
+    <MSBuild Projects="..\Tsuki.App\Tsuki.App.csproj" Targets="Publish" Properties="Configuration=$(Configuration);RuntimeIdentifier=$(RuntimeIdentifier);SelfContained=$(SelfContained);PublishDir=$(PublishDir);NoBuild=false;TsukiSkipAppCopy=true" />
+    <!-- the XML doc files are for the compiler, not the player; package R1. The .pdb files are not produced by a Release publish either (Directory.Build.props, package K30) -->
+    <ItemGroup>
+      <_TsukiPublishedDocs Include="$(PublishDir)Tsuki.*.xml;$(PublishDir)Tsukihime.xml;$(PublishDir)TsukihimeLauncher.xml" />
+    </ItemGroup>
+    <Delete Files="@(_TsukiPublishedDocs)" />
+  </Target>
+</Project>

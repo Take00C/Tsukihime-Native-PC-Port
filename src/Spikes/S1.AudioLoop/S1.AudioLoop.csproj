@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Spike S1 (ROADMAP M0 scope 8, stream E): bgm #33 through FFmpeg.AutoGen, sample-exact loop. Throwaway: deleted after M2 (ROADMAP 4 step 8). Results: docs/status/spikes/S1.md. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <TsukiUsesFFmpeg>true</TsukiUsesFFmpeg>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="FFmpeg.AutoGen" />
+    <PackageReference Include="ppy.SDL3-CS" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- AudioClip / AudioLoop / IAudioDecoder contracts (ARCHITECTURE 3.2): the decoder here is a prototype of the Tsuki.Media one. -->
+    <ProjectReference Include="..\..\Tsuki.Engine\Tsuki.Engine.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Python helper for the oracle side (export + WAV verification); not compiled. -->
+    <None Include="oracle_s1.py" />
+  </ItemGroup>
+</Project>

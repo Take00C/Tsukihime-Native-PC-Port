@@ -1,0 +1,137 @@
+<UserControl x:Class="Tsuki.Launcher.Views.GameFilesPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:Tsuki.Launcher"
+             xmlns:views="clr-namespace:Tsuki.Launcher.Views">
+  <UserControl.Resources>
+    <Style x:Key="FactLabel" TargetType="TextBlock" BasedOn="{StaticResource Muted}">
+      <Setter Property="Margin" Value="0,0,0,10"/>
+    </Style>
+    <Style x:Key="FactValue" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+      <Setter Property="Margin" Value="0,0,0,10"/>
+      <Setter Property="FontSize" Value="13"/>
+    </Style>
+  </UserControl.Resources>
+  <ScrollViewer Style="{StaticResource PageScroll}">
+    <StackPanel Margin="0,0,0,24">
+      <views:PageHeader Overline="GAME FILES" Title="Your copy of the game"
+                        Description="The port reads the PS4 game you own, the extracted CUSA47999 folder. The launcher only looks inside it; nothing in that folder is ever changed."/>
+      <Border Style="{StaticResource Card}">
+        <StackPanel>
+          <local:TrackedText Text="GAME FOLDER" Style="{StaticResource SmallCaps}"/>
+          <Rectangle Style="{StaticResource GoldDivider}" Margin="0,11,0,16"/>
+          <Grid>
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="*"/>
+              <ColumnDefinition Width="10"/>
+              <ColumnDefinition Width="Auto"/>
+              <ColumnDefinition Width="8"/>
+              <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <TextBox x:Name="PathBox" Text="{Binding FolderText, UpdateSourceTrigger=PropertyChanged}" VerticalContentAlignment="Center" Height="40">
+              <TextBox.InputBindings>
+                <KeyBinding Key="Return" Command="{Binding ApplyFolderCommand}"/>
+              </TextBox.InputBindings>
+            </TextBox>
+            <TextBlock Text="Path of the CUSA47999 folder" Foreground="#6C7699" FontSize="13" Margin="13,0,0,0" VerticalAlignment="Center" IsHitTestVisible="False">
+              <TextBlock.Style>
+                <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+                  <Setter Property="Visibility" Value="Collapsed"/>
+                  <Style.Triggers>
+                    <DataTrigger Binding="{Binding Text, ElementName=PathBox}" Value="">
+                      <Setter Property="Visibility" Value="Visible"/>
+                    </DataTrigger>
+                  </Style.Triggers>
+                </Style>
+              </TextBlock.Style>
+            </TextBlock>
+            <Button Grid.Column="2" Content="Browse…" Style="{StaticResource AccentButton}" Command="{Binding BrowseCommand}" Height="40" Padding="20,0"/>
+            <Button Grid.Column="4" Content="Open" Style="{StaticResource GhostButton}" Command="{Binding OpenGameFolderCommand}" Height="40" Padding="20,0"/>
+          </Grid>
+          <TextBlock Text="{Binding FolderMessage}" Margin="2,10,0,0">
+            <TextBlock.Style>
+              <Style TargetType="TextBlock" BasedOn="{StaticResource Muted}">
+                <Setter Property="Foreground" Value="{StaticResource WarningBrush}"/>
+                <Style.Triggers>
+                  <DataTrigger Binding="{Binding FolderMessage}" Value="">
+                    <Setter Property="Visibility" Value="Collapsed"/>
+                  </DataTrigger>
+                </Style.Triggers>
+              </Style>
+            </TextBlock.Style>
+          </TextBlock>
+          <TextBlock Style="{StaticResource Muted}" Margin="2,12,0,0"
+                     Text="Choose the folder that holds eboot.bin and image\, or the folder above it. A base game with its update in a second folder beside it (CUSA47999 and CUSA47999-patch, or CUSA47999-UPDATE) is read as one game: the update's files take precedence. A .pkg must be extracted first. The folder is remembered for the game too (%APPDATA%\Tsuki\game_dir.txt). Press Enter in the box to check a typed path."/>
+        </StackPanel>
+      </Border>
+
+      <!-- package K20: shortcuts to the game (Tsukihime.exe, which remembers the folder above) and to the launcher -->
+      <Border Style="{StaticResource Card}" Margin="0,18,0,0">
+        <StackPanel>
+          <local:TrackedText Text="SHORTCUTS" Style="{StaticResource SmallCaps}"/>
+          <Rectangle Style="{StaticResource GoldDivider}" Margin="0,11,0,16"/>
+          <TextBlock Style="{StaticResource Muted}" TextWrapping="Wrap"
+                     Text="Once the game folder is set, Tsukihime.exe starts the game on its own: it remembers the folder, and your saves stay in %APPDATA%\Tsuki whichever way you start it. A shortcut that already exists is replaced only after you say so."/>
+          <WrapPanel Margin="0,14,0,0">
+            <Button Content="Desktop shortcut to the game" Style="{StaticResource AccentButton}" Command="{Binding DesktopShortcutCommand}" Height="38" Padding="18,0" Margin="0,0,10,8"/>
+            <Button Content="Desktop shortcut to the launcher" Style="{StaticResource GhostButton}" Command="{Binding DesktopLauncherShortcutCommand}" Height="38" Padding="18,0" Margin="0,0,10,8"/>
+            <Button Content="Start menu entries" Style="{StaticResource GhostButton}" Command="{Binding StartMenuShortcutsCommand}" Height="38" Padding="18,0" Margin="0,0,10,8"/>
+          </WrapPanel>
+        </StackPanel>
+      </Border>
+
+      <Border Style="{StaticResource Card}" Margin="0,18,0,0">
+        <StackPanel>
+          <Grid>
+            <local:TrackedText Text="VERIFICATION" Style="{StaticResource SmallCaps}"/>
+            <Button Content="Check again" Style="{StaticResource LinkButton}" Command="{Binding RecheckCommand}" HorizontalAlignment="Right"/>
+          </Grid>
+          <Rectangle Style="{StaticResource GoldDivider}" Margin="0,11,0,16"/>
+          <Grid>
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="150"/>
+              <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+            <Grid.RowDefinitions>
+              <RowDefinition Height="Auto"/>
+              <RowDefinition Height="Auto"/>
+              <RowDefinition Height="Auto"/>
+              <RowDefinition Height="Auto"/>
+              <RowDefinition Height="Auto"/>
+              <RowDefinition Height="Auto"/>
+              <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+            <TextBlock Grid.Row="0" Text="Status" Style="{StaticResource FactLabel}"/>
+            <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding StatusText}" Style="{StaticResource FactValue}" FontWeight="SemiBold" x:Name="StatusValue" TextWrapping="Wrap"/>
+            <TextBlock Grid.Row="1" Text="Title and version" Style="{StaticResource FactLabel}"/>
+            <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding TitleText}" Style="{StaticResource FactValue}"/>
+            <TextBlock Grid.Row="2" Text="Build" Style="{StaticResource FactLabel}"/>
+            <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding BuildDetail}" Style="{StaticResource FactValue}" TextWrapping="Wrap"/>
+            <TextBlock Grid.Row="3" Text="Languages" Style="{StaticResource FactLabel}"/>
+            <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding LanguagesDetail}" Style="{StaticResource FactValue}"/>
+            <TextBlock Grid.Row="4" Text="Size on disk" Style="{StaticResource FactLabel}"/>
+            <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding FolderSize}" Style="{StaticResource FactValue}"/>
+            <TextBlock Grid.Row="5" Text="Build checks" Style="{StaticResource FactLabel}"/>
+            <TextBlock Grid.Row="5" Grid.Column="1" Text="{Binding ChecksText}" Style="{StaticResource FactValue}"/>
+            <TextBlock Grid.Row="6" Text="Contents" Style="{StaticResource FactLabel}" Margin="0"/>
+            <TextBlock Grid.Row="6" Grid.Column="1" Text="{Binding ContentsText}" Style="{StaticResource FactValue}" Margin="0"/>
+          </Grid>
+          <ItemsControl ItemsSource="{Binding Folder.ProblemList}" Margin="0,16,0,0" Focusable="False">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate>
+                <Grid Margin="0,0,0,6">
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="22"/>
+                    <ColumnDefinition Width="*"/>
+                  </Grid.ColumnDefinitions>
+                  <TextBlock Style="{StaticResource IconText}" Text="&#xE7BA;" FontSize="13" Foreground="{StaticResource WarningBrush}" Margin="0,2,0,0"/>
+                  <TextBlock Grid.Column="1" Text="{Binding}" Style="{StaticResource Muted}" Foreground="#E8D9A6"/>
+                </Grid>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </StackPanel>
+      </Border>
+    </StackPanel>
+  </ScrollViewer>
+</UserControl>

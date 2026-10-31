@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Spike S4 (ROADMAP M0 scope 8, stream D): the largest picture through a C# MZX0 + MZP prototype, sliced upload. Throwaway: deleted after M2 (ROADMAP 4 step 8). -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="ppy.SDL3-CS" />
+    <PackageReference Include="Silk.NET.OpenGL" />
+  </ItemGroup>
+</Project>

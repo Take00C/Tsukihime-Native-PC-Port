@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Screens: state machines + draw lists, tier-1 UI kit (ARCHITECTURE 3.1, 9; stream G). -->
+  <ItemGroup>
+    <ProjectReference Include="..\Tsuki.Engine\Tsuki.Engine.csproj" />
+    <ProjectReference Include="..\Tsuki.Data\Tsuki.Data.csproj" />
+  </ItemGroup>
+  <!-- package K5b: the screen tests read the panels' state (GalleryScreen.Panel and the panel classes) -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="Tsuki.Tests.Synthetic" />
+    <InternalsVisibleTo Include="Tsuki.Tests.Data" />
+  </ItemGroup>
+</Project>

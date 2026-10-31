@@ -1,0 +1,21 @@
+FFmpeg: source and licence notice for the libraries shipped with this port
+
+The game (Tsukihime.exe) decodes its sound (ATRAC9) and its movies (H.264 video, AAC audio) with the shared libraries of FFmpeg,
+https://ffmpeg.org, loaded from the application folder at run time:
+
+  avcodec-63.dll  avformat-63.dll  avutil-61.dll  swresample-7.dll
+
+They are the unmodified DLLs of BtbN's "win64-lgpl-shared-9.0" build of FFmpeg 9.0.1
+(ffmpeg version n9.0.1-11-ge47273f4d9-20260831; winget package BtbN.FFmpeg.LGPL.Shared.9.0 9.0.1-20260831).
+
+Licence: GNU Lesser General Public License, version 3 or later (the build is configured with --enable-version3; avcodec_license()
+answers "LGPL version 3 or later"). The licence text is FFmpeg-LGPL.txt next to this file; because the LGPL v3 incorporates the terms of
+the GNU General Public License v3, that text is FFmpeg-GPL-3.0.txt beside it. No GPL component is in the build.
+
+Source: the FFmpeg source of that tag is at https://git.ffmpeg.org/ffmpeg.git (tag n9.0.1, commit e47273f4d9 of the release/9.0
+branch is the exact build point) and https://github.com/FFmpeg/FFmpeg/releases/tag/n9.0.1; the exact binaries, their build scripts and
+configuration are published on the release page https://github.com/BtbN/FFmpeg-Builds/releases ("ffmpeg-n9.0.1-11-ge47273f4d9-win64-lgpl-shared-9.0",
+the 2026-08-31 autobuild; the same release carries the matching source archive). A copy of that source is available on request from the
+port's GitHub repository (an issue is enough), and a release may carry the source archive as a second file. The port does not link against
+FFmpeg: the DLLs are loaded dynamically (FFmpeg.AutoGen bindings, MIT), so they can be replaced by another build of the same major versions,
+as the LGPL asks.

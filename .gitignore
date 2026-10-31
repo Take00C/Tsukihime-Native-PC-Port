@@ -1,0 +1,29 @@
+# Local Python environment
+.venv/
+
+# Extracted / decoded copyrighted game data: local research only, never share or commit
+samples/
+scratch/
+
+# Third-party reference sources (read-only, not redistributed)
+ref/
+
+# Python and tool caches
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+
+# .NET build output and IDE files
+bin/
+obj/
+.vs/
+*.user
+artifacts/
+TestResults/
+
+# Native runtime DLLs (FFmpeg) copied in by tools/setup/ffmpeg_dlls.ps1
+third_party/
+
+# Personal Claude Code overrides
+.claude/settings.local.json

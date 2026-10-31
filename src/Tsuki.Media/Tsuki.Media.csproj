@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- FFmpeg.AutoGen decoding, HE-VAG, float mixer (ARCHITECTURE 3.1, 7; stream E). -->
+  <PropertyGroup>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="FFmpeg.AutoGen" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Tsuki.Engine\Tsuki.Engine.csproj" />
+    <ProjectReference Include="..\Tsuki.Data\Tsuki.Data.csproj" />
+  </ItemGroup>
+</Project>

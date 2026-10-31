@@ -1,0 +1,61 @@
+<UserControl x:Class="Tsuki.Launcher.Views.LanguagePage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:Tsuki.Launcher"
+             xmlns:views="clr-namespace:Tsuki.Launcher.Views">
+  <ScrollViewer Style="{StaticResource PageScroll}">
+    <StackPanel Margin="0,0,0,24">
+      <views:PageHeader Overline="LANGUAGE &amp; SOUND" Title="Voice and text"
+                        Description="The language of the story, the menus and the pictures that carry text. The voices stay Japanese in every language, as in the original game."/>
+      <Border Style="{StaticResource Card}">
+        <StackPanel>
+          <local:TrackedText Text="GAME LANGUAGE" Style="{StaticResource SmallCaps}"/>
+          <Rectangle Style="{StaticResource GoldDivider}" Margin="0,11,0,16"/>
+          <ListBox Style="{StaticResource TileList}" SelectedIndex="{Binding LanguageIndex, Mode=TwoWay}">
+            <ListBoxItem Visibility="{Binding JaVisibility}">
+              <StackPanel>
+                <TextBlock Text="&#x65E5;&#x672C;&#x8A9E;" FontFamily="Yu Mincho, Yu Gothic UI" FontSize="24"/>
+                <TextBlock Text="Japanese" Style="{StaticResource Muted}" Margin="0,5,0,0"/>
+              </StackPanel>
+            </ListBoxItem>
+            <ListBoxItem Visibility="{Binding EnVisibility}">
+              <StackPanel>
+                <TextBlock Text="English" FontFamily="{StaticResource SerifFont}" FontSize="24"/>
+                <TextBlock Text="English" Style="{StaticResource Muted}" Margin="0,5,0,0"/>
+              </StackPanel>
+            </ListBoxItem>
+            <ListBoxItem Visibility="{Binding ZcVisibility}">
+              <StackPanel>
+                <TextBlock Text="&#x7B80;&#x4F53;&#x4E2D;&#x6587;" FontFamily="Microsoft YaHei UI" FontSize="23"/>
+                <TextBlock Text="Simplified Chinese" Style="{StaticResource Muted}" Margin="0,5,0,0"/>
+              </StackPanel>
+            </ListBoxItem>
+            <ListBoxItem Visibility="{Binding ZtVisibility}">
+              <StackPanel>
+                <TextBlock Text="&#x7E41;&#x9AD4;&#x4E2D;&#x6587;" FontFamily="Microsoft JhengHei UI" FontSize="23"/>
+                <TextBlock Text="Traditional Chinese" Style="{StaticResource Muted}" Margin="0,5,0,0"/>
+              </StackPanel>
+            </ListBoxItem>
+          </ListBox>
+          <TextBlock Style="{StaticResource Muted}" Margin="2,14,0,0"
+                     Text="Takes effect the next time the game starts. Inside the game, Config also switches the language at once. A language your copy of the game does not carry is not offered."/>
+        </StackPanel>
+      </Border>
+
+      <Border Style="{StaticResource Card}" Margin="0,18,0,0">
+        <StackPanel>
+          <local:TrackedText Text="SOUND" Style="{StaticResource SmallCaps}"/>
+          <Rectangle Style="{StaticResource GoldDivider}" Margin="0,11,0,16"/>
+          <StackPanel Orientation="Horizontal">
+            <TextBlock Style="{StaticResource IconText}" Text="&#xE767;" FontSize="22" Foreground="{StaticResource MoonPaleBrush}" VerticalAlignment="Top" Margin="0,2,16,0"/>
+            <StackPanel>
+              <TextBlock Text="Change volumes in the game's Config" Style="{StaticResource RowTitle}"/>
+              <TextBlock Style="{StaticResource Muted}" Margin="0,4,0,0" MaxWidth="560"
+                         Text="Music, sound effects, system sounds and voices are saved with your progress, so they are set in the game itself: open the system menu (Esc), then Config."/>
+            </StackPanel>
+          </StackPanel>
+        </StackPanel>
+      </Border>
+    </StackPanel>
+  </ScrollViewer>
+</UserControl>

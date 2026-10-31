@@ -1,0 +1,15 @@
+<Window x:Class="Tsuki.Launcher.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:Tsuki.Launcher"
+        Title="Tsukihime Launcher" Icon="/Assets/tsukihime.ico" Width="1200" Height="780" MinWidth="960" MinHeight="600"
+        WindowStartupLocation="CenterScreen" WindowStyle="None" ResizeMode="CanResize"
+        Background="{StaticResource NightTopBrush}" UseLayoutRounding="True" SnapsToDevicePixels="True"
+        FontFamily="{StaticResource BodyFont}" Foreground="{StaticResource TextBrush}">
+  <WindowChrome.WindowChrome>
+    <WindowChrome CaptionHeight="40" ResizeBorderThickness="6" GlassFrameThickness="0" CornerRadius="0" UseAeroCaptionButtons="False" NonClientFrameEdges="None"/>
+  </WindowChrome.WindowChrome>
+  <Grid x:Name="Frame">
+    <local:Shell x:Name="ShellView"/>
+  </Grid>
+</Window>

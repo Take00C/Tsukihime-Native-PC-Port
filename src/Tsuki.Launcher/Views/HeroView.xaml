@@ -1,0 +1,125 @@
+<UserControl x:Class="Tsuki.Launcher.Views.HeroView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:Tsuki.Launcher">
+  <UserControl.Resources>
+    <Style x:Key="Chip" TargetType="Border">
+      <Setter Property="Background" Value="#33121A3A"/>
+      <Setter Property="BorderBrush" Value="#40BFD2FF"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="CornerRadius" Value="13"/>
+      <Setter Property="Padding" Value="12,5"/>
+      <Setter Property="Margin" Value="0,0,8,0"/>
+    </Style>
+  </UserControl.Resources>
+  <Border x:Name="Frame" CornerRadius="10" BorderBrush="{StaticResource PanelBorderBrush}" BorderThickness="1" Background="{StaticResource NightBrush}">
+    <Grid>
+      <!-- the drawn moon: shown until the game's own title art can be read -->
+      <Viewbox Stretch="UniformToFill" Visibility="{Binding FallbackVisibility}">
+        <Canvas Width="900" Height="290">
+          <Canvas.Background>
+            <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+              <GradientStop Color="#0A0F24" Offset="0"/>
+              <GradientStop Color="#16225A" Offset="0.78"/>
+              <GradientStop Color="#0E1532" Offset="1"/>
+            </LinearGradientBrush>
+          </Canvas.Background>
+          <Ellipse Canvas.Left="440" Canvas.Top="-95" Width="440" Height="440">
+            <Ellipse.Fill>
+              <RadialGradientBrush>
+                <GradientStop Color="#665E8BFF" Offset="0"/>
+                <GradientStop Color="#225E8BFF" Offset="0.55"/>
+                <GradientStop Color="#005E8BFF" Offset="1"/>
+              </RadialGradientBrush>
+            </Ellipse.Fill>
+          </Ellipse>
+          <Ellipse Canvas.Left="520" Canvas.Top="-15" Width="280" Height="280" Stroke="#1F9CD2FF" StrokeThickness="1"/>
+          <Ellipse Canvas.Left="570" Canvas.Top="35" Width="180" Height="180">
+            <Ellipse.Fill>
+              <RadialGradientBrush GradientOrigin="0.36,0.3" Center="0.45,0.42" RadiusX="0.78" RadiusY="0.78">
+                <GradientStop Color="#F7FBFF" Offset="0"/>
+                <GradientStop Color="#C4E3FF" Offset="0.32"/>
+                <GradientStop Color="#7DA8FF" Offset="0.72"/>
+                <GradientStop Color="#3A55B5" Offset="1"/>
+              </RadialGradientBrush>
+            </Ellipse.Fill>
+            <Ellipse.Effect>
+              <DropShadowEffect Color="#9CD2FF" BlurRadius="46" ShadowDepth="0" Opacity="0.7"/>
+            </Ellipse.Effect>
+          </Ellipse>
+          <Ellipse Canvas.Left="578" Canvas.Top="43" Width="164" Height="164" Stroke="#40FFFFFF" StrokeThickness="1.2"/>
+          <Path Fill="#B3FFFFFF" Canvas.Left="800" Canvas.Top="50" Data="{StaticResource SparkleGeometry}"/>
+          <Path Fill="#80FFFFFF" Canvas.Left="520" Canvas.Top="210" Data="{StaticResource SparkleGeometry}" RenderTransform="0.6,0,0,0.6,0,0"/>
+          <Ellipse Canvas.Left="470" Canvas.Top="38" Width="3" Height="3" Fill="#CCFFFFFF"/>
+          <Ellipse Canvas.Left="835" Canvas.Top="160" Width="2.5" Height="2.5" Fill="#B3FFFFFF"/>
+          <Ellipse Canvas.Left="745" Canvas.Top="24" Width="2" Height="2" Fill="#99FFFFFF"/>
+          <Ellipse Canvas.Left="880" Canvas.Top="96" Width="2" Height="2" Fill="#80FFFFFF"/>
+          <Ellipse Canvas.Left="420" Canvas.Top="140" Width="2" Height="2" Fill="#66FFFFFF"/>
+          <Ellipse Canvas.Left="610" Canvas.Top="250" Width="2" Height="2" Fill="#66FFFFFF"/>
+          <Ellipse Canvas.Left="790" Canvas.Top="225" Width="2.5" Height="2.5" Fill="#80FFFFFF"/>
+          <Rectangle Canvas.Top="228" Width="900" Height="62">
+            <Rectangle.Fill>
+              <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                <GradientStop Color="#00080C20" Offset="0"/>
+                <GradientStop Color="#CC080C20" Offset="1"/>
+              </LinearGradientBrush>
+            </Rectangle.Fill>
+          </Rectangle>
+        </Canvas>
+      </Viewbox>
+
+      <!-- the game's own title art, read from the user's files at run time -->
+      <Image x:Name="Art" Source="{Binding HeroArt}" Stretch="Fill" HorizontalAlignment="Left" VerticalAlignment="Top" RenderOptions.BitmapScalingMode="HighQuality"/>
+
+      <!-- darkening, left to right, so that the text reads on any picture -->
+      <Rectangle>
+        <Rectangle.Fill>
+          <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+            <GradientStop Color="#F00A0F24" Offset="0"/>
+            <GradientStop Color="#C70A1030" Offset="0.34"/>
+            <GradientStop Color="#590B1234" Offset="0.62"/>
+            <GradientStop Color="#0D0E1532" Offset="1"/>
+          </LinearGradientBrush>
+        </Rectangle.Fill>
+      </Rectangle>
+      <Rectangle VerticalAlignment="Bottom" Height="110">
+        <Rectangle.Fill>
+          <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+            <GradientStop Color="#000A0F24" Offset="0"/>
+            <GradientStop Color="#99090E22" Offset="1"/>
+          </LinearGradientBrush>
+        </Rectangle.Fill>
+      </Rectangle>
+
+      <StackPanel HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="38,0,0,30">
+        <local:TrackedText Text="NATIVE PORT  ·  WINDOWS" Style="{StaticResource SmallCaps}" FontSize="11.5" Tracking="2.6"/>
+        <Grid Margin="0,4,0,0">
+          <!-- the title in the serif, until the game's own logo cell can be read -->
+          <StackPanel Visibility="{Binding TitleTextVisibility}">
+            <local:TrackedText Text="TSUKIHIME" FontFamily="{StaticResource SerifFont}" FontSize="60" Tracking="5" Foreground="{StaticResource TextBrush}">
+              <local:TrackedText.Effect>
+                <DropShadowEffect Color="#5E8BFF" BlurRadius="24" ShadowDepth="0" Opacity="0.55"/>
+              </local:TrackedText.Effect>
+            </local:TrackedText>
+            <TextBlock Text="-A piece of blue glass moon-" FontFamily="{StaticResource SerifFont}" FontStyle="Italic" FontSize="19" Foreground="#C4D2F5" Margin="2,0,0,0"/>
+          </StackPanel>
+          <!-- the game's own logo cell (title and subtitle), drawn with its own alpha -->
+          <Image Source="{Binding HeroLogo}" Width="400" HorizontalAlignment="Left" VerticalAlignment="Center" Stretch="Uniform" RenderOptions.BitmapScalingMode="HighQuality"
+                 Visibility="{Binding LogoVisibility}">
+            <Image.Effect>
+              <DropShadowEffect Color="#5E8BFF" BlurRadius="22" ShadowDepth="0" Opacity="0.5"/>
+            </Image.Effect>
+          </Image>
+        </Grid>
+        <StackPanel Orientation="Horizontal" Margin="0,18,0,0">
+          <Border Style="{StaticResource Chip}">
+            <TextBlock Text="{Binding GameChip}" FontSize="11.5" Foreground="#C4D2F5"/>
+          </Border>
+          <Border Style="{StaticResource Chip}">
+            <TextBlock Text="{Binding LauncherVersion}" FontSize="11.5" Foreground="#C4D2F5"/>
+          </Border>
+        </StackPanel>
+      </StackPanel>
+    </Grid>
+  </Border>
+</UserControl>

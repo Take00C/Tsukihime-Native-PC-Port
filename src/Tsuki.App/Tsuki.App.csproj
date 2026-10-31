@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    The player app: first-run setup, main loop, error handling, crash log (ARCHITECTURE 3.1, 3.4). The program is Tsukihime.exe (package K20: the name the player sees;
+    the project, namespace and folder stay Tsuki.App), with the port's own icon (assets/icon, drawn by tools/setup/make_icon.py) in its resources and embedded for the window.
+  -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <AssemblyName>Tsukihime</AssemblyName>
+    <RootNamespace>Tsuki.App</RootNamespace>
+    <ApplicationIcon>..\..\assets\icon\tsukihime.ico</ApplicationIcon>
+    <TsukiUsesFFmpeg>true</TsukiUsesFFmpeg>
+    <Version>0.1.0</Version>
+    <Product>Tsukihime PC port</Product>
+    <AssemblyTitle>Tsukihime -A piece of blue glass moon- (PC port)</AssemblyTitle>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- the 64 x 64 straight RGBA icon the window takes through SDL_SetWindowIcon when the executable's own icon group is not at hand (a dev or test host) -->
+    <EmbeddedResource Include="..\..\assets\icon\tsukihime_64.rgba" LogicalName="Tsuki.App.Icon64.rgba" Visible="false" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Tsuki.Data\Tsuki.Data.csproj" />
+    <ProjectReference Include="..\Tsuki.Engine\Tsuki.Engine.csproj" />
+    <ProjectReference Include="..\Tsuki.Media\Tsuki.Media.csproj" />
+    <ProjectReference Include="..\Tsuki.Render\Tsuki.Render.csproj" />
+    <ProjectReference Include="..\Tsuki.Platform\Tsuki.Platform.csproj" />
+    <ProjectReference Include="..\Tsuki.Ui\Tsuki.Ui.csproj" />
+    <!-- Dev builds only (ARCHITECTURE 10.1); code that uses it sits under #if TSUKI_DEV. -->
+    <ProjectReference Include="..\Tsuki.DevBridge\Tsuki.DevBridge.csproj" Condition="'$(Configuration)' != 'Release'" />
+  </ItemGroup>
+  <!-- Package K28: `-p:TsukiPersonalIcon=<game folder>` makes a PERSONAL build whose Tsukihime.exe carries the Arcueid icon (never to be shared); see the file. The game's project writes PERSONAL_BUILD.txt beside the programs (the launcher's folders get it with the game's files). -->
+  <PropertyGroup>
+    <TsukiPersonalNote>true</TsukiPersonalNote>
+  </PropertyGroup>
+  <Import Project="..\Tsuki.PersonalIcon.targets" />
+</Project>

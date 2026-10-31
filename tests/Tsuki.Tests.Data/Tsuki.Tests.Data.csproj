@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Needs TSUKI_GAME_DIR (and samples/golden); every test uses [GameDataFact]/[GameDataTheory] and skips cleanly without the game folder (ARCHITECTURE 10.2). -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsTestProject>true</IsTestProject>
+    <TsukiUsesFFmpeg>true</TsukiUsesFFmpeg>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit.v3.mtp-off" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+  </ItemGroup>
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Package K28: a known assembly-level mark, so the reader of the personal-build mark (PeIcons.Marks) is tested on a positive case without a personal build. -->
+    <AssemblyMetadata Include="TsukiTestMark" Value="k28" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Tsuki.Data\Tsuki.Data.csproj" />
+    <ProjectReference Include="..\..\src\Tsuki.Engine\Tsuki.Engine.csproj" />
+    <ProjectReference Include="..\..\src\Tsuki.Media\Tsuki.Media.csproj" />
+    <!-- The audio mixer tests pull from an SDL audio stream (Tsuki.Platform); do not rely on getting it through Tsuki.Cli. -->
+    <ProjectReference Include="..\..\src\Tsuki.Platform\Tsuki.Platform.csproj" />
+    <!-- The verify command is tested in-process (exit codes and messages). -->
+    <ProjectReference Include="..\..\src\Tsuki.Cli\Tsuki.Cli.csproj" />
+    <!-- Package K6: the app's runtime and services over the real game (no window, no audio device). -->
+    <ProjectReference Include="..\..\src\Tsuki.App\Tsuki.App.csproj" />
+    <ProjectReference Include="..\..\src\Tsuki.Ui\Tsuki.Ui.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Package K17: the launcher's logic (src/Tsuki.Launcher/Core, no WPF types) starts the game in LauncherLaunchTests; see the Synthetic project for why it is compiled in. -->
+    <Compile Include="..\..\src\Tsuki.Launcher\Core\*.cs" Link="Launcher\Core\%(Filename)%(Extension)" />
+  </ItemGroup>
+</Project>

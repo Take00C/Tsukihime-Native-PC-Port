@@ -1,0 +1,76 @@
+<Project>
+  <!--
+    Package K28: the opt-in PERSONAL build. Imported by Tsuki.App.csproj and Tsuki.Launcher.csproj (after their Version property).
+
+      dotnet build src/Tsuki.App -c Release -p:TsukiPersonalIcon=<game folder>
+      dotnet publish src/Tsuki.Launcher -c Release -r win-x64 - -self-contained -o <folder> -p:TsukiPersonalIcon=<game folder>
+
+    With the property, before the compile of each of the two programs, Tsuki.Cli is built and its `face-icon` command cuts the Arcueid close-up (FaceIcon, package K23:
+    the same picture the game builds at run time into the profile folder) out of that game folder into this project's obj/ folder (git-ignored: obj/ and artifacts/),
+    and that .ico becomes the ApplicationIcon of the build, so Tsukihime.exe and TsukihimeLauncher.exe themselves show her face in Explorer. Her art is TYPE-MOON's, so
+    such a build must never leave the owner's machine. It is marked three ways: the assembly attribute AssemblyMetadata("TsukiPersonalBuild", "true"), an informational
+    version that ends in "-personal", and PERSONAL_BUILD.txt beside the programs (copied to the output and the publish folder). `Tsuki.Cli release-check <folder>` refuses
+    a folder that shows any of the marks or a program whose icon is not the port's crescent (docs/PUBLISHING.md). Without the property nothing in this file applies:
+    the crescent of assets/icon stays and no mark is written (a later build without the property into the same output removes PERSONAL_BUILD.txt through IncrementalClean).
+    The launcher's own WPF window resource (Assets\tsukihime.ico, the fallback before a game folder is known) stays the crescent; its window takes the Arcueid icon of the
+    profile at run time as before.
+  -->
+  <PropertyGroup Condition="'$(TsukiPersonalIcon)' != ''">
+    <DefineConstants>$(DefineConstants);TSUKI_PERSONAL</DefineConstants>
+    <InformationalVersion>$(Version)-personal</InformationalVersion>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(TsukiPersonalIcon)' != ''">
+    <AssemblyMetadata Include="TsukiPersonalBuild" Value="true" />
+  </ItemGroup>
+
+  <Target Name="TsukiPersonalIcon" BeforeTargets="BeforeBuild" Condition="'$(TsukiPersonalIcon)' != ''">
+    <PropertyGroup>
+      <_TsukiPersonalGame>$([System.IO.Path]::TrimEndingDirectorySeparator('$(TsukiPersonalIcon)'))</_TsukiPersonalGame>
+      <_TsukiPersonalDir>$([MSBuild]::NormalizePath('$(MSBuildProjectDirectory)', '$(IntermediateOutputPath)', 'personal'))</_TsukiPersonalDir>
+      <_TsukiPersonalIco>$(_TsukiPersonalDir)\icons\tsukihime.ico</_TsukiPersonalIco>
+      <_TsukiPersonalNote>$(_TsukiPersonalDir)\PERSONAL_BUILD.txt</_TsukiPersonalNote>
+    </PropertyGroup>
+    <Error Code="TSUKI010" Condition="!Exists('$(_TsukiPersonalGame)')" Text="TsukiPersonalIcon names a folder that does not exist: $(_TsukiPersonalGame)" />
+
+    <!--
+      Tsuki.Cli is built with this build's own global properties, so a solution build shares its one build of Tsuki.Cli with this call. A build of this project alone
+      (dotnet build src/Tsuki.App) restores only its own reference graph, which Tsuki.Cli is not part of, so it is restored here first: in its own evaluation (the extra
+      property), as the SDK does for -restore, so that the build that follows sees the assets file.
+    -->
+    <MSBuild Projects="$(MSBuildThisFileDirectory)Tsuki.Cli\Tsuki.Cli.csproj" Targets="Restore" Properties="TsukiPersonalRestore=true" />
+    <MSBuild Projects="$(MSBuildThisFileDirectory)Tsuki.Cli\Tsuki.Cli.csproj" Targets="Build">
+      <Output TaskParameter="TargetOutputs" ItemName="_TsukiCliDll" />
+    </MSBuild>
+    <PropertyGroup>
+      <_TsukiCliDll>@(_TsukiCliDll)</_TsukiCliDll>
+      <_TsukiCliExe>@(_TsukiCliDll->'%(RootDir)%(Directory)%(Filename).exe')</_TsukiCliExe>
+      <_TsukiDotnet>$(DOTNET_HOST_PATH)</_TsukiDotnet>
+      <_TsukiDotnet Condition="'$(_TsukiDotnet)' == ''">dotnet</_TsukiDotnet>
+      <_TsukiFaceIconArgs>face-icon --game &quot;$(_TsukiPersonalGame)&quot; --out &quot;$(_TsukiPersonalDir)&quot;</_TsukiFaceIconArgs>
+    </PropertyGroup>
+    <Exec Command="&quot;$(_TsukiCliExe)&quot; $(_TsukiFaceIconArgs)" Condition="Exists('$(_TsukiCliExe)')" StandardOutputImportance="normal" />
+    <Exec Command="&quot;$(_TsukiDotnet)&quot; &quot;$(_TsukiCliDll)&quot; $(_TsukiFaceIconArgs)" Condition="!Exists('$(_TsukiCliExe)')" StandardOutputImportance="normal" />
+    <Error Code="TSUKI011" Condition="!Exists('$(_TsukiPersonalIco)')" Text="The Arcueid icon was not built into $(_TsukiPersonalIco) (see the face-icon output above); the personal build stops rather than fall back to the crescent." />
+
+    <PropertyGroup>
+      <ApplicationIcon>$(_TsukiPersonalIco)</ApplicationIcon>
+    </PropertyGroup>
+    <!--
+      The note is written by the game's project only (TsukiPersonalNote, set in Tsuki.App.csproj): the launcher's output and publish folder receive it with the game's
+      files (the project reference's content items, TsukiCopyAppOutput, TsukiPublishApp); a second copy from the launcher's own obj/ would be a duplicate publish item (NETSDK1152).
+    -->
+    <ItemGroup Condition="'$(TsukiPersonalNote)' == 'true'">
+      <_TsukiPersonalLine Include="PERSONAL BUILD OF THE TSUKIHIME PC PORT - DO NOT SHARE" />
+      <_TsukiPersonalLine Include=" " />
+      <_TsukiPersonalLine Include="This folder was built with the MSBuild property TsukiPersonalIcon set to a game folder (src/Tsuki.PersonalIcon.targets, package K28)." />
+      <_TsukiPersonalLine Include="Tsukihime.exe and TsukihimeLauncher.exe carry, in their icon resources, the close-up of Arcueid that the port otherwise cuts at run time from the owner's own copy of the game. That picture is TYPE-MOON's art." />
+      <_TsukiPersonalLine Include="Never upload this folder, attach it to a release, zip it for someone else or copy its programs to another machine. Release builds are made without the property and keep the port's own crescent icon." />
+      <_TsukiPersonalLine Include="The programs also carry the assembly attribute AssemblyMetadata(&quot;TsukiPersonalBuild&quot;, &quot;true&quot;) and an informational version ending in -personal. `Tsuki.Cli release-check &lt;folder&gt;` refuses a folder that holds this file, that attribute or a program with that icon (docs/PUBLISHING.md)." />
+    </ItemGroup>
+    <WriteLinesToFile File="$(_TsukiPersonalNote)" Lines="@(_TsukiPersonalLine)" Overwrite="true" WriteOnlyWhenDifferent="true" Condition="'$(TsukiPersonalNote)' == 'true'" />
+    <ItemGroup Condition="'$(TsukiPersonalNote)' == 'true'">
+      <None Include="$(_TsukiPersonalNote)" Link="PERSONAL_BUILD.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" Visible="false" />
+    </ItemGroup>
+    <Message Importance="high" Text="$(MSBuildProjectName): PERSONAL build, the Arcueid icon of $(_TsukiPersonalGame) goes into the executable ($(_TsukiPersonalIco)); do not share this build" />
+  </Target>
+</Project>

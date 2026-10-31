@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Spike S2 (ROADMAP M0 scope 8, stream E): prologue movie on a thread, YCbCr shader, audio clock. Throwaway: deleted after M2 (ROADMAP 4 step 8). -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <TsukiUsesFFmpeg>true</TsukiUsesFFmpeg>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="FFmpeg.AutoGen" />
+    <PackageReference Include="ppy.SDL3-CS" />
+    <PackageReference Include="Silk.NET.OpenGL" />
+  </ItemGroup>
+</Project>

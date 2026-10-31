@@ -1,0 +1,80 @@
+<Project>
+  <!--
+    Shared build settings for every project under src/ and tests/ (ARCHITECTURE 3.1, ROADMAP M0
+    scope 3). It sits at the repository root so that both src/ and tests/ inherit it. Projects must
+    not override these properties; tests/Tsuki.Tests.Synthetic/ProjectRulesTests.cs checks that.
+    Changes go through the lead (ROADMAP 1, stream L).
+  -->
+  <PropertyGroup>
+    <TsukiRepoRoot>$(MSBuildThisFileDirectory)</TsukiRepoRoot>
+
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+
+    <!-- Warnings are errors, for the compiler and for MSBuild/NuGet (same as `dotnet build -warnaserror`). -->
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <MSBuildTreatWarningsAsErrors>true</MSBuildTreatWarningsAsErrors>
+
+    <!-- ARCHITECTURE 1.5 and 1.11: invariant culture, no code-page APIs. -->
+    <InvariantGlobalization>true</InvariantGlobalization>
+
+    <!-- Deterministic builds; Release and CI builds also normalise source paths. -->
+    <Deterministic>true</Deterministic>
+    <ContinuousIntegrationBuild Condition="'$(Configuration)' == 'Release' or '$(CI)' == 'true'">true</ContinuousIntegrationBuild>
+
+    <!-- XML doc comments are checked (malformed comments and bad crefs fail the build); missing ones are allowed. -->
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+
+    <IsPackable>false</IsPackable>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+
+    <!-- SPDX-License-Identifier: MPL-2.0 (the port's own code; the root LICENSE file). The knife-derived files carry their own MPL header (docs/THIRD_PARTY.md). -->
+    <PackageLicenseExpression>MPL-2.0</PackageLicenseExpression>
+  </PropertyGroup>
+
+  <!--
+    A Release publish (`dotnet publish -c Release`, which sets _IsPublishing) ships no .pdb files: players do not need debug symbols and the release zip is smaller
+    (package K30, docs/PUBLISHING.md finding 5). Builds and Debug publishes keep them, so crash.log carries line numbers while developing.
+  -->
+  <PropertyGroup Condition="'$(Configuration)' == 'Release' and '$(_IsPublishing)' == 'true'">
+    <DebugType>none</DebugType>
+    <DebugSymbols>false</DebugSymbols>
+  </PropertyGroup>
+
+  <!--
+    TSUKI_DEV marks dev-only code (GoldenSource, Tsuki.DevBridge, ARCHITECTURE 3.3 and 10.1). It is
+    defined in every configuration except Release.
+  -->
+  <PropertyGroup Condition="'$(Configuration)' != 'Release'">
+    <DefineConstants>$(DefineConstants);TSUKI_DEV</DefineConstants>
+  </PropertyGroup>
+
+  <!--
+    FFmpeg 9.0 LGPL shared DLLs (ARCHITECTURE 0.5, 7.5). A project that sets
+      <TsukiUsesFFmpeg>true</TsukiUsesFFmpeg>
+    in its .csproj gets every third_party/ffmpeg/bin/*.dll copied next to its output (and into its
+    publish folder), so FFmpeg loads from the app folder only (ARCHITECTURE 1.11). The folder is
+    local and git-ignored; tools/setup/ffmpeg_dlls.ps1 fills it from the winget package. The item
+    condition is evaluated after all properties, so the project's own property is seen here.
+  -->
+  <PropertyGroup>
+    <TsukiFFmpegBinDir>$(MSBuildThisFileDirectory)third_party\ffmpeg\bin\</TsukiFFmpegBinDir>
+  </PropertyGroup>
+  <!-- only the four libraries Tsuki.Media loads (FfmpegLibrary.RequiredDlls); avfilter, avdevice and swscale of the package are 36 MB nothing uses (package R1) -->
+  <ItemGroup Condition="'$(TsukiUsesFFmpeg)' == 'true'">
+    <None Include="$(TsukiFFmpegBinDir)avutil-*.dll;$(TsukiFFmpegBinDir)swresample-*.dll;$(TsukiFFmpegBinDir)avcodec-*.dll;$(TsukiFFmpegBinDir)avformat-*.dll"
+          Link="%(Filename)%(Extension)"
+          CopyToOutputDirectory="PreserveNewest"
+          CopyToPublishDirectory="PreserveNewest"
+          Visible="false" />
+  </ItemGroup>
+  <Target Name="TsukiCheckFFmpegDlls"
+          BeforeTargets="BeforeBuild"
+          Condition="'$(TsukiUsesFFmpeg)' == 'true' and !Exists('$(TsukiFFmpegBinDir)avcodec-63.dll')">
+    <Error Code="TSUKI001"
+           Text="FFmpeg DLLs not found in $(TsukiFFmpegBinDir). Run tools/setup/ffmpeg_dlls.ps1 (ARCHITECTURE 0.5)." />
+  </Target>
+</Project>

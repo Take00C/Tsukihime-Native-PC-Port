@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Pure C# readers and decoders of the user's game folder (ARCHITECTURE 3.1, stream A). No native package, no P/Invoke. -->
+  <PropertyGroup>
+    <!--
+      Managed pointers only: the memory-mapped archive view (Containers/MappedFile.cs) and the MZX0 hot loop
+      (Compression/Mzx.cs). Neither calls native code; Tsuki.Data stays free of P/Invoke (ProjectRulesTests).
+    -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- The census helpers (statement views, the layer-name tracker) are internal; their rules are unit-tested with synthetic input. -->
+    <InternalsVisibleTo Include="Tsuki.Tests.Data" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Tsuki.Data implements IGameData (ARCHITECTURE 3.2, 3.3), which lives in Tsuki.Engine/Contracts. -->
+    <ProjectReference Include="..\Tsuki.Engine\Tsuki.Engine.csproj" />
+  </ItemGroup>
+</Project>

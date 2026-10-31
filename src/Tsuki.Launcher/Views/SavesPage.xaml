@@ -1,0 +1,100 @@
+<UserControl x:Class="Tsuki.Launcher.Views.SavesPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:Tsuki.Launcher"
+             xmlns:views="clr-namespace:Tsuki.Launcher.Views">
+  <UserControl.Resources>
+    <BooleanToVisibilityConverter x:Key="B2V"/>
+  </UserControl.Resources>
+  <ScrollViewer Style="{StaticResource PageScroll}">
+    <StackPanel Margin="0,0,0,24">
+      <views:PageHeader Overline="SAVES" Title="Keep your progress safe"
+                        Description="All 140 slots, the system data and the config are in one file, save.dat. Back it up before you try anything new, and restore it whenever you like."/>
+      <Border Style="{StaticResource Card}">
+        <StackPanel>
+          <local:TrackedText Text="SAVE DATA" Style="{StaticResource SmallCaps}"/>
+          <Rectangle Style="{StaticResource GoldDivider}" Margin="0,11,0,16"/>
+          <Grid>
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="*"/>
+              <ColumnDefinition Width="Auto"/>
+              <ColumnDefinition Width="8"/>
+              <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+              <TextBlock Text="{Binding SaveText}" Style="{StaticResource RowTitle}" FontSize="13.5" TextWrapping="Wrap"/>
+              <TextBlock Text="{Binding DataDirectory}" Style="{StaticResource Muted}" Margin="0,3,0,0" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"/>
+            </StackPanel>
+            <Button Grid.Column="1" Content="Open folder" Style="{StaticResource GhostButton}" Command="{Binding OpenSavesFolderCommand}" Height="38"/>
+            <Button Grid.Column="3" Content="Back up now" Style="{StaticResource AccentButton}" Command="{Binding BackupNowCommand}" Height="38"/>
+          </Grid>
+        </StackPanel>
+      </Border>
+
+      <Border Style="{StaticResource Card}" Margin="0,18,0,0">
+        <StackPanel>
+          <Grid>
+            <local:TrackedText Text="BACKUPS" Style="{StaticResource SmallCaps}"/>
+            <Button Content="Open backups folder" Style="{StaticResource LinkButton}" Command="{Binding OpenBackupsFolderCommand}" HorizontalAlignment="Right"/>
+          </Grid>
+          <Rectangle Style="{StaticResource GoldDivider}" Margin="0,11,0,8"/>
+          <TextBlock Text="No backups yet. Press Back up now to make the first one." Margin="0,8,0,4">
+            <TextBlock.Style>
+              <Style TargetType="TextBlock" BasedOn="{StaticResource Muted}">
+                <Setter Property="Visibility" Value="Collapsed"/>
+                <Style.Triggers>
+                  <DataTrigger Binding="{Binding NoBackups}" Value="True">
+                    <Setter Property="Visibility" Value="Visible"/>
+                  </DataTrigger>
+                </Style.Triggers>
+              </Style>
+            </TextBlock.Style>
+          </TextBlock>
+          <ItemsControl ItemsSource="{Binding Backups}" Focusable="False">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate>
+                <Grid Margin="0,0,0,0" Height="56">
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="36"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                  </Grid.ColumnDefinitions>
+                  <TextBlock Style="{StaticResource IconText}" Text="&#xE81C;" FontSize="17" Foreground="{StaticResource MoonPaleBrush}" VerticalAlignment="Center"/>
+                  <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                    <TextBlock Text="{Binding Title}" Style="{StaticResource RowTitle}" FontSize="13.5"/>
+                    <TextBlock Text="{Binding Detail}" Style="{StaticResource Muted}" FontSize="12" Margin="0,1,0,0"/>
+                  </StackPanel>
+                  <Button Grid.Column="2" Content="Restore" Style="{StaticResource GhostButton}" Command="{Binding Restore}" Padding="16,6" VerticalAlignment="Center"/>
+                  <Rectangle Grid.ColumnSpan="3" Height="1" Fill="{StaticResource DividerBrush}" VerticalAlignment="Bottom"/>
+                </Grid>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </StackPanel>
+      </Border>
+
+      <Border Style="{StaticResource Card}" Margin="0,18,0,0">
+        <StackPanel>
+          <local:TrackedText Text="IMPORT A PS4 SAVE" Style="{StaticResource SmallCaps}"/>
+          <Rectangle Style="{StaticResource GoldDivider}" Margin="0,11,0,16"/>
+          <TextBlock Style="{StaticResource Muted}" MaxWidth="660"
+                     Text="Bring your progress over from a PS4 or from shadPS4: the 4 MiB save image (savedata000). The file is only read, never changed. It replaces save.dat after your current save has been backed up."/>
+          <Grid Margin="0,16,0,0">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="*"/>
+              <ColumnDefinition Width="Auto"/>
+              <ColumnDefinition Width="8"/>
+              <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <StackPanel VerticalAlignment="Center" Margin="0,0,16,0" Visibility="{Binding HasShadImage, Converter={StaticResource B2V}}">
+              <TextBlock Text="Found under shadPS4" Style="{StaticResource RowTitle}" FontSize="13.5"/>
+              <TextBlock Text="{Binding ShadImage}" Style="{StaticResource Muted}" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" Margin="0,1,0,0"/>
+            </StackPanel>
+            <Button Grid.Column="1" Content="Import it" Style="{StaticResource AccentButton}" Command="{Binding ImportFoundCommand}" Height="38" Visibility="{Binding HasShadImage, Converter={StaticResource B2V}}"/>
+            <Button Grid.Column="3" Content="Choose a file…" Style="{StaticResource GhostButton}" Command="{Binding ImportCommand}" Height="38"/>
+          </Grid>
+        </StackPanel>
+      </Border>
+    </StackPanel>
+  </ScrollViewer>
+</UserControl>

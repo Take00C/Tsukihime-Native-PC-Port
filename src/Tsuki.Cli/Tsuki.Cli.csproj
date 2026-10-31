@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Headless tools: verify | dump | trace | explore | render-checkpoint | decode-all | save-check (ARCHITECTURE 3.1, 10). -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TsukiUsesFFmpeg>true</TsukiUsesFFmpeg>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Tsuki.Data\Tsuki.Data.csproj" />
+    <ProjectReference Include="..\Tsuki.Engine\Tsuki.Engine.csproj" />
+    <ProjectReference Include="..\Tsuki.Media\Tsuki.Media.csproj" />
+    <ProjectReference Include="..\Tsuki.Render\Tsuki.Render.csproj" />
+    <ProjectReference Include="..\Tsuki.Platform\Tsuki.Platform.csproj" />
+    <ProjectReference Include="..\Tsuki.Ui\Tsuki.Ui.csproj" />
+    <ProjectReference Include="..\Tsuki.DevBridge\Tsuki.DevBridge.csproj" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,61 @@
+<UserControl x:Class="Tsuki.Launcher.Views.ControlsPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:Tsuki.Launcher"
+             xmlns:views="clr-namespace:Tsuki.Launcher.Views">
+  <ScrollViewer Style="{StaticResource PageScroll}">
+    <StackPanel Margin="0,0,0,24">
+      <views:PageHeader Overline="CONTROLS" Title="Keyboard, mouse and pad"
+                        Description="Play with the keyboard and mouse, or with a pad. The game switches between them as you go, and the on-screen button hints follow."/>
+      <Border Style="{StaticResource Card}">
+        <StackPanel>
+          <local:TrackedText Text="BUTTON PROMPTS" Style="{StaticResource SmallCaps}"/>
+          <Rectangle Style="{StaticResource GoldDivider}" Margin="0,11,0,16"/>
+          <ListBox Style="{StaticResource Segmented}" SelectedIndex="{Binding PromptsIndex, Mode=TwoWay}" HorizontalAlignment="Left" Width="520">
+            <ListBoxItem Content="Auto"/>
+            <ListBoxItem Content="Keyboard"/>
+            <ListBoxItem Content="PlayStation"/>
+            <ListBoxItem Content="Xbox"/>
+          </ListBox>
+          <TextBlock Style="{StaticResource Muted}" Margin="2,12,0,0" MaxWidth="640"
+                     Text="Auto shows key caps for the keyboard and mouse, the game's own PlayStation icons for a PlayStation pad and Xbox glyphs for any other pad, and follows the device you used last. The other three keep one style."/>
+        </StackPanel>
+      </Border>
+
+      <Border Style="{StaticResource Card}" Margin="0,18,0,0">
+        <StackPanel>
+          <local:TrackedText Text="KEYBOARD AND MOUSE" Style="{StaticResource SmallCaps}"/>
+          <Rectangle Style="{StaticResource GoldDivider}" Margin="0,11,0,10"/>
+          <ItemsControl ItemsSource="{Binding Keys}" Focusable="False">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate>
+                <Grid Margin="0,5">
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="300"/>
+                    <ColumnDefinition Width="*"/>
+                  </Grid.ColumnDefinitions>
+                  <Border HorizontalAlignment="Left" Background="#1AFFFFFF" BorderBrush="#33BFD2FF" BorderThickness="1" CornerRadius="6" Padding="9,3" Margin="0,0,16,0">
+                    <TextBlock Text="{Binding Keys}" FontSize="12.5" FontWeight="SemiBold" TextWrapping="Wrap" MaxWidth="280"/>
+                  </Border>
+                  <TextBlock Grid.Column="1" Text="{Binding Action}" Style="{StaticResource Muted}" VerticalAlignment="Center" Foreground="#B9C3E3"/>
+                </Grid>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </StackPanel>
+      </Border>
+
+      <Border Style="{StaticResource Card}" Margin="0,18,0,0">
+        <StackPanel>
+          <Grid>
+            <local:TrackedText Text="GAME CONTROLLERS" Style="{StaticResource SmallCaps}"/>
+          </Grid>
+          <Rectangle Style="{StaticResource GoldDivider}" Margin="0,11,0,14"/>
+          <TextBlock Text="{Binding ControllersText}" Style="{StaticResource RowTitle}" FontSize="13.5" TextWrapping="Wrap"/>
+          <TextBlock Style="{StaticResource Muted}" Margin="0,6,0,0"
+                     Text="Pads are detected at any time, also while the game runs. South button = decide, east = cancel, west = system menu, north = backlog, shoulders = auto and skip, triggers = rewind and fast-forward, start = quick save."/>
+        </StackPanel>
+      </Border>
+    </StackPanel>
+  </ScrollViewer>
+</UserControl>

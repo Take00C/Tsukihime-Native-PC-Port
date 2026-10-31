@@ -1,0 +1,31 @@
+<Project>
+  <!--
+    Central package versions (ARCHITECTURE 0.5, ROADMAP M0 scope 3). Projects reference packages
+    without a Version attribute. Every version below was checked on nuget.org on 2026-10-25.
+    Changes go through the lead (ROADMAP 1, stream L).
+  -->
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+
+  <ItemGroup Label="Runtime: pinned by ARCHITECTURE 0.5">
+    <!-- Window, input, audio device, dialogs: Tsuki.Platform only. -->
+    <PackageVersion Include="ppy.SDL3-CS" Version="2026.1002.1" />
+    <!-- OpenGL 3.3 core bindings: Tsuki.Render only. -->
+    <PackageVersion Include="Silk.NET.OpenGL" Version="2.23.0" />
+    <!-- FFmpeg 9.0 bindings (matches the BtbN 9.0.1 LGPL DLLs): Tsuki.Media only. -->
+    <PackageVersion Include="FFmpeg.AutoGen" Version="9.0.1.1" />
+    <!-- x86-64 decoder for the UI-layout extractor (ARCHITECTURE 9.3); ARCHITECTURE names no
+         version, this is the newest stable one. -->
+    <PackageVersion Include="Iced" Version="1.21.0" />
+  </ItemGroup>
+
+  <ItemGroup Label="Tests: newest stable versions">
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.11.0" />
+    <!-- xUnit v3. The mtp-off variant keeps the classic `dotnet test <project>` (VSTest) runner on
+         the .NET 10 SDK; the plain xunit.v3 4.x package requires the Microsoft.Testing.Platform
+         mode of `dotnet test`. -->
+    <PackageVersion Include="xunit.v3.mtp-off" Version="4.0.2" />
+    <PackageVersion Include="xunit.runner.visualstudio" Version="4.0.1" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,118 @@
+<UserControl x:Class="Tsuki.Launcher.Views.HelpPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:Tsuki.Launcher"
+             xmlns:views="clr-namespace:Tsuki.Launcher.Views">
+  <UserControl.Resources>
+    <Style x:Key="LicenseName" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+      <Setter Property="FontSize" Value="13.5"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+    </Style>
+    <Style x:Key="LicenseTag" TargetType="Border">
+      <Setter Property="Background" Value="#1FD9C58E"/>
+      <Setter Property="BorderBrush" Value="#40D9C58E"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="CornerRadius" Value="9"/>
+      <Setter Property="Padding" Value="8,1,8,2"/>
+      <Setter Property="Margin" Value="10,0,0,0"/>
+      <Setter Property="VerticalAlignment" Value="Center"/>
+    </Style>
+  </UserControl.Resources>
+  <ScrollViewer Style="{StaticResource PageScroll}">
+    <StackPanel Margin="0,0,0,24">
+      <views:PageHeader Overline="HELP &amp; ABOUT" Title="About this port"
+                        Description="A fan-made, native Windows version of the PS4 game that runs on the files of your own copy."/>
+      <Border Style="{StaticResource Card}">
+        <StackPanel>
+          <local:TrackedText Text="WHAT THIS IS" Style="{StaticResource SmallCaps}"/>
+          <Rectangle Style="{StaticResource GoldDivider}" Margin="0,11,0,14"/>
+          <TextBlock Style="{StaticResource Muted}" FontSize="13" LineHeight="20" Foreground="#B9C3E3"
+                     Text="TSUKIHIME PC Port is a clean reimplementation of the game's engine. Every time it starts it reads the game files of your own copy, the extracted CUSA47999 folder, and plays them with sound, movies, menus and saves. Nothing from the game is included in the port, and nothing in your game folder is ever changed."/>
+          <TextBlock Style="{StaticResource Muted}" FontSize="13" LineHeight="20" Foreground="#B9C3E3" Margin="0,10,0,0"
+                     Text="Tsukihime PC port is an unofficial fan project. It is not affiliated with, endorsed by or supported by TYPE-MOON, Aniplex, HuneX or Sony. TSUKIHIME and all of its art, music, text and characters belong to their rights holders. This program contains no game data: it only plays the files of a copy of TSUKIHIME -A piece of blue glass moon- (PS4) that you own. You must supply those files yourself; this project does not provide the files or link to any source of them, and it will not accept contributions that do."/>
+        </StackPanel>
+      </Border>
+
+      <Border Style="{StaticResource Card}" Margin="0,18,0,0">
+        <StackPanel>
+          <local:TrackedText Text="SETUP GUIDE" Style="{StaticResource SmallCaps}"/>
+          <Rectangle Style="{StaticResource GoldDivider}" Margin="0,11,0,14"/>
+          <TextBlock Style="{StaticResource Muted}" FontSize="13" LineHeight="20" Foreground="#B9C3E3"
+                     Text="SETUP_GUIDE.txt next to the programs is the player's guide: what you need, how your own game files must be laid out (the game folder, the update folder beside it), the first start, every key, the text-hooker options for Japanese learners, and what each message of the launcher and the game means."/>
+          <StackPanel Orientation="Horizontal" Margin="0,14,0,0">
+            <Button Content="Open the setup guide" Style="{StaticResource GhostButton}" Command="{Binding OpenGuideCommand}"/>
+          </StackPanel>
+        </StackPanel>
+      </Border>
+
+      <Border Style="{StaticResource Card}" Margin="0,18,0,0">
+        <StackPanel>
+          <local:TrackedText Text="THE KEYS YOU NEED" Style="{StaticResource SmallCaps}"/>
+          <Rectangle Style="{StaticResource GoldDivider}" Margin="0,11,0,10"/>
+          <ItemsControl ItemsSource="{Binding EssentialKeys}" Focusable="False">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate>
+                <Grid Margin="0,5">
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="300"/>
+                    <ColumnDefinition Width="*"/>
+                  </Grid.ColumnDefinitions>
+                  <Border HorizontalAlignment="Left" Background="#1AFFFFFF" BorderBrush="#33BFD2FF" BorderThickness="1" CornerRadius="6" Padding="9,3" Margin="0,0,16,0">
+                    <TextBlock Text="{Binding Keys}" FontSize="12.5" FontWeight="SemiBold" TextWrapping="Wrap" MaxWidth="280"/>
+                  </Border>
+                  <TextBlock Grid.Column="1" Text="{Binding Action}" Style="{StaticResource Muted}" VerticalAlignment="Center" Foreground="#B9C3E3"/>
+                </Grid>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+          <TextBlock Style="{StaticResource Muted}" Margin="0,10,0,0" Text="The Controls page lists every key."/>
+        </StackPanel>
+      </Border>
+
+      <Border Style="{StaticResource Card}" Margin="0,18,0,0">
+        <StackPanel>
+          <local:TrackedText Text="IF SOMETHING GOES WRONG" Style="{StaticResource SmallCaps}"/>
+          <Rectangle Style="{StaticResource GoldDivider}" Margin="0,11,0,14"/>
+          <TextBlock Style="{StaticResource Muted}" Foreground="#B9C3E3" FontSize="13" LineHeight="20"
+                     Text="The game writes last_run.log next to your saves each time it runs, and crash.log when it fails. The ready check on the Play page says what is missing."/>
+          <StackPanel Orientation="Horizontal" Margin="0,14,0,0">
+            <Button Content="Open the log" Style="{StaticResource GhostButton}" Command="{Binding OpenLogCommand}" Margin="0,0,8,0"/>
+            <Button Content="Open the saves folder" Style="{StaticResource GhostButton}" Command="{Binding OpenSavesFolderCommand}"/>
+          </StackPanel>
+        </StackPanel>
+      </Border>
+
+      <Border Style="{StaticResource Card}" Margin="0,18,0,0">
+        <StackPanel>
+          <local:TrackedText Text="LICENSES" Style="{StaticResource SmallCaps}"/>
+          <Rectangle Style="{StaticResource GoldDivider}" Margin="0,11,0,14"/>
+          <StackPanel Orientation="Horizontal">
+            <TextBlock Text="knife" Style="{StaticResource LicenseName}"/>
+            <Border Style="{StaticResource LicenseTag}"><TextBlock Text="MPL-2.0" FontSize="11" Foreground="{StaticResource GoldBrush}"/></Border>
+          </StackPanel>
+          <TextBlock Style="{StaticResource Muted}" Margin="0,3,0,14"
+                     Text="Parts of the menu and story code are translations of AuroraWright's knife (github.com/AuroraWright/knife). Those files stay under the Mozilla Public License 2.0."/>
+          <StackPanel Orientation="Horizontal">
+            <TextBlock Text="FFmpeg" Style="{StaticResource LicenseName}"/>
+            <Border Style="{StaticResource LicenseTag}"><TextBlock Text="LGPL v3" FontSize="11" Foreground="{StaticResource GoldBrush}"/></Border>
+          </StackPanel>
+          <TextBlock Style="{StaticResource Muted}" Margin="0,3,0,14"
+                     Text="Movies and sound are decoded by FFmpeg's shared libraries (avcodec, avformat, avutil, swresample), shipped unchanged next to the game; their licence (licenses\FFmpeg-LGPL.txt, with the GPL v3 text it builds on as FFmpeg-GPL-3.0.txt) and source notice (licenses\FFmpeg-SOURCE.txt) are in the licenses folder beside it."/>
+          <StackPanel Orientation="Horizontal">
+            <TextBlock Text="SDL3" Style="{StaticResource LicenseName}"/>
+            <Border Style="{StaticResource LicenseTag}"><TextBlock Text="zlib" FontSize="11" Foreground="{StaticResource GoldBrush}"/></Border>
+          </StackPanel>
+          <TextBlock Style="{StaticResource Muted}" Margin="0,3,0,14"
+                     Text="The window, the keyboard, mouse and pads, the audio device and the folder dialog of the game."/>
+          <StackPanel Orientation="Horizontal">
+            <TextBlock Text="MIT libraries" Style="{StaticResource LicenseName}"/>
+            <Border Style="{StaticResource LicenseTag}"><TextBlock Text="MIT" FontSize="11" Foreground="{StaticResource GoldBrush}"/></Border>
+          </StackPanel>
+          <TextBlock Style="{StaticResource Muted}" Margin="0,3,0,14"
+                     Text="The .NET runtime and WPF (Microsoft, .NET Foundation and Contributors), Silk.NET (the OpenGL binding), SDL3-CS (ppy, the SDL binding) and FFmpeg.AutoGen (Ruslan Balanukhin, the FFmpeg binding) travel with the programs; their copyright and permission notices are in THIRD_PARTY.md."/>
+          <TextBlock Style="{StaticResource Muted}" Text="The port's own code is under the Mozilla Public License 2.0 (licenses\LICENSE.txt). The full notices are in docs/THIRD_PARTY.md of the source and in the licenses folder beside the game (THIRD_PARTY.md, FFmpeg-LGPL.txt, FFmpeg-GPL-3.0.txt, FFmpeg-SOURCE.txt, knife-MPL-2.0.txt, SDL3-zlib.txt)."/>
+        </StackPanel>
+      </Border>
+    </StackPanel>
+  </ScrollViewer>
+</UserControl>
