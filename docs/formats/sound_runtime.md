@@ -136,7 +136,7 @@ config (0x66C578, defaults from VA 0x3EAC0) [EMU]:
 |---|---|---:|---|
 | +0xB | (1 - cfg[+0xA6]) * cfg u16 +0x54 | 40 | movie volume (+0x54 is a copy of +0x14, set by 0x3E6E0) |
 | +0xC | (1 - cfg[+0xA6]) * cfg +0x14 | 40 | BGM volume (lowered by ducking, 9) |
-| +0xD | cfg +0x16, then per voice `char_vol[k] * cfg+0x16 / 100` | 100 | voice volume of the current voice |
+| +0xD | cfg +0x16 (full = 1), then per voice `char_vol[k] * cfg+0x16 / 100` (the gate, 7 step 2); `Sound_ApplyConfig(0)` (the config screen's per-item call, 0x40093) leaves it alone unless a row was tested ([0x66C720] >= 0): then `cfg.76[row] * cfg.16 / 100` through 0xB6F0, which also sets the playing voice stream's volume (adv_state.md 9.4) | 100 | voice volume of the current voice |
 | +0xE | (1 - cfg[+0xA7]) * cfg +0x18 | 40 | SE volume |
 | +0xF | (1 - cfg[+0xA8]) * cfg +0x1A | 10 | system SE volume |
 
@@ -365,11 +365,15 @@ channel 0 (no script does this).
 VPLY / VPL2(name, hex [, n]):
     if scan: return (yield)
     name -> 0x16543C0; char = group table (8) of the first 3 characters -> 0x1654208
-    G[73] |= 1 << char                                   # "characters heard" bits (0x164C6B2)
+                                                         # a name starting with '_' keys "_xx": no group, char 0
+    G[73] |= (u16)(1 << char)                            # "characters heard" bits (0x164C6B2, VA 0x99F08);
+                                                         # chars 16..23 shift out of the 16-bit word
     arg3 = (number of arguments >= 3) ? i16(argument 2) : 0 -> 0x165420A, history +0x3641
     entry = name starts with '_' ? previous entry : hex(argument 1) -> 0x16541FC/0x1654200/0x1654204
-    VoiceGallery_Heard(char, entry)                      # 0x3D260 (not for char 23):
-                                                         #   G[31 + k] = entry, G[0x1A6850[k]] |= 4
+    VoiceGallery_Heard(char, entry)                      # 0x3D260 (VA 0x9A058): returns for char 23 or entry < 0;
+                                                         #   k = log2(mask[char < 24 ? char : 0]) (table 0x86A850)
+                                                         #   G[31 + k] = (u16)entry; G[0x1A6850[k]] |= 4 (the row words,
+                                                         #   i32[19]: the Sound tab shows row k by this bit; adv_state.md 9.4)
     VPL2 only: play immediately (same gate and gain as 7, step 2) and clear the pending voice
 VCWT(): wait while voice state 0xDD8E50 != 0              # 0x9210
 VCLR() (unused): pending voice = -1
@@ -554,6 +558,14 @@ if idx >= 0 && !(skip && (0x16541E8 != 0 || cfg+0x30 == 0)) && !ff
    0 : 10000).
 
 Default voice level: char volume 50 * master 100 / 100 = 50 -> the voice stream plays at 0.5.
+(The boot default of every character row is 50 %, not the 40 % of the music and SFX sliders.)
+
+7. The config screen's voice test (VA 0x401E0, item 99 + 5r of page 1): `VoiceRequest(G[31 + r], kind -1)`
+   with the row's last voice (3.6), then the `Sound_ApplyConfig(0)` every config item ends with (0x40093)
+   sets volume byte 0xD to the row's gain `cfg.76[r] * cfg.16 / 100` and the playing stream's volume
+   (0xB6F0), or stops the voice when the row is muted (0x8EA0). While the test voice plays, the row's
+   slider and mute act on it live through the same path; a scene voice is never re-volumed after its
+   start (the port: `SoundModel.StartTestVoice`, `ApplyTestRow`, `SetVoiceVolume`; adv_state.md 9.4).
 
 ---
 

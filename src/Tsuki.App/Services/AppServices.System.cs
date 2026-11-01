@@ -19,8 +19,7 @@ public sealed partial class AppServices
     private long _musicStartedAt;
     private double _musicOffsetSeconds;
     private float _musicVolume = 1f;
-    private readonly Dictionary<int, (int Entry, int Character)> _lastVoiceOfSlot = [];
-    private int _seenLastVoice = -1;
+    private int _testRow = -1;          // 0x66C720: the voice row the config screen tested last (-1 = none); the live volume of a row change follows it
 
     /// <inheritdoc/>
     public Language Language => Host.Config.Language is >= 0 and <= 3 ? (Language)Host.Config.Language : HostLanguage;
@@ -65,6 +64,13 @@ public sealed partial class AppServices
     {
         Host.Sound.Config.ReadFrom(Host.Config);
         Host.Sound.ApplyConfig();
+        if (_testRow >= 0)
+        {
+            // Sound_ApplyConfig(0) after a config item (VA 0x4008C..0x40093, 0x3EA25..): the tested row's gain becomes the voice volume at once, a muted row stops it
+            Host.Sound.ApplyTestRow(_testRow);
+            FlushMenuSound();
+        }
+
         _parts.Movies?.Perform(MovieCommand.SetVolume(MovieSlots.FullScreen, MovieVolume()));
         if (_menuBgm > 0 && _parts.Audio is { } audio)
         {
@@ -127,13 +133,29 @@ public sealed partial class AppServices
     /// <inheritdoc/>
     public bool PlayTestVoice(int row)
     {
-        if (!_lastVoiceOfSlot.TryGetValue(row, out (int Entry, int Character) v))
+        // VA 0x401E0 (package K36): the test row is forgotten first ([0x66C720] = -1 at 0x401E9, package K37), so a press that plays nothing also ends the
+        // live follow of the row tested before; nothing while the row's word is 0 or G[31 + row] holds no voice; else the row becomes the test row and
+        // its last voice plays as the config test (at the row's volume, Sound_ApplyConfig(0) following the item; a muted row's test is stopped before it sounds)
+        _testRow = -1;
+        if ((uint)row >= VoiceMarks.RowCount)
         {
             return false;
         }
 
-        Host.Sound.SetPendingVoice(v.Entry, v.Character);
-        bool started = Host.Sound.StartVoiceAtMessage();
+        IReadOnlyList<int>? words = Host.VoiceRowWords;
+        if (words is not null && row < words.Count && Global(words[row]) == 0)
+        {
+            return false;
+        }
+
+        int entry = (short)Global(VoiceMarks.LastVoiceWord + row);
+        if (entry <= 0)
+        {
+            return false;
+        }
+
+        _testRow = row;
+        bool started = Host.Sound.StartTestVoice(entry, row);
         FlushMenuSound();
         return started;
     }
@@ -141,6 +163,7 @@ public sealed partial class AppServices
     /// <inheritdoc/>
     public void StopTests()
     {
+        _testRow = -1;              // the PS4 forgets the test row when the config screen opens (VA 0x3F941); the port does so when it closes
         Host.Sound.Run("_SEPL(19,0,,,);");
         Host.Sound.StopVoice();
         FlushMenuSound();
@@ -199,15 +222,6 @@ public sealed partial class AppServices
             {
                 _parts.Audio?.Perform([AudioCommand.SetVolume(MenuBgmStream, _menuBgmGain * MusicGain())]);
             }
-        }
-
-        // the last voice of each character (the config screen's voice test plays it): noted when the sound model starts a voice
-        int last = Host.Sound.LastVoice;
-        if (last >= 0 && last != _seenLastVoice)
-        {
-            _seenLastVoice = last;
-            int ch = Host.Sound.PendingVoiceCharacter;
-            _lastVoiceOfSlot[VoiceGroups.SlotOf(ch)] = (last, ch);
         }
     }
 

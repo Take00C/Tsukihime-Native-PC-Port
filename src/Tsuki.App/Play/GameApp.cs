@@ -11,6 +11,7 @@ using Tsuki.Engine.Contracts;
 using Tsuki.Engine.Flow;
 using Tsuki.Engine.Game;
 using Tsuki.Engine.Save;
+using Tsuki.Engine.Sound;
 using Tsuki.Engine.Stage;
 using Tsuki.Engine.Vm;
 using Tsuki.Media.Audio;
@@ -275,7 +276,7 @@ internal sealed class GameApp : IDisposable
     internal static string PlayerMessage(Exception e, Language language = Language.En) => e switch
     {
         StartupFailure s => s.Message,
-        FfmpegMissingException f => PortText.Format(OperatingSystem.IsLinux() ? PortString.LinuxFfmpegMissing : PortString.FfmpegMissing, language, string.Join(", ", f.MissingFiles)),
+        FfmpegMissingException f => PortText.Format(PortString.FfmpegMissing, language, string.Join(", ", f.MissingFiles)),
         _ => e.Message,
     };
 
@@ -748,6 +749,11 @@ internal sealed class GameApp : IDisposable
             _services.Commit();         // the choice survives a crash of this run
         }
 
+        if (_services.VoiceMarksRebuilt is { } rebuilt)
+        {
+            _log.WriteLine($"voice rows: the profile predates the character marks (package K36); {rebuilt.Credited} voice statements credited from the read text in {rebuilt.Elapsed.TotalMilliseconds:F0} ms, G73 {_services.Global(VoiceMarks.HeardWord):X4}");
+        }
+
         // the window title follows the game's language: now, and at once when the config screen changes it (the host is rebuilt then; package K20)
         SetWindowTitle(_services.Language);
         _services.HostReplaced += _ => SetWindowTitle(_services.Language);
@@ -772,7 +778,7 @@ internal sealed class GameApp : IDisposable
             _runtime?.Ui.ShowToast(PortText.Get(PortString.TextCopied, _services.Language));
         };
         _hook = new TextHookOutput(() => _port.TextHookerOutput, new GdiTextHookSink(), Say);
-        _webSocket = new TextWebSocketOutput(() => _port.TextWebSocket, () => _port.TextWebSocketPort, Say, () => _port.TextWebSocketOrigin);
+        _webSocket = new TextWebSocketOutput(() => _port.TextWebSocket, () => _port.TextWebSocketPort, Say);
         // the WebSocket toasts carry an address or an error to read: the longer hold (package K24 made the toast brief)
         _webSocket.Listening += port => _runtime?.Ui.ShowToast(PortText.Format(PortString.TextWebSocketListening, _services.Language, port), brief: false);
         _webSocket.Failed += (port, error) => _runtime?.Ui.ShowToast(PortText.Format(PortString.TextWebSocketFailed, _services.Language, port, error), brief: false);
@@ -1738,9 +1744,22 @@ internal sealed class GameApp : IDisposable
         Say($"state: ui {_runtime.Ui.Mode} [{string.Join(">", _runtime.Ui.Stack.Select(x => x.GetType().Name))}], story {_services.StoryActive}, phase {h.Phase}, " +
             $"script {h.Script} (scene {(h.Phase == GamePhase.Running ? h.SceneId : -1)}) cursor {h.Machine.Cursor}, F823 {h.F(823)}, F22 {h.F(22)}, auto {h.AutoMode} skip {h.SkipLatch}, " +
             $"cfg [lang {_services.Config.Language} bgm {_services.Config.MusicVolume} se {_services.Config.SfxVolume} sys {_services.Config.SystemSeVolume} voice {_services.Config.PlayAllVoices} unseen {_services.Config.UnseenTextSpeed} seen {_services.Config.SeenTextSpeed} auto {_services.Config.AutoModeWait} ffRead {_services.Config.FastForwardReadOnly} endInstant {_services.Config.PageEndInstantUnseen}/{_services.Config.PageEndInstantSeen} anim {_services.Config.TextAnimations}/{_services.Config.SeenTextAnimations} win {_services.Config.Bytes[WindowModeOffset]}], " +
-            $"history {(h.History is { } hist ? hist.Count : 0)}, restores {h.RestoreCount}, page {h.PageMessages.Count} [{PageSummary(h)}], window {h.Wait.WindowAlpha:F2}, text fade {h.TextFade:F2} (step {h.Wait.TextFadeStep:F4}), F1103 {h.F(1103)}, G10 {_services.Global(10)}, choice {(h.ChoiceOpen ? h.ChoiceKind.ToString() : "-")}, plays {_player.PlaysPosted}, voice {h.Sound.LastVoice}, movies {_movies.OpenSlots}, " +
+            $"history {(h.History is { } hist ? hist.Count : 0)}, restores {h.RestoreCount}, page {h.PageMessages.Count} [{PageSummary(h)}], window {h.Wait.WindowAlpha:F2}, text fade {h.TextFade:F2} (step {h.Wait.TextFadeStep:F4}), F1103 {h.F(1103)}, G10 {_services.Global(10)}, choice {(h.ChoiceOpen ? h.ChoiceKind.ToString() : "-")}, plays {_player.PlaysPosted}, voice {h.Sound.LastVoice} (gain byte {h.Sound.VolumeByte(0xD)}, state {h.Sound.VoiceState}), G73 {_services.Global(VoiceMarks.HeardWord):X4}, voice rows {VoiceRowSummary()}, movies {_movies.OpenSlots}, " +
             $"toast {(_runtime.Ui.Toast is { } toast ? $"\"{toast.Text}\" a {toast.Alpha:F2}" : "-")}, master gain {_mixer.MasterGain:F2} -> {_mixer.MasterGainTarget:F0}, copies {_copier?.Copies ?? 0}, hooked {_hook?.Emitted ?? 0}, websocket {_webSocket?.State ?? "-"} sent {_webSocket?.Sent ?? 0}, opacity {h.Config.Hud10}, " +
             $"icon [alpha {h.ClickIconAlpha:F2} tick {h.ClickIconTick} anchor ({h.ClickIconAnchor.X}, {h.ClickIconAnchor.Y}) stored ({h.ClickIconStored.X:F1}, {h.ClickIconStored.Y:F1}) F799 {h.F(799)} {IconSummary(h.LastClickIcon)}], text \"{text}\"");
+    }
+
+    // the Sound tab's character rows (row, face cell, name cell) with each row's volume and enable bit, when the config screen is open; else the shown-bit words of the 19 rows
+    private string VoiceRowSummary()
+    {
+        GameHost h = _runtime.Host;
+        if (_runtime.Ui.Stack.OfType<Tsuki.Ui.Screens.ConfigScreen>().FirstOrDefault() is { } config)
+        {
+            return "[" + string.Join(" ", config.VoiceRows.Select(r => $"{r.Row}:f{r.Face}n{r.Name}v{h.Config.GetCharacterVoiceVolume(r.Row)}{(((h.Config.VoiceEnableBits >> r.Row) & 1) != 0 ? "" : "m")}")) + "]";
+        }
+
+        IReadOnlyList<int>? words = h.VoiceRowWords;
+        return words is null ? "-" : "[" + string.Join("", words.Select((w, r) => VoiceMarks.IsRowShown(h.Vars, words, r) ? "1" : "0")) + "]";
     }
 
     private static string IconSummary(ClickIconDraw d) =>

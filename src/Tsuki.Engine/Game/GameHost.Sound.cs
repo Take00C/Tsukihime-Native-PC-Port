@@ -1,4 +1,5 @@
 using Tsuki.Engine.Contracts;
+using Tsuki.Engine.Sound;
 
 namespace Tsuki.Engine.Game;
 
@@ -70,6 +71,33 @@ public sealed partial class GameHost
     private readonly VirtualAudio _audio = new();
     private readonly List<AudioCommand> _audioOut = [];
     private Func<int, bool>? _externalPlaying;
+    private IReadOnlyList<int>? _voiceRowWords;
+    private bool _voiceRowWordsRead;
+
+    /// <summary>
+    /// The eboot's row word table (text VA 0x1A6850, i32[19]: config voice row to the G word whose bit 4 shows it); null for a data source without
+    /// the UI tables (a test rig), which then records the heard bit and the last voice but no row bit.
+    /// </summary>
+    public IReadOnlyList<int>? VoiceRowWords
+    {
+        get
+        {
+            if (!_voiceRowWordsRead)
+            {
+                _voiceRowWordsRead = true;
+                try
+                {
+                    _voiceRowWords = _data.Eboot.Ui.VoiceRowWords;
+                }
+                catch (NotSupportedException)
+                {
+                    _voiceRowWords = null;
+                }
+            }
+
+            return _voiceRowWords;
+        }
+    }
 
     /// <summary>
     /// Uses the real audio layer's <c>is_playing</c> (<c>AudioCommandPlayer.IsPlaying</c>) instead of the virtual clock; the caller then also performs
@@ -110,6 +138,13 @@ public sealed partial class GameHost
 
         int wait = Sound.Execute(st);
         Wait.VoiceState = Sound.VoiceState;
+        if (name is "VPLY" or "VPL2" && !VarState.ScanMode)
+        {
+            // the handler's character marks (VA 0x99F08, 0x9A058 -> 0x3D260; package K36): the heard bit, the slot's last voice and the row bit the
+            // Sound tab shows the character's row by; written whenever the statement runs outside scan mode, whether or not the voice sounds
+            VoiceMarks.Note(Vars, VoiceRowWords, Sound.PendingVoiceCharacter, Sound.VplyEntry);
+        }
+
         if (name == "MPLY")
         {
             int track = Sound.ScriptTrack;

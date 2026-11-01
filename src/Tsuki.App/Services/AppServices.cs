@@ -3,6 +3,7 @@
 using Tsuki.Engine.Contracts;
 using Tsuki.Engine.Game;
 using Tsuki.Engine.Save;
+using Tsuki.Engine.Sound;
 using Tsuki.Media.Movie;
 using Tsuki.Media.Sound;
 using Tsuki.Ui;
@@ -59,6 +60,14 @@ public sealed partial class AppServices : IGameServices
         Store = parts.Store;
         var vars = new Vars();
         Store.SystemData.LoadGlobalsInto(vars);
+        if (VoiceMarks.NeedsRebuild(vars, Store.SystemData.Block))
+        {
+            // a profile written before package K36 recorded the _VPLY marks: the characters heard are rebuilt from the read text, so the Sound tab's rows appear at once
+            var watch = System.Diagnostics.Stopwatch.StartNew();
+            int credited = VoiceMarks.RebuildFromReadText(parts.Data, Store.SystemData, vars, RowWordsOf(parts.Data));
+            VoiceMarksRebuilt = (credited, watch.Elapsed);
+        }
+
         var profile = new GameProfile(Store.SystemData.Block, vars);
         IReadOnlyList<Language> available = AvailableLanguagesOf(parts.Data);
         if (profile.System.Config.Language is < 0 or > 3 || (available.Count > 0 && !available.Contains((Language)profile.System.Config.Language)))
@@ -71,6 +80,30 @@ public sealed partial class AppServices : IGameServices
         Host = parts.HostFactory(HostLanguage, profile);
         AttachHost(Host);
         Store.UpdateLatestSlot();
+        if (VoiceMarksRebuilt is { Credited: > 0 })
+        {
+            // the rebuilt marks go into the system block and the save file now, not only with the next save
+            Store.SystemData.CaptureGlobalsFrom(vars);
+            Commit();
+        }
+    }
+
+    /// <summary>
+    /// Set when this start rebuilt the voice marks of a profile that predates them (package K36): the number of voice statements credited from the
+    /// read text and the time it took; null when the profile needed nothing.
+    /// </summary>
+    public (int Credited, TimeSpan Elapsed)? VoiceMarksRebuilt { get; }
+
+    private static IReadOnlyList<int>? RowWordsOf(IGameData data)
+    {
+        try
+        {
+            return data.Eboot.Ui.VoiceRowWords;
+        }
+        catch (NotSupportedException)
+        {
+            return null;
+        }
     }
 
     /// <summary>The languages the data carries (package K25); every selectable language for a data source that does not say (a test rig).</summary>

@@ -271,6 +271,12 @@ public interface IUiStoryServices
     /// <summary>Scene title number F022 (ui_text 396 + F022).</summary>
     int SceneTitle { get; }
 
+    /// <summary>
+    /// The number of the running script (the PS4's script word 0x86AA18; 1..3 are the prologue scripts 00_00, 00_01, 00_02), -1 when no story runs.
+    /// The Sound tab's Shiki row hides his face in script 1 and his face and name in scripts 2 and 3 (VA 0x3E2A7, 0x3E303; package K36).
+    /// </summary>
+    int Script { get; }
+
     /// <summary>Auto mode is on.</summary>
     bool AutoMode { get; }
 

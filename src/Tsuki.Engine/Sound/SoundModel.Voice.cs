@@ -39,6 +39,12 @@ public sealed partial class SoundModel
     public int LastVoice { get; private set; } = -1;
 
     /// <summary>
+    /// The entry the last <c>_VPLY</c> / <c>_VPL2</c> handed to the character marks (the second argument of 0x3D260, package K36): the pending
+    /// voice after the statement's name rule, -1 when a name starting with an underscore found none pending.
+    /// </summary>
+    public int VplyEntry { get; private set; } = -1;
+
+    /// <summary>
     /// The time auto mode waits on the voice (VA 0x96F0): elapsed frames * 17 ms while it plays, 10,000 ms when no voice state exists.
     /// </summary>
     public int AutoModeVoiceMilliseconds => _voiceState == 2 ? _voiceElapsed * 17 : 10_000;
@@ -60,6 +66,7 @@ public sealed partial class SoundModel
             _voicePending = hex.Length == 0 ? 0 : int.TryParse(hex, NumberStyles.AllowHexSpecifier, CultureInfo.InvariantCulture, out int idx) ? idx : 0;
         }
 
+        VplyEntry = _voicePending;
         if (immediate)
         {
             VoiceStart? start = VoiceGate();
@@ -173,6 +180,72 @@ public sealed partial class SoundModel
         }
 
         return true;
+    }
+
+    /// <summary>
+    /// The config screen's voice test of slot <paramref name="slot"/> (package K36): <c>VoiceRequest(entry, -1)</c> of VA 0x401E0, followed by
+    /// the <c>Sound_ApplyConfig(0)</c> every config item ends with (VA 0x4008C..0x40093), which stops the voice when the slot is muted
+    /// (0x3EA4A -> 0x8EA0) and otherwise sets volume byte 0xD to <c>char_vol[k] * voice / 100</c> (0x3EA4F..0x3EA89 -> 0xB6F0) before the stream
+    /// starts, so the test plays at the row's volume. Returns true when a voice was commanded.
+    /// </summary>
+    public bool StartTestVoice(int entry, int slot)
+    {
+        if (slot is < 0 or >= SoundConfig.CharacterSlots)
+        {
+            return false;
+        }
+
+        if ((Config.CharEnable & (1u << slot)) == 0)
+        {
+            StopVoice();
+            return false;
+        }
+
+        _vol[0xD] = unchecked((byte)TestRowGain(slot));
+        return StartVoice(entry, remember: false);
+    }
+
+    /// <summary>
+    /// <c>Sound_ApplyConfig(0)</c> with a test row (VA 0x3EA25..0x3EA89; package K36): the config screen's live change after a row was tested.
+    /// A muted test row stops the voice; the row's gain <c>char_vol[k] * voice / 100</c> becomes the voice volume at once (<see cref="SetVoiceVolume"/>).
+    /// </summary>
+    public void ApplyTestRow(int slot)
+    {
+        if (slot is < 0 or >= SoundConfig.CharacterSlots)
+        {
+            return;
+        }
+
+        if ((Config.CharEnable & (1u << slot)) == 0)
+        {
+            StopVoice();
+        }
+
+        SetVoiceVolume(TestRowGain(slot));
+    }
+
+    private int TestRowGain(int slot) => SoundMath.I16(Config.CharVol[slot]) * SoundMath.I16(Config.Voice) / 100;
+
+    /// <summary>
+    /// VA 0xB6F0: volume byte 0xD becomes <paramref name="gain"/> (0..100), and the voice stream that plays follows at once with
+    /// <c>clamp(trunc(gain * record volume * 0.01), 0, 100) %</c> (the record volume is 100 for a voice, so the stream plays at gain %).
+    /// </summary>
+    public void SetVoiceVolume(int gain)
+    {
+        _vol[0xD] = unchecked((byte)gain);
+        if (_voiceState == 0 || _voiceStream < 0)
+        {
+            return;
+        }
+
+        SoundChannelRecord r = _voice[_voiceStream - AudioStreams.FirstVoice];
+        if (r.State == 0)
+        {
+            return;
+        }
+
+        int v = Math.Clamp(SoundMath.Trunc(SoundMath.I8(_vol[0xD]) * r.Volume * 0.01f), 0, 100);
+        SetVolumeCall(_voiceStream, v * 0.01f);
     }
 
     /// <summary>

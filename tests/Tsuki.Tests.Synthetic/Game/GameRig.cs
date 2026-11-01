@@ -140,6 +140,9 @@ public sealed class GameRig
 
     public IReadOnlyList<string> PictureNames { get; set; } = ["BLACK", "IMG0001", "IMG0002", "IMG0003"];
 
+    /// <summary>The rig's voice row words: config voice row k -> G[100 + k] (the UI test kit's table; package K36).</summary>
+    public static IReadOnlyList<int> VoiceRowWords { get; } = [.. Enumerable.Range(100, 19)];
+
     /// <summary>Defines text line <paramref name="id"/> (<c>$00000N</c>).</summary>
     public GameRig Line(int id, string text)
     {
@@ -167,6 +170,10 @@ public sealed class GameRig
         eh["get_Motions"] = _ => motions;
         eh["get_Haze"] = _ => new NoHaze();
         eh["get_Effects"] = _ => null;
+        // package K36: the voice row words (config voice row k -> G[100 + k]) the _VPLY marks and the Sound tab use; every other UI table stays unavailable
+        (IUiTables ui, var uh) = DelegatingProxy.Create<IUiTables>();
+        uh["get_VoiceRowWords"] = _ => VoiceRowWords;
+        eh["get_Ui"] = _ => ui;
         (IGameData data, var dh) = DelegatingProxy.Create<IGameData>();
         dh["get_Eboot"] = _ => eboot;
         dh["get_ScriptCount"] = _ => Scripts.Count;

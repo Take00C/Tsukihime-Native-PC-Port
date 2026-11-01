@@ -209,6 +209,9 @@ public sealed class PreviewServices : IGameServices
     public int SceneTitle { get; set; } = 6;
 
     /// <inheritdoc/>
+    public int Script { get; set; } = 4;
+
+    /// <inheritdoc/>
     public bool AutoMode { get; set; }
 
     /// <inheritdoc/>

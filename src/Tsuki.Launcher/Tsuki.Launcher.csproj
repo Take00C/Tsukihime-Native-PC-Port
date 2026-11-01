@@ -16,7 +16,7 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>..\..\assets\icon\tsukihime.ico</ApplicationIcon>
     <AllowUnsafeBlocks>false</AllowUnsafeBlocks>
-    <Version>0.1.1</Version>
+    <Version>0.1.2</Version>
     <Product>Tsukihime PC port</Product>
     <AssemblyTitle>Tsukihime Launcher</AssemblyTitle>
   </PropertyGroup>
@@ -44,7 +44,6 @@
   </ItemGroup>
   <!-- Package K28: `-p:TsukiPersonalIcon=<game folder>` makes a PERSONAL build whose executable carries the Arcueid icon (never to be shared); see the file. -->
   <Import Project="..\Tsuki.PersonalIcon.targets" />
-  <Import Project="..\Tsuki.Distribution.targets" />
   <ItemGroup>
     <!--
       What travels with the published folder besides the programs (package R1; the Help page points at these): the licence texts of the third-party code (FFmpeg's LGPL v3
@@ -59,6 +58,7 @@
     <None Include="Licenses\FFmpeg-SOURCE.txt" Link="licenses\FFmpeg-SOURCE.txt" CopyToPublishDirectory="PreserveNewest" />
     <None Include="Licenses\SDL3-zlib.txt" Link="licenses\SDL3-zlib.txt" CopyToPublishDirectory="PreserveNewest" />
     <None Include="..\..\docs\THIRD_PARTY.md" Link="licenses\THIRD_PARTY.md" CopyToPublishDirectory="PreserveNewest" Visible="false" />
+    <None Include="..\..\README.md" Link="README.md" CopyToPublishDirectory="PreserveNewest" Visible="false" />
     <!-- the player's setup guide (package K29): the plain-text copy of docs/SETUP_GUIDE.md travels next to the programs, where a player who never opens a Markdown file finds it; the Help page's button opens it, so the build output carries it too (K27) -->
     <None Include="..\..\docs\SETUP_GUIDE.txt" Link="SETUP_GUIDE.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" Visible="false" />
   </ItemGroup>

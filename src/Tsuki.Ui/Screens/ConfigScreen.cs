@@ -932,8 +932,11 @@ public sealed class ConfigScreen : UiScreen, ISubMenu
 
     private List<(int Row, int Face, int Name)> BuildVoiceRows()
     {
-        // sub_29FA0: a row shows once its character has spoken (bit 4 of its progress word); rows 15 / 16 keep the unknown face (18) until bit 1, the rows in
-        // 0x3CF36 the unknown name (19) until bit 2. Row 0 (Shiki) depends on where the game is.
+        // PS4 VA 0x3DF20 (knife sub_29FA0): a row shows once its character has spoken (bit 4 of its row word, G[0x1A6850[r]], set by _VPLY); rows 15 / 16
+        // keep the unknown face (18) until bit 1, the rows outside mask 0x430C9 (= the rows in 0x3CF36) the unknown name (19) until bit 2. Row 0 (Shiki)
+        // depends on where the game is (0x3E285, 0x3E2CD): in a story (game mode word 0xE20CC8 != 0), hidden while F023 is 0, the unknown face (19) in
+        // script 1 (00_00) and the unknown face and name in scripts 2 and 3 (00_01, 00_02; the script word 0x86AA18); from the title, unknown until
+        // flowchart node 485 is reached, then face 19 until node 1 is. The rows never depend on Play All Voices (0x3DF20 does not read config +0x16).
         var rows = new List<(int, int, int)>();
         bool inGame = Root.Stack.Count == 0 || Root.Stack[0] is not TitleScreen;
         IReadOnlyList<int> words = Ctx.Assets.Tables.VoiceRowWords;
@@ -956,7 +959,12 @@ public sealed class ConfigScreen : UiScreen, ISubMenu
                         continue;
                     }
 
-                    (face, name) = (0, 0);
+                    (face, name) = Ctx.Services.Script switch
+                    {
+                        1 => (19, 0),
+                        2 or 3 => (18, 19),
+                        _ => (0, 0),
+                    };
                 }
                 else if (!Ctx.Services.SceneBit(485))
                 {

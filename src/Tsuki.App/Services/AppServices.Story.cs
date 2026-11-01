@@ -29,6 +29,9 @@ public sealed partial class AppServices
     public int SceneTitle => Host.F(22);
 
     /// <inheritdoc/>
+    public int Script => Host.Script;
+
+    /// <inheritdoc/>
     public bool AutoMode => Host.AutoMode;
 
     /// <inheritdoc/>
@@ -67,8 +70,8 @@ public sealed partial class AppServices
             return;
         }
 
-        int ch = _lastVoiceOfSlot.Values.FirstOrDefault(v => v.Entry == voice).Character;
-        Host.Sound.SetPendingVoice(voice, ch);
+        // the character of the last voice is the one the last _VPLY stored (0x1654208; the gate does not clear it)
+        Host.Sound.SetPendingVoice(voice, Host.Sound.PendingVoiceCharacter);
         Host.Sound.StartVoiceAtMessage();
         FlushMenuSound();
     }

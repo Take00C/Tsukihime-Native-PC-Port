@@ -899,6 +899,71 @@ load [H]).
 | show controls | Controls tab (pictures only) |
 | PS4-only: Display End of Page Instantly, Auto Skip Cleared Scenes, Show Confirmation Message, Text Display Animations | +0x9C / +0x9D, +0xA0, +0xA2, +0xA3, +0xA4 |
 
+### 9.4 The voice rows of the Sound tab [E VA 0x3DF20, 0x3D260, 0x99EF7, 0x401E0, 0x3E9B0; V hidden runs, package K36]
+
+Page 1's rows 7..25 are the 19 per-character rows (items 96 + 5i .. 100 + 5i: label, value,
+mute 98 + 5i, test 99 + 5i, volume 100 + 5i). Which of them show, and with which face and
+name, is decided when the config opens (Config_ToMenu 0x3E4A0 -> 0x3DF20, one pass over
+rows 0..18) from three G words per row, all in the persistent G[0..499] of the system block:
+
+| word | writer | meaning |
+|---|---|---|
+| G[73] (0x164C6B2) | `_VPLY` / `_VPL2` handler, VA 0x99F08: `G73 \|= (u16)(1 << character)` | bit c = character c has spoken (c = 0..15 only: the shift is a 32-bit `1 << cl` OR-ed as a 16-bit word, so characters 16..23 never set a bit) |
+| G[31 + k] (0x164C65E + 2k) | VoiceGallery_Heard 0x3D260 (called at 0x9A058 with the statement's character and entry) | the entry of the last voice of config slot k; what the row's test button plays |
+| G[words[k]] with words = i32[19] at text VA 0x1A6850 | 0x3D260: `G[words[k]] \|= 4` (a byte OR) | bit 2 (value 4): the row shows; bit 0: rows 15 and 16 get their own face; bit 1: the rows outside mask 0x430C9 get their own name (the scripts set bits 0 and 1) |
+
+`k = log2(mask[character < 24 ? character : 0])` with the u32[24] mask table 0x86A850 (the
+same slot the voice gate uses, sound_runtime.md 8). 0x3D260 returns at once for character 23
+(the M00.. extras) and for a negative entry (a `_VPLY(_name, ...)` whose pending voice a
+message already consumed). The whole handler returns before any of it in scan mode (byte
+0x174DE48, VA 0x968B2), and nothing else depends on the gate: the marks are written whether
+or not the voice sounds (Play All Voices off, a muted row, skip mode, fast-forward).
+
+The row list (0x3DF20), per row r = 0..18 with w = G[words[r]]:
+
+```
+if (w & 4) == 0: hidden (face = name = -1, the row's items disabled)
+face = r;  name = r
+if r in {15, 16} and (w & 1) == 0: face = 18          # the unknown face cell
+if (0x430C9 >> r & 1) == 0 and (w & 2) == 0: name = 19 # the unknown name cell (rows 1 2 4 5 8 9 10 11 14 15 16 17; the complement of knife's 0x3CF36)
+if r == 0 (Shiki):                                     # 0x3E2CD (face), 0x3E285 (name)
+    in a story (game mode word 0xE20CC8 != 0):
+        F023 == 0: hidden
+        script word 0x86AA18 == 1 (00_00):   face 19, name 0
+        script == 2 or 3 (00_01, 00_02):     face 18, name 19
+        else:                                face 0, name 0
+    from the title:
+        node 485 (the prologue movie) not reached (0xB81A0(0x1E5) == 0): face 18, name 19
+        reached, node 1 not reached:                                      face 19, name 0
+        both:                                                             face 0, name 0
+shown rows are laid out at 370.01 + 50.607 n units (n = the index among the shown rows); the volume
+item gets cfg +0x76 + 2r, the mute item (cfg +0x3C bit r) == 0
+```
+
+The face cells are the 20 cells of `conf_faceicon` (0..18 the characters, 18 doubling as the
+unknown face, 19 Shiki's hidden face), the name cells the 20 cells of `conf_name` (19 = the
+unknown name). 0x3DF20 never reads config +0x16: the rows do not depend on Play All Voices.
+There is no voice master slider on the PS4 Sound tab; +0x16 is the ON / OFF radio.
+
+The test button (item 99 + 5r, VA 0x401E0): nothing while `G[words[r]] == 0` or
+`(i16)G[31 + r] <= 0`; else `[0x66C720] = r` (the test row, reset to -1 when the config opens,
+0x3F941) and `VoiceRequest(G[31 + r], kind -1)`. Every config item ends with Config_FromMenu
+(0x3E6E0) and `Sound_ApplyConfig(0)` (0x4008C..0x40093); with a test row >= 0 the latter stops
+the voice when the row's enable bit is clear (0x3EA4A -> 0x8EA0) and otherwise sets the voice
+volume to `cfg.76[r] * cfg.16 / 100` through 0xB6F0 (volume byte 0xD and the playing voice
+stream's volume at once). So the test plays at the row's volume, and while it plays the row's
+slider and mute act on it live; the scene voices take their gain at their own start
+(sound_runtime.md 7, step 2). The last voice of a row survives in G[31 + r], so the test works
+in a later session too.
+
+The port records the marks in `GameHost.DispatchSound` (`VoiceMarks.Note`) on every `_VPLY` /
+`_VPL2` outside scan mode, builds the rows in `ConfigScreen.BuildVoiceRows` from the same words,
+and plays the test from G[31 + r] (`SoundModel.StartTestVoice`, `ApplyTestRow`). A profile
+written before the marks existed (every save of v0.1.0 and v0.1.1: G[73] == 0 while `readmax`
+has entries) gets them rebuilt at start from the read text (`VoiceMarks.RebuildFromReadText`:
+a `_VPLY` whose next marker counts as read ran on the PS4 too, since `readmax` only holds lines
+that were passed; the entry of G[31 + k] is then the last in script order, not in play order).
+
 ---
 
 ## 10. Input actions
