@@ -1,8 +1,8 @@
 # Publishing
 
-This guide covers source publication and Windows release archives. Build prerequisites and
+This guide covers source publication and Windows/Linux release archives. Build prerequisites and
 Python tooling are in [CONTRIBUTING.md](../CONTRIBUTING.md#2-how-to-build).
-Run commands from the repository root, using PowerShell on Windows.
+Run commands from the repository root, using PowerShell on Windows and Bash on Linux.
 
 ## 0. The short version
 
@@ -28,12 +28,14 @@ an instruction to recreate or rewrite the repository for every release.
 ### 1.2 The player download
 
 Keep the full published folder together. The publish definitions are
-`src/Tsuki.Distribution.targets` and `src/Tsuki.Launcher/Tsuki.Launcher.csproj`.
+`src/Tsuki.Distribution.targets`, `src/Tsuki.Launcher/Tsuki.Launcher.csproj` and
+`tools/setup/publish_linux.sh`.
 
-The Windows package includes `Tsukihime.exe`, `TsukihimeLauncher.exe`, their managed libraries,
-the self-contained .NET and WPF runtimes, SDL3 and bindings, the four FFmpeg DLLs,
-`README.md`, `CONTRIBUTING.md`, `LICENSE`, `assets/branding/tsukihime-logo.png`, `SETUP_GUIDE.txt`,
-`docs/SETUP_GUIDE.md`, `docs/THIRD_PARTY.md` and `licenses/`.
+| Package | Required contents |
+|---|---|
+| Both platforms | Player and managed libraries, self-contained .NET runtime, SDL3 and bindings, `README.md`, `CONTRIBUTING.md`, `LICENSE`, `assets/branding/tsukihime-logo.png`, `docs/SETUP_GUIDE.md`, `docs/LINUX.md`, `docs/THIRD_PARTY.md`, and `licenses/` |
+| Windows | `Tsukihime.exe`, `TsukihimeLauncher.exe`, their managed assemblies and WPF runtime, `SETUP_GUIDE.txt`, `avutil-61.dll`, `swresample-7.dll`, `avcodec-63.dll`, `avformat-63.dll` |
+| Linux | `Tsukihime`, `Tsukihime.dll`, the native SDL library and root `LINUX.md`. No WPF launcher. FFmpeg and other system dependencies are external unless deliberately packaged with their own notices. |
 
 The README's logo and local player-document links must resolve inside the archive. Developer links to
 unbundled references use full repository URLs. Do not move essential offline instructions to such a link.
@@ -72,7 +74,8 @@ must never leave the owner's machine. Omit the property and use a fresh output f
 
 Personal builds carry `PERSONAL_BUILD.txt`, assembly metadata `TsukiPersonalBuild=true`, a version
 containing `-personal`, and an executable icon different from `assets/icon/tsukihime.ico`.
-The checker inspects these marks and the actual icon group. A wrong path or missing player is a failure.
+The checker inspects these marks and the actual icon group. On Linux it checks the icon in the managed
+player assembly. A wrong path or missing player is a failure.
 
 ```powershell
 dotnet run --project src/Tsuki.Cli -c Release -- release-check artifacts/release-win-x64
@@ -138,6 +141,10 @@ Keep FFmpeg dynamically replaceable and include:
   does not depend on a disappearing upstream link. Do not claim a source copy is available on request
   unless you can supply it. Do not reuse an old tag or source archive for newer DLLs.
 
+The Linux helper leaves FFmpeg external. If you add FFmpeg libraries, review that exact build's licence,
+dependencies and source requirements and include its matching notices/source. Do not copy Windows
+provenance into a Linux package as if it described those libraries.
+
 ### 3.4 SDL3, bindings and .NET
 
 Keep the complete notices in `docs/THIRD_PARTY.md` for SDL3, SDL3-CS, Silk.NET, FFmpeg.AutoGen and .NET.
@@ -195,6 +202,29 @@ folder. On Windows, check the extracted launcher, first-run setup, Help guide an
 profile separate from personal saves using launcher `--data` or player `--save-dir`; record exactly
 which checks were performed. A cross-build alone does not verify Windows runtime behavior.
 
+### 4.2 Linux
+
+Use the dependencies in [LINUX.md](LINUX.md). Run its no-game checks and the Python checks before packaging.
+The helper includes .NET and SDL, but not FFmpeg, OpenSSL, the system C++ runtime or graphics drivers.
+
+```bash
+export TSUKI_GAME_DIR=/nonexistent
+dotnet build src/Tsuki.Linux.slnx -c Release
+bash tools/setup/publish_linux.sh artifacts/linux-x64
+dotnet run --project src/Tsuki.Cli -c Release -- release-check artifacts/linux-x64
+tar -czf artifacts/Tsukihime-linux-x64.tar.gz -C artifacts linux-x64
+mkdir -p artifacts/verify-linux
+tar -xzf artifacts/Tsukihime-linux-x64.tar.gz -C artifacts/verify-linux
+dotnet run --project src/Tsuki.Cli -c Release -- release-check artifacts/verify-linux/linux-x64
+./artifacts/verify-linux/linux-x64/Tsukihime --smoke --report /tmp/tsuki-release-smoke.txt
+```
+
+The archive must contain a top-level **`linux-x64/`** folder, matching the player's extraction commands.
+Compare extracted files and executable permissions with the publish folder. Check all required library
+names and decoders against the actual loaded dependencies, not just an installed `ffmpeg` executable.
+Verify offline documentation and the native folder picker/settings on a supported desktop when available.
+Keep skipped display or retail checks explicit.
+
 ## 5. Publish the reviewed candidate
 
 For an existing repository, confirm its owner and release destination before uploading. A fork release
@@ -218,7 +248,7 @@ In the intended repository's **Releases > Draft a new release**:
 
 1. Select the intended tag and commit, and a title matching the version.
 2. Add release notes and mark a prerelease if appropriate to the build's status.
-3. Attach the reviewed Windows ZIP, plus matching dependency source where needed.
+3. Attach the reviewed Windows ZIP and/or Linux archive, plus matching dependency source where needed.
    Wait for uploads to complete and check the filenames and package contents.
 4. Review the draft, then publish when release publication is authorized. Verify the README download
    destination and the uploaded assets. A private repository's release remains private until visibility changes.

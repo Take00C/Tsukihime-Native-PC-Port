@@ -24,8 +24,17 @@ internal sealed class StartupSettings
     public AppSettingsData Data { get; }
 
     /// <summary>The folder of <c>save.dat</c> and <c>settings.ini</c>: <c>--save-dir</c>, else <c>%APPDATA%\Tsuki</c>.</summary>
-    public static string DataDirectory(AppArgs args) =>
-        args.SaveDir ?? System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Tsuki");
+    public static string DataDirectory(AppArgs args)
+    {
+        if (args.SaveDir is { } directory)
+        {
+            return directory;
+        }
+
+        string profile = ProfileDirectory.ForUser();
+        Directory.CreateDirectory(profile);
+        return profile;
+    }
 
     /// <summary>Reads the file of this run.</summary>
     public static StartupSettings Load(AppArgs args)

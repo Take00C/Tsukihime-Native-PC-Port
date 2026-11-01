@@ -88,10 +88,12 @@ public sealed class AppIdentityTests
     [Fact]
     public void TheGuardMutexIsNamedAfterTheProgramAndTheProfile()
     {
-        string a = SingleInstance.MutexName(@"D:\Profiles\x\AppData\Roaming\Tsuki");
-        string b = SingleInstance.MutexName(@"d:\profiles\X\appdata\roaming\tsuki\");
+        string profile = Path.Combine(Path.GetTempPath(), "tsuki-profile", "Tsuki");
+        string a = SingleInstance.MutexName(profile);
+        string b = SingleInstance.MutexName(Path.Combine(profile, "sub", "..") + Path.DirectorySeparatorChar);
         Assert.StartsWith(@"Local\Tsukihime.", a, StringComparison.Ordinal);
         Assert.Equal(a, b);                                                                      // the same folder spelt differently
-        Assert.NotEqual(a, SingleInstance.MutexName(@"D:\x\save"));
+        Assert.NotEqual(a, SingleInstance.MutexName(Path.Combine(profile, "other")));
+        Assert.Equal(OperatingSystem.IsWindows(), a == SingleInstance.MutexName(profile.ToUpperInvariant()));
     }
 }

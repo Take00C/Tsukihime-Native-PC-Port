@@ -295,6 +295,7 @@ Directory.Build.props      (repository root) net10.0, Nullable, TreatWarningsAsE
 Directory.Packages.props   (repository root) pinned package versions (0.5)
 src/
   Tsuki.slnx       the Windows solution, including the launcher and development spikes
+  Tsuki.Linux.slnx the native Linux solution, excluding the WPF launcher and Windows spikes
   Tsuki.Data       pure C#. Ports of the tsuki readers: HED8/HED4/NAM32/NAM8/MRG/mrgd00, MZX0
                    (+ XOR 0xFF scripts, LV wrapper), MZP (PAL8/PAL4/HEP8/RGB565+LO+A, borders,
                    tile flags), catalog + picture names + NAM search, script_text, allscr +

@@ -1,0 +1,18 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="Tsuki.App/Tsuki.App.csproj" />
+    <Project Path="Tsuki.Cli/Tsuki.Cli.csproj" />
+    <Project Path="Tsuki.Data/Tsuki.Data.csproj" />
+    <Project Path="Tsuki.DevBridge/Tsuki.DevBridge.csproj" />
+    <Project Path="Tsuki.Engine/Tsuki.Engine.csproj" />
+    <Project Path="Tsuki.Media/Tsuki.Media.csproj" />
+    <Project Path="Tsuki.Platform/Tsuki.Platform.csproj" />
+    <Project Path="Tsuki.Render/Tsuki.Render.csproj" />
+    <Project Path="Tsuki.Ui/Tsuki.Ui.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="../tests/Tsuki.Tests.Data/Tsuki.Tests.Data.csproj" />
+    <Project Path="../tests/Tsuki.Tests.Render/Tsuki.Tests.Render.csproj" />
+    <Project Path="../tests/Tsuki.Tests.Synthetic/Tsuki.Tests.Synthetic.csproj" />
+  </Folder>
+</Solution>

@@ -2,6 +2,7 @@
 // Program.Main's last-resort handlers use them too.
 using System.Security.Cryptography;
 using System.Text;
+using Tsuki.App.Services;
 
 namespace Tsuki.App.Play;
 
@@ -60,7 +61,7 @@ internal static class CrashLog
             yield return logDir;
         }
 
-        yield return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Tsuki");
+        yield return ProfileDirectory.ForUser();
     }
 }
 
@@ -90,11 +91,16 @@ internal static class SingleInstance
         string full;
         try
         {
-            full = Path.GetFullPath(dataDirectory).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar).ToUpperInvariant();
+            full = Path.TrimEndingDirectorySeparator(Path.GetFullPath(dataDirectory));
         }
         catch (Exception e) when (e is ArgumentException or NotSupportedException or PathTooLongException)
         {
-            full = dataDirectory.ToUpperInvariant();
+            full = dataDirectory;
+        }
+
+        if (OperatingSystem.IsWindows())
+        {
+            full = full.ToUpperInvariant();
         }
 
         byte[] hash = SHA256.HashData(Encoding.UTF8.GetBytes(full));

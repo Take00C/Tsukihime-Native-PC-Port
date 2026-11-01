@@ -6,6 +6,7 @@ namespace Tsuki.Tests.Synthetic.Launcher;
 [System.Runtime.Versioning.SupportedOSPlatform("windows")]
 public sealed class ShortcutTests : IDisposable
 {
+    public static bool IsWindows => OperatingSystem.IsWindows();
     private readonly string _root = Path.Combine(Path.GetTempPath(), "tsuki-k20-links-" + Guid.NewGuid().ToString("N"));
 
     public ShortcutTests()
@@ -18,7 +19,7 @@ public sealed class ShortcutTests : IDisposable
         Directory.Delete(_root, recursive: true);
     }
 
-    [Fact]
+    [Fact(Skip = "Windows shell shortcuts require COM.", SkipUnless = nameof(IsWindows))]
     public void TheGameShortcutPointsAtTheGameInItsOwnFolderWithItsOwnIcon()
     {
         string app = Path.Combine(_root, "dist", GameLauncher.AppFileName);
@@ -46,7 +47,7 @@ public sealed class ShortcutTests : IDisposable
         Assert.Equal(string.Empty, info.Arguments);
     }
 
-    [Fact]
+    [Fact(Skip = "Windows shell shortcuts require COM.", SkipUnless = nameof(IsWindows))]
     public void TheLauncherShortcutAndTheStartMenuPairHaveTheirOwnNamesAndAnExistingFileIsReplacedOnlyWhenAsked()
     {
         string dist = Path.Combine(_root, "dist");
@@ -79,7 +80,7 @@ public sealed class ShortcutTests : IDisposable
         Assert.Null(Shortcuts.Read(Path.Combine(_root, "text.lnk")));
     }
 
-    [Fact]
+    [Fact(Skip = "Windows shell shortcuts require COM.", SkipUnless = nameof(IsWindows))]
     public void TheGameShortcutTakesTheArcueidIconFileWhenOneIsGivenAndKeepsItThroughTheFile()
     {
         // package K23: the launcher hands the cached icons\tsukihime.ico of the profile; without one the executable's own crescent stays

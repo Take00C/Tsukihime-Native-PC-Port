@@ -32,7 +32,11 @@ public sealed class DirectoryGameFiles : IGameFiles
     public bool Exists(string relativePath) => ResolveFile(relativePath) is not null;
 
     /// <inheritdoc />
-    public long Length(string relativePath) => new FileInfo(Require(relativePath)).Length;
+    public long Length(string relativePath)
+    {
+        using var handle = File.OpenHandle(Require(relativePath), FileMode.Open, FileAccess.Read, FileShare.Read);
+        return RandomAccess.GetLength(handle);
+    }
 
     /// <inheritdoc />
     public int ReadAt(string relativePath, long offset, Span<byte> buffer)
@@ -78,15 +82,19 @@ public sealed class DirectoryGameFiles : IGameFiles
 
     private string? Resolve(string relativePath)
     {
-        string direct = Path.Combine(_root, relativePath.Replace('/', Path.DirectorySeparatorChar));
-        if (File.Exists(direct) || Directory.Exists(direct))
+        if (string.IsNullOrEmpty(relativePath) || relativePath[0] is '/' or '\\'
+            || Path.IsPathRooted(relativePath) || relativePath.Contains(':') || relativePath.Contains('\0'))
         {
-            return direct;
+            return null;
         }
 
-        // Case-insensitive walk for case-sensitive file systems.
-        string current = _root;
         string[] parts = relativePath.Split(['/', '\\'], StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Any(p => p is "." or ".." || p.EndsWith(' ') || p.EndsWith('.')))
+        {
+            return null;
+        }
+
+        string current = _root;
         foreach (string part in parts)
         {
             if (!Directory.Exists(current))
@@ -94,13 +102,17 @@ public sealed class DirectoryGameFiles : IGameFiles
                 return null;
             }
 
-            string? match = null;
-            foreach (string entry in Directory.EnumerateFileSystemEntries(current))
+            string? match = Path.Combine(current, part);
+            if (!File.Exists(match) && !Directory.Exists(match))
             {
-                if (string.Equals(Path.GetFileName(entry), part, StringComparison.OrdinalIgnoreCase))
+                match = null;
+                foreach (string entry in Directory.EnumerateFileSystemEntries(current))
                 {
-                    match = entry;
-                    break;
+                    if (string.Equals(Path.GetFileName(entry), part, StringComparison.OrdinalIgnoreCase))
+                    {
+                        match = entry;
+                        break;
+                    }
                 }
             }
 

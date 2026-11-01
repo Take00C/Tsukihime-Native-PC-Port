@@ -126,7 +126,8 @@ public static class GameLayoutResolver
         }
 
         string chosen = path.Trim().Trim('"');
-        if (chosen.Length == 0 || chosen.All(c => c is '\\' or '/'))
+        bool unixRoot = !OperatingSystem.IsWindows() && chosen == "/";
+        if (chosen.Length == 0 || (!unixRoot && chosen.All(c => c is '\\' or '/')))
         {
             return new GameLayout(null, GameLayoutKind.NotSet);
         }
@@ -139,6 +140,11 @@ public static class GameLayoutResolver
 
         try
         {
+            if (!OperatingSystem.IsWindows() && !Directory.Exists(chosen) && !File.Exists(chosen))
+            {
+                chosen = chosen.TrimEnd('\\');
+            }
+
             // the full path first, then the trailing separator off: a drive root ("D:\") keeps its separator, "D:\games\" becomes "D:\games" (K27: trimming first turned
             // the root into "D:", which GetFullPath resolves to the current directory on that drive)
             chosen = Path.TrimEndingDirectorySeparator(Path.GetFullPath(chosen));
@@ -178,6 +184,11 @@ public static class GameLayoutResolver
         if (HasEboot(chosen))
         {
             return Classify(chosen, chosen);
+        }
+
+        if (OperatingSystem.IsLinux() && chosen == Path.GetPathRoot(chosen))
+        {
+            return new GameLayout(chosen, GameLayoutKind.NoGame);
         }
 
         // the folder above the game (one or two levels): every game folder below, patch folders paired with their base
@@ -231,10 +242,25 @@ public static class GameLayoutResolver
     }
 
     /// <summary>A folder with <c>eboot.bin</c> (the base game, a merged dump, or an update).</summary>
-    private static bool HasEboot(string folder) => File.Exists(Path.Combine(folder, "eboot.bin"));
+    private static bool HasEboot(string folder) => ResolveFile(folder, "eboot.bin") is not null;
 
     /// <summary>A folder that holds the full game: <c>eboot.bin</c> and the first picture archive.</summary>
-    private static bool IsFullGame(string folder) => HasEboot(folder) && File.Exists(Path.Combine(folder, "image", "allpac0.hed"));
+    private static bool IsFullGame(string folder) => HasEboot(folder) && ResolveFile(folder, "image/allpac0.hed") is not null;
+
+    private static string? ResolveFile(string folder, string relativePath)
+    {
+        try
+        {
+            return new DirectoryGameFiles(folder).ResolveFile(relativePath);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
+    }
+
+    private static ParamSfo? ReadParamSfo(string folder) =>
+        ResolveFile(folder, "sce_sys/param.sfo") is { } path ? ParamSfo.TryRead(path) : null;
 
     /// <summary>
     /// True for an update folder: its <c>param.sfo</c> says <c>CATEGORY gp</c> (a patch package; <c>gd</c> is the game), else its name ends in a patch suffix. A folder with
@@ -242,7 +268,7 @@ public static class GameLayoutResolver
     /// </summary>
     public static bool IsPatchFolder(string folder)
     {
-        if (ParamSfo.TryRead(Path.Combine(folder, "sce_sys", "param.sfo")) is { } sfo && sfo["CATEGORY"] is { } category)
+        if (ReadParamSfo(folder) is { } sfo && sfo["CATEGORY"] is { } category)
         {
             return string.Equals(category, "gp", StringComparison.OrdinalIgnoreCase);
         }
@@ -273,9 +299,8 @@ public static class GameLayoutResolver
     }
 
     /// <summary>
-    /// A base game and the update beside it: the update's files take precedence, unless the game folder already holds an eboot the port knows whose version is at least
-    /// the update's (a merged dump with a stale update folder beside it, as a PKG extractor's install step leaves behind): then the game folder is used as it is and the
-    /// update folder is only noted, so that a verified configuration stays what it was.
+    /// The update takes precedence when its metadata is explicitly newer than the base's. Otherwise a known base eboot at least as new as the update keeps a
+    /// merged dump's stale sibling update from being layered again.
     /// </summary>
     private static GameLayout Pair(string chosen, string baseFolder, string patchFolder)
     {
@@ -285,31 +310,48 @@ public static class GameLayoutResolver
             : new GameLayout(chosen, GameLayoutKind.Game, baseFolder, IgnoredPatchFolder: patchFolder);
     }
 
-    /// <summary>The known build's version when the base folder's own eboot is a known build at least as new as the update's APP_VER; null otherwise.</summary>
+    /// <summary>The known base eboot's version when the sibling update is unnecessary and metadata does not show a newer update; null otherwise.</summary>
     private static string? BaseIsCurrent(string baseFolder, string patchFolder)
     {
         try
         {
-            var eboot = new FileInfo(Path.Combine(baseFolder, "eboot.bin"));
-            if (!eboot.Exists || eboot.Length > 64 * 1024 * 1024)
+            var files = new DirectoryGameFiles(baseFolder);
+            long size = files.Length("eboot.bin");
+            if (size > 64 * 1024 * 1024)
             {
                 return null;
             }
 
-            string sha = Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(new DirectoryGameFiles(baseFolder).ReadAll("eboot.bin")));
-            if (Verification.KnownBuilds.Find(eboot.Length, sha) is not { } known)
+            string sha = Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(files.ReadAll("eboot.bin")));
+            if (Verification.KnownBuilds.Find(size, sha) is not { } known)
             {
                 return null;
             }
 
-            string? patchVersion = ParamSfo.TryRead(Path.Combine(patchFolder, "sce_sys", "param.sfo"))?["APP_VER"];
-            return patchVersion is null || string.CompareOrdinal(patchVersion, known.AppVersion) <= 0 ? known.AppVersion : null;
+            return CurrentBaseVersion(baseFolder, patchFolder, known);
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
             return null;
         }
     }
+
+    private static string? CurrentBaseVersion(string baseFolder, string patchFolder, Verification.KnownBuild known)
+    {
+        string? baseVersion = ReadParamSfo(baseFolder)?["APP_VER"];
+        string? patchVersion = ReadParamSfo(patchFolder)?["APP_VER"];
+        if (IsAppVersion(baseVersion) && IsAppVersion(patchVersion) && string.CompareOrdinal(patchVersion, baseVersion) > 0)
+        {
+            return null;
+        }
+
+        return patchVersion is null || string.CompareOrdinal(patchVersion, known.AppVersion) <= 0 ? known.AppVersion : null;
+    }
+
+    // Fixed-width NN.NN versions sort numerically. Other metadata keeps the existing fallback.
+    private static bool IsAppVersion(string? version) => version is { Length: 5 } && version[2] == '.'
+        && char.IsAsciiDigit(version[0]) && char.IsAsciiDigit(version[1])
+        && char.IsAsciiDigit(version[3]) && char.IsAsciiDigit(version[4]);
 
     /// <summary>The update folder beside a base folder: <c>&lt;name&gt;-patch</c>, <c>&lt;name&gt;-UPDATE</c>, ... or the same with the base's <c>-app</c> suffix removed.</summary>
     public static string? FindPatchBeside(string baseFolder)
@@ -389,12 +431,12 @@ public static class GameLayoutResolver
         }
 
         // any full game beside it that shares the title id
-        string? titleId = ParamSfo.TryRead(Path.Combine(patchFolder, "sce_sys", "param.sfo"))?["TITLE_ID"];
+        string? titleId = ReadParamSfo(patchFolder)?["TITLE_ID"];
         foreach (string sibling in siblings)
         {
             if (IsFullGame(sibling) && !IsPatchFolder(sibling))
             {
-                string? sibId = ParamSfo.TryRead(Path.Combine(sibling, "sce_sys", "param.sfo"))?["TITLE_ID"];
+                string? sibId = ReadParamSfo(sibling)?["TITLE_ID"];
                 if (titleId is null || sibId is null || string.Equals(sibId, titleId, StringComparison.OrdinalIgnoreCase))
                 {
                     return sibling;

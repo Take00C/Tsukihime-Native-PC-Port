@@ -2,7 +2,7 @@
 
 <p align="center"><img width="520" alt="Tsukihime logo" src="assets/branding/tsukihime-logo.png" /></p>
 
-A native Windows port of *TSUKIHIME -A piece of blue glass moon-*. It plays your own extracted PS4 game files directly, without converting them.
+A native Windows and Linux port of *TSUKIHIME -A piece of blue glass moon-*. It plays your own extracted PS4 game files directly, without converting them.
 
 Start with the **[setup guide](docs/SETUP_GUIDE.md)**. Windows downloads include it as `SETUP_GUIDE.txt`, also available from the launcher's Help & about page.
 
@@ -16,12 +16,17 @@ Start with the **[setup guide](docs/SETUP_GUIDE.md)**. Windows downloads include
 
 You can also start `Tsukihime.exe` directly. It asks for the game folder on first launch and remembers your choice. The Windows download includes the .NET runtime and native libraries. You do not need Python, a separate .NET installation or an emulator to play.
 
+### Linux
+
+Follow the **[Linux build and run guide](docs/LINUX.md)**. The native player includes a game folder picker and settings in the pause menu. The separate WPF launcher is Windows only. A self-contained Linux build includes .NET and SDL, while FFmpeg comes from your distribution or compatible libraries placed beside the program.
+
 ## Requirements
 
-- Windows 10 or 11, 64-bit.
+- Windows 10 or 11, 64-bit, or Linux x86-64.
 - A graphics driver supporting OpenGL 3.3. Integrated graphics are supported.
 - Your own extracted PS4 game folder, `CUSA47999`, containing `eboot.bin`, `image/`, `data/` and `sce_sys/`. The game files take about 44 GB.
 - About 260 MB for the Windows port, separate from the game files.
+- On Linux, FFmpeg 9 shared libraries with ATRAC9, H.264 and AAC support. The Linux guide lists the required library names.
 
 The setup guide explains supported folder layouts, including separate base-game and update folders. The program reads the game files without modifying them. Saves and settings are stored separately, and existing profiles keep their `Tsuki` folder name.
 
@@ -48,13 +53,14 @@ The setup guide explains supported folder layouts, including separate base-game 
 
 ## Status and support
 
-The port was developed against **CUSA47999, update 1.01**. Other builds are checked at startup and may be refused if required tables or files cannot be found. Only languages present in your game files are offered. Current source version is **0.1.1**.
+The port was developed against **CUSA47999, update 1.01**. Other builds are checked at startup and may be refused if required tables or files cannot be found. Only languages present in your game files are offered. Current source version is **0.1.1**. Linux instructions cover building from source.
 
 Report problems through Issues with reproduction steps and the relevant log. Include the build information and your operating system, graphics card and driver. See [CONTRIBUTING.md](CONTRIBUTING.md) for details. Do not attach game files, saves, story text or screenshots of the game.
 
 ## Documentation
 
 - [Setup guide](docs/SETUP_GUIDE.md): game folders, controls, saves, settings, dictionary tools and troubleshooting.
+- [Linux guide](docs/LINUX.md): dependencies, building, running and platform-specific checks.
 - [Contributing](CONTRIBUTING.md): building from source, Python tools, tests and reporting problems.
 - [Architecture](https://github.com/Take00C/Tsukihime-Native-PC-Port/blob/main/docs/ARCHITECTURE.md) and [format reference](https://github.com/Take00C/Tsukihime-Native-PC-Port/blob/main/docs/FORMATS.md): runtime components and engine research.
 - [Publishing](https://github.com/Take00C/Tsukihime-Native-PC-Port/blob/main/docs/PUBLISHING.md): release preparation and personal icon builds.

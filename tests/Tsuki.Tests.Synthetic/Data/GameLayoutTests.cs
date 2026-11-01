@@ -1,3 +1,4 @@
+using System.Reflection;
 using System.Text;
 using Tsuki.Data.IO;
 using Tsuki.Data.Verification;
@@ -114,6 +115,182 @@ public sealed class GameLayoutTests : IDisposable
         Assert.Equal(12, files.Length("image/script_text.mrg"));
         Assert.Throws<FileNotFoundException>(() => files.Length("image/none"));
         Assert.Contains("CUSA47999-patch", files.Description, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("EBOOT.BIN")]
+    [InlineData("EbOoT.BiN")]
+    public void CaseVariantEbootResolvesFromEverySupportedSelection(string ebootName)
+    {
+        string game = Game(Path.Combine("dumps", "CUSA47999"));
+        File.Move(Path.Combine(game, "eboot.bin"), Path.Combine(game, ebootName));
+        string data = Path.Combine(game, "DATA");
+        Directory.CreateDirectory(data);
+        File.WriteAllBytes(Path.Combine(data, "Resource.BIN"), [1, 2, 3]);
+        Assert.True(new DirectoryGameFiles(game).Exists("eboot.bin"));
+
+        foreach (string chosen in new[] { game, _root, Path.Combine(_root, "dumps"), Path.Combine(game, ebootName), Path.Combine(game, "image"), data, Path.Combine(data, "Resource.BIN") })
+        {
+            GameLayout layout = GameLayoutResolver.Resolve(chosen);
+            Assert.Equal(GameLayoutKind.Game, layout.Kind);
+            Assert.Equal(game, layout.BaseFolder);
+            Assert.Equal([1, 2, 3], layout.OpenFiles().ReadAll("data/resource.bin"));
+        }
+    }
+
+    [Theory]
+    [InlineData("IMAGE", "ALLPAC0.HED")]
+    [InlineData("ImAgE", "AllPac0.HeD")]
+    public void CaseVariantArchivesStillPairTheSiblingUpdate(string imageName, string archiveName)
+    {
+        string game = Game(Path.Combine("split", "CUSA47999"));
+        string patch = Patch(Path.Combine("split", "CUSA47999-patch"));
+        File.Move(Path.Combine(game, "image", "allpac0.hed"), Path.Combine(game, "image", archiveName));
+        Directory.Move(Path.Combine(game, "image"), Path.Combine(game, imageName));
+        File.Move(Path.Combine(patch, "eboot.bin"), Path.Combine(patch, "EBOOT.BIN"));
+        File.Move(Path.Combine(patch, "image", "allscr.mrg"), Path.Combine(patch, "image", "ALLSCR.MRG"));
+        Directory.Move(Path.Combine(patch, "image"), Path.Combine(patch, "IMAGE"));
+        Assert.True(new DirectoryGameFiles(game).Exists("image/allpac0.hed"));
+
+        foreach (string chosen in new[] { game, patch, Path.Combine(_root, "split"), Path.Combine(game, imageName) })
+        {
+            GameLayout layout = GameLayoutResolver.Resolve(chosen);
+            Assert.Equal(GameLayoutKind.GameWithUpdate, layout.Kind);
+            Assert.Equal(game, layout.BaseFolder);
+            Assert.Equal(patch, layout.PatchFolder);
+            IGameFiles files = layout.OpenFiles();
+            Assert.Equal("patched allscr", Encoding.ASCII.GetString(files.ReadAll("image/allscr.mrg")));
+            Assert.Equal("base allpac0", Encoding.ASCII.GetString(files.ReadAll("image/allpac0.mrg")));
+            Assert.Equal(Path.Combine(game, imageName, archiveName), files.ResolveFile("image/allpac0.hed"),
+                OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
+            Assert.Equal("01.01", BuildIdentity.Identify(files).AppVersion);
+        }
+    }
+
+    [Fact]
+    public void CaseVariantMetadataControlsPatchClassificationAndTitleMatching()
+    {
+        string unrelated = Game(Path.Combine("metadata", "other"));
+        File.WriteAllBytes(Path.Combine(unrelated, "sce_sys", "param.sfo"), GameFolderTests.Sfo(("TITLE_ID", "CUSA00000"), ("CATEGORY", "gd")));
+        ChangeMetadataCase(unrelated);
+        string patch = Patch(Path.Combine("metadata", "CUSA47999-extra"));
+        ChangeMetadataCase(patch);
+
+        Assert.True(GameLayoutResolver.IsPatchFolder(patch));
+        Assert.Null(GameLayoutResolver.FindBaseBeside(patch));
+        Assert.Equal(GameLayoutKind.UpdateOnly, GameLayoutResolver.Resolve(patch).Kind);
+
+        string game = Game(Path.Combine("metadata", "CUSA47999"));
+        ChangeMetadataCase(game);
+        Assert.False(GameLayoutResolver.IsPatchFolder(game));
+        Assert.Equal(game, GameLayoutResolver.FindBaseBeside(patch));
+        Assert.Equal(patch, GameLayoutResolver.FindPatchBeside(game));
+        foreach (string chosen in new[] { game, patch, Path.Combine(game, "ScE_SyS"), Path.Combine(patch, "ScE_SyS", "PaRaM.SfO") })
+        {
+            GameLayout layout = GameLayoutResolver.Resolve(chosen);
+            Assert.Equal(GameLayoutKind.GameWithUpdate, layout.Kind);
+            Assert.Equal(game, layout.BaseFolder);
+            Assert.Equal(patch, layout.PatchFolder);
+            BuildIdentity identity = BuildIdentity.Identify(layout.OpenFiles());
+            Assert.Equal("CUSA47999", identity.TitleId);
+            Assert.Equal("01.01", identity.AppVersion);
+            Assert.Equal("gp", identity.Category);
+        }
+    }
+
+    private static void ChangeMetadataCase(string folder)
+    {
+        File.Move(Path.Combine(folder, "sce_sys", "param.sfo"), Path.Combine(folder, "sce_sys", "PaRaM.SfO"));
+        Directory.Move(Path.Combine(folder, "sce_sys"), Path.Combine(folder, "ScE_SyS"));
+    }
+
+    [Theory]
+    [InlineData("01.01", "01.00", "01.01", false)]
+    [InlineData("01.01", "01.01", "01.01", true)]
+    [InlineData("01.01", "01.01", "01.00", true)]
+    [InlineData("01.01", "01.00", "01.00", true)]
+    [InlineData("01.01", "01.00", "01.02", false)]
+    [InlineData("01.01", "01.02", "01.02", false)]
+    [InlineData("01.10", "01.09", "01.10", false)]
+    [InlineData("10.00", "09.99", "10.00", false)]
+    [InlineData("01.01", null, "01.01", true)]
+    [InlineData("01.01", null, "01.02", false)]
+    [InlineData("01.01", "01.00", null, true)]
+    [InlineData("01.01", null, null, true)]
+    [InlineData("01.01", "", "01.01", true)]
+    [InlineData("01.01", " 01.00", "01.01", true)]
+    [InlineData("01.01", "+1.00", "01.01", true)]
+    [InlineData("01.01", "01.0", "01.01", true)]
+    [InlineData("01.01", "01.00.0", "01.01", true)]
+    [InlineData("01.01", "garbage", "01.01", true)]
+    [InlineData("01.01", "01.00", "", true)]
+    [InlineData("01.01", "01.00", "garbage", false)]
+    public void KnownExecutableDoesNotOverrideExplicitlyNewerPatchMetadata(string knownVersion, string? baseVersion, string? patchVersion, bool ignored)
+    {
+        string game = Game("CUSA47999");
+        string patch = Patch("CUSA47999-patch");
+        WriteVersion(game, baseVersion, "gd");
+        WriteVersion(patch, patchVersion, "gp");
+        ChangeMetadataCase(game);
+        ChangeMetadataCase(patch);
+
+        // Supply the known identity without embedding a retail executable or changing the registry.
+        var decide = typeof(GameLayoutResolver).GetMethod("CurrentBaseVersion", BindingFlags.NonPublic | BindingFlags.Static)!
+            .CreateDelegate<Func<string, string, KnownBuild, string?>>();
+        KnownBuild known = KnownBuilds.Verified with { AppVersion = knownVersion };
+        Assert.Equal(ignored ? knownVersion : null, decide(game, patch, known));
+    }
+
+    private static void WriteVersion(string folder, string? version, string category)
+    {
+        byte[] sfo = version is null
+            ? GameFolderTests.Sfo(("CATEGORY", category), ("TITLE_ID", "CUSA47999"))
+            : GameFolderTests.Sfo(("APP_VER", version), ("CATEGORY", category), ("TITLE_ID", "CUSA47999"));
+        File.WriteAllBytes(Path.Combine(folder, "sce_sys", "param.sfo"), sfo);
+    }
+
+    public static bool IsLinux => OperatingSystem.IsLinux();
+
+    [Fact(Skip = "Linux directory permissions.", SkipUnless = nameof(IsLinux))]
+    [System.Runtime.Versioning.SupportedOSPlatform("linux")]
+    public void AnUnreadableSiblingDoesNotHideTheGame()
+    {
+        string blocked = Dir("permissions", "unreadable");
+        string game = Game(Path.Combine("permissions", "CUSA47999"));
+        UnixFileMode mode = File.GetUnixFileMode(blocked);
+        try
+        {
+            File.SetUnixFileMode(blocked, UnixFileMode.None);
+            GameLayout layout = GameLayoutResolver.Resolve(Path.Combine(_root, "permissions"));
+            Assert.Equal(GameLayoutKind.Game, layout.Kind);
+            Assert.Equal(game, layout.BaseFolder);
+        }
+        finally
+        {
+            File.SetUnixFileMode(blocked, mode);
+        }
+    }
+
+    [Fact(Skip = "Linux linked assets.", SkipUnless = nameof(IsLinux))]
+    public void CaseVariantLinkedAssetsOutsideTheChosenFolderStillPairAndRead()
+    {
+        string assets = Game("assets");
+        string game = Dir("linked", "CUSA47999");
+        File.CreateSymbolicLink(Path.Combine(game, "EBOOT.BIN"), Path.Combine(assets, "eboot.bin"));
+        Directory.CreateSymbolicLink(Path.Combine(game, "IMAGE"), Path.Combine(assets, "image"));
+        Directory.CreateSymbolicLink(Path.Combine(game, "SCE_SYS"), Path.Combine(assets, "sce_sys"));
+        string patch = Patch(Path.Combine("linked", "CUSA47999-patch"));
+
+        GameLayout layout = GameLayoutResolver.Resolve(game);
+        Assert.Equal(GameLayoutKind.GameWithUpdate, layout.Kind);
+        Assert.Equal(game, layout.BaseFolder);
+        Assert.Equal(patch, layout.PatchFolder);
+        var files = new DirectoryGameFiles(game);
+        byte[] eboot = File.ReadAllBytes(Path.Combine(assets, "eboot.bin"));
+        Assert.Equal(eboot.Length, files.Length("eboot.bin"));
+        Assert.Equal(eboot, files.ReadAll("eboot.bin"));
+        Assert.Equal("01.00", BuildIdentity.Identify(files).AppVersion);
+        Assert.Equal("patched allscr", Encoding.ASCII.GetString(layout.OpenFiles().ReadAll("image/allscr.mrg")));
     }
 
     [Theory]
@@ -275,7 +452,14 @@ public sealed class GameLayoutTests : IDisposable
         Assert.Equal(root, slash.Chosen);
         Assert.NotEqual(GameLayoutKind.Missing, slash.Kind);
         Assert.NotEqual(GameLayoutKind.NotSet, slash.Kind);
-        Assert.Equal(root, GameLayoutResolver.Resolve(root.TrimEnd('\\', '/')).Chosen);
+        if (OperatingSystem.IsWindows())
+        {
+            Assert.Equal(root, GameLayoutResolver.Resolve(root.TrimEnd('\\', '/')).Chosen);
+        }
+        else
+        {
+            Assert.Equal(GameLayoutKind.NotSet, GameLayoutResolver.Resolve("").Kind);
+        }
         Assert.Equal(root, GameLayoutResolver.Resolve("\"" + root + "\"").Chosen);
 
         // an ordinary folder loses its trailing separator, with or without quotes, and a run of separators alone is nothing
@@ -285,5 +469,10 @@ public sealed class GameLayoutTests : IDisposable
         Assert.Equal(GameLayoutKind.Game, GameLayoutResolver.Resolve(game + "\\").Kind);
         Assert.Equal(GameLayoutKind.NotSet, GameLayoutResolver.Resolve("\\").Kind);
         Assert.Equal(GameLayoutKind.NotSet, GameLayoutResolver.Resolve("  //  ").Kind);
+        if (!OperatingSystem.IsWindows())
+        {
+            string withBackslash = Game("literal\\");
+            Assert.Equal(withBackslash, GameLayoutResolver.Resolve(withBackslash).BaseFolder);
+        }
     }
 }

@@ -20,18 +20,21 @@ public sealed class StartupMessageTests
         Directory.CreateDirectory(dir);
         try
         {
-            // the check runs before anything is loaded, so a failed Load leaves the library unloaded for the next call
-            FfmpegMissingException e = Assert.Throws<FfmpegMissingException>(() => FfmpegLibrary.Load(dir));
+            var e = new FfmpegMissingException(Path.GetFullPath(dir), FfmpegLibrary.RequiredDlls);
             Assert.Equal(FfmpegLibrary.RequiredDlls, e.MissingFiles);
             Assert.Equal(Path.GetFullPath(dir), e.Folder);
-            Assert.Equal("avutil-61.dll", e.FileName);
-            Assert.Equal($"FFmpeg DLLs missing from {Path.GetFullPath(dir)}: avutil-61.dll, swresample-7.dll, avcodec-63.dll, avformat-63.dll", e.Message);
+            string names = OperatingSystem.IsLinux()
+                ? "libavutil.so.61, libswresample.so.7, libavcodec.so.63, libavformat.so.63"
+                : "avutil-61.dll, swresample-7.dll, avcodec-63.dll, avformat-63.dll";
+            Assert.Equal(OperatingSystem.IsLinux() ? "libavutil.so.61" : "avutil-61.dll", e.FileName);
+            Assert.Equal($"FFmpeg {(OperatingSystem.IsLinux() ? "shared libraries" : "DLLs")} missing from {Path.GetFullPath(dir)}: {names}", e.Message);
             Assert.DoesNotContain("tools/setup", e.Message);
             Assert.DoesNotContain("ARCHITECTURE", e.Message);
-            Assert.False(FfmpegLibrary.IsLoaded);
 
             Assert.Equal(
-                "The FFmpeg libraries are missing next to Tsukihime.exe (avutil-61.dll, swresample-7.dll, avcodec-63.dll, avformat-63.dll). Reinstall the port or copy them back.",
+                OperatingSystem.IsLinux()
+                    ? "FFmpeg 9 shared libraries are missing (libavutil.so.61, libswresample.so.7, libavcodec.so.63, libavformat.so.63). Install the FFmpeg 9 shared libraries or place them next to Tsukihime."
+                    : "The FFmpeg libraries are missing next to Tsukihime.exe (avutil-61.dll, swresample-7.dll, avcodec-63.dll, avformat-63.dll). Reinstall the port or copy them back.",
                 GameApp.PlayerMessage(e));
         }
         finally

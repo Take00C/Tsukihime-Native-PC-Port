@@ -43,8 +43,26 @@ internal sealed class ScreenshotWriter
         _now = now ?? (() => DateTime.Now);
     }
 
-    /// <summary>The player's folder: <c>%USERPROFILE%\Pictures\Tsukihime</c>.</summary>
-    public static string DefaultFolder => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyPictures), "Tsukihime");
+    /// <summary>The player's Pictures folder with a <c>Tsukihime</c> subfolder.</summary>
+    public static string DefaultFolder
+    {
+        get
+        {
+            string pictures = Environment.GetFolderPath(Environment.SpecialFolder.MyPictures, Environment.SpecialFolderOption.DoNotVerify);
+            if (!Path.IsPathFullyQualified(pictures))
+            {
+                string home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile, Environment.SpecialFolderOption.DoNotVerify);
+                if (!Path.IsPathFullyQualified(home))
+                {
+                    throw new IOException("The user profile has no absolute path. Use --screenshot-dir to choose a screenshot folder.");
+                }
+
+                pictures = Path.Combine(home, "Pictures");
+            }
+
+            return Path.Combine(pictures, "Tsukihime");
+        }
+    }
 
     /// <summary>Where the files go.</summary>
     public string Folder { get; }

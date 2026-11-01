@@ -27,7 +27,9 @@ every attachment yourself.
 
 ## 2. How to build
 
-The build commands below use Windows PowerShell from the repository root.
+Linux: see [the native Linux guide](docs/LINUX.md). Build `src/Tsuki.Linux.slnx` to exclude
+the Windows WPF launcher and Windows development spikes. The same synthetic, rendering and
+data test programs are included. The build commands below use Windows PowerShell from the repository root.
 
 - Windows 10 or 11 (64-bit), the **.NET 10 SDK** (`winget install Microsoft.DotNet.SDK.10`), Git.
 - The FFmpeg 9 LGPL libraries, once: `tools\setup\ffmpeg_dlls.ps1` copies the FFmpeg 9 LGPL DLLs from the
@@ -150,7 +152,7 @@ Include:
 
 1. Reproduction steps, expected and actual behavior. Use script/line IDs for scenes, not story text.
 2. Logs: Windows launcher **Log** opens `%APPDATA%\Tsuki\last_run.log`; `crash.log` records failures.
-   A direct start needs `--log <file>` for a run log.
+   A direct start needs `--log <file>` for a run log. Linux uses its profile directory from `docs/LINUX.md`.
    You may redact personal paths before posting.
 3. Build details: `layout:`, `build:`, `languages:`, `tables:` and graphics adapter/OpenGL lines.
    Unknown-build errors already identify the eboot and missing tables; do not attach game files.
