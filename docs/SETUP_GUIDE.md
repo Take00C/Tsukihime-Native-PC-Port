@@ -309,15 +309,35 @@ They carry identical text; no H-code is needed. These calls draw nothing visible
 integration was not part of the original verification. This Windows API output does not apply on Linux.
 
 **2. Text WebSocket: browser dictionary pages, off by default.**
-Enable **Config > System > Text WebSocket**, or set `text_websocket=on` in your profile's
-`settings.ini`. Open a browser texthooker page and connect it to **`ws://127.0.0.1:6677`**.
-Install Yomitan, import your dictionaries and enable lookup on the page. Each new line is sent as
-one text message; a page connecting during a line receives that line immediately.
 
-The server listens on the local machine only. Browser or extension permissions may block local
-connections. If the port is already in use, close the game, set `text_websocket_port` to an unused
-port from 1 to 65535, restart, and change the page's connection address too. The port has no row in
-the game settings.
+1. Install Yomitan in your browser, import the dictionaries you want and enable its lookup feature.
+   Open a texthooker page, such as <https://renji-xd.github.io/texthooker-ui/>.
+2. Close the game. In your profile's `settings.ini`, set:
+
+   ```ini
+   text_websocket=on
+   text_websocket_origin=https://renji-xd.github.io
+   ```
+
+   The origin must be **one ASCII HTTP or HTTPS scheme, host and optional nondefault port**.
+   Do not include credentials, a path such as `/texthooker-ui/`, a query or a fragment.
+   For an internationalized hostname use the browser's punycode form:
+   `https://xn--bcher-kva.example`, not `https://bücher.example`. Unicode hostnames, including
+   decomposed forms, are unsupported and ignored. This trusts pages on that origin to read the feed.
+3. Restart the game. Connect the page to **`ws://127.0.0.1:6677`**, advance a line and use Yomitan
+   to look up words. Each new line is sent as one message; a newly connected page gets the current line.
+   Allow the browser's local-network/localhost permission if offered. Browser and extension policies
+   may still block the connection; configuring the server does not override them.
+
+For an offline page, serve only its downloaded folder with a local HTTP server bound to loopback,
+open that server's HTTP address, and set `text_websocket_origin` to its exact scheme, host and port.
+A page opened as `file://` has a `null` origin and is refused. With no origin configured, browser
+pages are refused, but native clients that omit the Origin header can connect.
+
+The server listens on **IPv4 loopback only**. **Config > System > Text WebSocket** toggles it.
+If its notice reports a port conflict, close the game, set `text_websocket_port` to an unused port
+from 1 to 65535, restart, then change the page's connection address too. Restart after editing origin
+or port settings; neither has a row in the game.
 
 **3. Copy Text to Clipboard: clipboard watchers, off by default.**
 Enable **Config > System > Copy Text to Clipboard**, then select clipboard input in your dictionary
@@ -348,7 +368,7 @@ The launcher uses English; game messages use the selected game language.
 | Save folder/file cannot be written, or `save.dat` is a folder | Free disk space, correct profile permissions or rename that directory. Saves held only in memory are lost when the game closes. |
 | Damaged save; backup used or new profile started | The message names the file set aside. Check **Saves** and restore a backup if needed. |
 | Log could not be opened | Close programs locking the file and check profile permissions. The game continues without that log. |
-| Text WebSocket could not start or page cannot connect | Check port conflicts and browser permissions in section 6. Restart after changing settings. |
+| Text WebSocket could not start or page cannot connect | Check port conflicts, trusted origin and browser permissions in section 6. Restart after changing settings. |
 | Game closed with error code | Press **Log**, read the last lines and report the failure. |
 | Wrong fullscreen/window mode | Change the launcher's Display switch, passed on each PLAY, or press **Alt+Enter / F11** in the game. |
 | Window smaller than requested | It is clamped to 90% of the monitor's work area. Choose an offered preset. |
@@ -402,6 +422,7 @@ it in Notepad, then restart. A `#` starts a comment; unknown keys and bad values
 | `text_hooker` | `on`, `off` | Config > System > Text Hooker Output (default `on`) |
 | `text_websocket` | `on`, `off` | Config > System > Text WebSocket (default `off`) |
 | `text_websocket_port` | `1`..`65535` | The WebSocket's port (default `6677`); no row in the game, edit the file |
+| `text_websocket_origin` | one ASCII HTTP or HTTPS origin | The trusted browser page's scheme, host and any nondefault port, without credentials, a path, query or fragment. Use punycode for IDNs; Unicode is ignored. Unset means native clients only. Restart after editing |
 | `screenshot_notice` | `on`, `off` | Config > System > Screenshot Notice (default `on`) |
 
 ## Appendix B: starting the game from a command line (コマンドライン)

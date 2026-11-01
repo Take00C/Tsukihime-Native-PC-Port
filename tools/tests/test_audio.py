@@ -144,6 +144,32 @@ def test_hevag_streaming_history() -> None:
     assert np.array_equal(np.concatenate(parts), whole)
 
 
+@pytest.mark.parametrize("use_numba", [False, True])
+@pytest.mark.parametrize("hist", [
+    np.zeros(0, np.int64), np.zeros(3, np.int64), np.zeros(5, np.int64),
+    np.zeros((2, 2), np.int64), np.zeros(4, np.int32), np.zeros(4, np.float64),
+    [0, 0, 0, 0],
+])
+def test_hevag_rejects_invalid_history(hist, use_numba: bool) -> None:
+    with pytest.raises(H.VagError, match="history"):
+        H.decode_frames(bytes(16), hist=hist, use_numba=use_numba)
+
+
+@pytest.mark.parametrize("use_numba", [False, True])
+def test_hevag_rejects_readonly_history(use_numba: bool) -> None:
+    hist = np.zeros(4, np.int64)
+    hist.flags.writeable = False
+    with pytest.raises(H.VagError, match="history"):
+        H.decode_frames(bytes(16), hist=hist, use_numba=use_numba)
+
+
+@pytest.mark.parametrize("use_numba", [False, True])
+@pytest.mark.parametrize("nframes", [-1, 1.5, np.int64(1 << 60), 2])
+def test_hevag_rejects_invalid_frame_count(nframes, use_numba: bool) -> None:
+    with pytest.raises(H.VagError, match="frame count"):
+        H.decode_frames(bytes(16), nframes=nframes, use_numba=use_numba)
+
+
 def test_write_wav_with_smpl(tmp_path: Path) -> None:
     x = (np.arange(2000, dtype=np.int16) % 100).reshape(-1, 2)
     p = tmp_path / "t.wav"

@@ -249,17 +249,24 @@ def parse_wave(data: Buffer, *, strict: bool = True) -> WaveInfo:
         size = struct.unpack_from("<I", b, o + 4)[0]
         chunks.append((cid.decode("latin1"), o, size))
         body = b[o + 8:o + 8 + size]
+        if cid != b"data" and len(body) != size:
+            raise AudioError(f"truncated {cid!r} chunk")
         if cid == b"fmt ":
             if size < 0x34 or len(body) < 0x34:
                 raise AudioError(f"fmt chunk of {size} bytes is too short for ATRAC9")
             fmt = struct.unpack_from("<HHIIHHHHI16sI4s", body, 0)
         elif cid == b"fact":
+            if size % 4:
+                raise AudioError("fact chunk is not whole sample counts")
             fact = struct.unpack_from("<%dI" % (size // 4), body, 0)
         elif cid == b"smpl":
+            if len(body) < 36:
+                raise AudioError("smpl chunk is shorter than its header")
             smpl_head = struct.unpack_from("<9I", body, 0)
+            if smpl_head[7] > (len(body) - 36) // 24:
+                raise AudioError("smpl loop count exceeds the chunk")
             for k in range(smpl_head[7]):
-                if 36 + 24 * (k + 1) <= len(body):
-                    loops.append(SmplLoop(*struct.unpack_from("<6I", body, 36 + 24 * k)))
+                loops.append(SmplLoop(*struct.unpack_from("<6I", body, 36 + 24 * k)))
         elif cid == b"data":
             data_off, data_size = o + 8, size
             break
@@ -286,7 +293,7 @@ def parse_wave(data: Buffer, *, strict: bool = True) -> WaveInfo:
             problems.append(f"superframe {cfg.superframe_bytes} B != block align {align}")
         if cfg.samples_per_superframe != spb:
             problems.append(f"superframe samples {cfg.samples_per_superframe} != {spb}")
-        if data_size % align:
+        if align <= 0 or data_size % align:
             problems.append(f"data size {data_size} not a multiple of {align}")
         if problems:
             raise AudioError("; ".join(problems))

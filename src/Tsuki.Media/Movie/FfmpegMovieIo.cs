@@ -33,21 +33,54 @@ internal sealed unsafe class Demuxer : IDisposable
 
     public Demuxer(string path)
     {
+        if (Uri.TryCreate(path, UriKind.Absolute, out Uri? uri) && !uri.IsFile)
+        {
+            throw new ArgumentException("movies require a local file path", nameof(path));
+        }
+
+        string fullPath = Path.GetFullPath(path);
+        if (!File.Exists(fullPath))
+        {
+            throw new FileNotFoundException("movie file not found", fullPath);
+        }
+
         AVFormatContext* fmt = null;
-        Av.Check(ffmpeg.avformat_open_input(&fmt, path, null, null), $"avformat_open_input({Path.GetFileName(path)})");
-        _fmt = fmt;
+        AVDictionary* options = null;
         try
         {
+            AVInputFormat* mov = ffmpeg.av_find_input_format("mov");
+            if (mov == null)
+            {
+                throw new InvalidOperationException("the MP4 demuxer is unavailable");
+            }
+
+            Av.Check(ffmpeg.av_dict_set(&options, "protocol_whitelist", "file", 0), "movie protocols");
+            Av.Check(ffmpeg.av_dict_set(&options, "format_whitelist", "mov", 0), "movie formats");
+            Av.Check(ffmpeg.av_dict_set(&options, "codec_whitelist", "h264,aac", 0), "movie codecs");
+            Av.Check(ffmpeg.av_dict_set(&options, "enable_drefs", "0", 0), "movie data references");
+            Av.Check(ffmpeg.av_dict_set(&options, "use_absolute_path", "0", 0), "movie absolute references");
+            Av.Check(ffmpeg.avformat_open_input(&fmt, "file:" + fullPath, mov, &options), $"avformat_open_input({Path.GetFileName(path)})");
+            _fmt = fmt;
             Av.Check(ffmpeg.avformat_find_stream_info(_fmt, null), "avformat_find_stream_info");
             VideoIndex = ffmpeg.av_find_best_stream(_fmt, AVMediaType.AVMEDIA_TYPE_VIDEO, -1, -1, null, 0);
             AudioIndex = ffmpeg.av_find_best_stream(_fmt, AVMediaType.AVMEDIA_TYPE_AUDIO, -1, VideoIndex, null, 0);
             Av.Check(VideoIndex, "no video stream");
+            if (Video->codecpar->codec_id != AVCodecID.AV_CODEC_ID_H264
+                || (Audio != null && Audio->codecpar->codec_id != AVCodecID.AV_CODEC_ID_AAC))
+            {
+                throw new InvalidDataException("movies require H.264 video and optional AAC audio");
+            }
+
             FormatName = Marshal.PtrToStringAnsi((nint)_fmt->iformat->name) ?? "?";
         }
         catch
         {
             Dispose();
             throw;
+        }
+        finally
+        {
+            ffmpeg.av_dict_free(&options);
         }
     }
 
@@ -274,17 +307,19 @@ internal sealed unsafe class AudioStreamDecoder : IDisposable
             long startSample = pts == ffmpeg.AV_NOPTS_VALUE
                 ? -1
                 : ffmpeg.av_rescale_q(pts, TimeBase, new AVRational { num = 1, den = OutRate });
-            int maxOut = (int)ffmpeg.swr_get_out_samples(_swr, _frame->nb_samples);
-            if (_out.Length < maxOut * 2)
+            int maxOut = ffmpeg.swr_get_out_samples(_swr, _frame->nb_samples);
+            Av.Check(maxOut, "swr_get_out_samples");
+            int samples = checked(maxOut * 2);
+            if (_out.Length < samples)
             {
-                _out = new float[maxOut * 2];
+                _out = new float[samples];
             }
 
             int got;
             fixed (float* o = _out)
             {
                 byte* op = (byte*)o;
-                got = ffmpeg.swr_convert(_swr, &op, maxOut, (byte**)&_frame->data, _frame->nb_samples);
+                got = ffmpeg.swr_convert(_swr, &op, maxOut, _frame->extended_data, _frame->nb_samples);
             }
 
             Av.Check(got, "swr_convert");

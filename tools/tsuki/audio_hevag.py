@@ -172,7 +172,7 @@ if not os.environ.get("TSUKI_NO_NUMBA"):
     try:
         import numba  # type: ignore[import-not-found]
 
-        @numba.njit(cache=True)
+        @numba.njit(cache=True, boundscheck=True)
         def _decode_nb_impl(body, nframes, coefs, hist):  # type: ignore[no-untyped-def]
             out = np.zeros(nframes * 28, dtype=np.int16)
             h1 = np.int64(hist[0]); h2 = np.int64(hist[1]); h3 = np.int64(hist[2]); h4 = np.int64(hist[3])
@@ -228,10 +228,16 @@ def decode_frames(body: bytes | bytearray | memoryview, nframes: Optional[int] =
     body = bytes(body)
     if nframes is None:
         nframes = len(body) // FRAME_BYTES
+    if not isinstance(nframes, (int, np.integer)) or nframes < 0:
+        raise VagError("frame count must be a nonnegative integer")
+    nframes = int(nframes)
     if nframes * FRAME_BYTES > len(body):
         raise VagError("frame count exceeds the data")
     if hist is None:
         hist = np.zeros(4, dtype=np.int64)
+    elif (not isinstance(hist, np.ndarray) or hist.shape != (4,)
+          or hist.dtype != np.dtype(np.int64) or not hist.flags.writeable):
+        raise VagError("history must be a writable int64 array with four elements")
     if use_numba is None:
         use_numba = HAVE_NUMBA
     if use_numba and _decode_nb is not None:

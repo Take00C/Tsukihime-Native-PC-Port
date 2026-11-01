@@ -21,11 +21,17 @@ public sealed class VideoFrame
             throw new ArgumentException("yuv420p needs even dimensions");
         }
 
+        long pixels = (long)width * height;
+        if (pixels > Array.MaxLength)
+        {
+            throw new ArgumentOutOfRangeException(nameof(width), "video plane does not fit an array");
+        }
+
         Width = width;
         Height = height;
-        Y = GC.AllocateUninitializedArray<byte>(width * height, pinned: true);
-        U = GC.AllocateUninitializedArray<byte>(width * height / 4, pinned: true);
-        V = GC.AllocateUninitializedArray<byte>(width * height / 4, pinned: true);
+        Y = GC.AllocateUninitializedArray<byte>((int)pixels, pinned: true);
+        U = GC.AllocateUninitializedArray<byte>((int)(pixels / 4), pinned: true);
+        V = GC.AllocateUninitializedArray<byte>((int)(pixels / 4), pinned: true);
     }
 
     /// <summary>Luma width.</summary>
@@ -70,6 +76,11 @@ public sealed class VideoFrame
 
     private static unsafe void CopyPlane(byte* src, int stride, byte[] dst, int rowBytes, int rows)
     {
+        if (src == null || Math.Abs((long)stride) < rowBytes || (long)rowBytes * rows > dst.LongLength)
+        {
+            throw new InvalidDataException("invalid video plane bounds");
+        }
+
         fixed (byte* d = dst)
         {
             if (stride == rowBytes)
@@ -237,10 +248,21 @@ internal sealed unsafe class PacketQueue
         }
     }
 
+    /// <summary>Takes ownership of a packet, freeing it if the queue is closed.</summary>
     public void Add(AVPacket* pkt)
     {
         lock (_lock)
         {
+            if (_closed)
+            {
+                if (pkt != null)
+                {
+                    ffmpeg.av_packet_free(&pkt);
+                }
+
+                return;
+            }
+
             _q.Enqueue(((nint)pkt, PacketKind.Packet));
             Monitor.PulseAll(_lock);
         }

@@ -1,14 +1,11 @@
-// The text WebSocket (package K23): a feed of every message and choice list for browser text hookers (texthooker-ui and the like, with Yomitan), as a minimal
-// RFC 6455 server on a TcpListener bound to 127.0.0.1 only (no HttpListener, no URL reservation, no firewall prompt). Each text is one unfragmented text frame
-// to every connected client; a client that connects late first receives the latest text. Off by default: Config > System > Text WebSocket; settings.ini
-// text_websocket=on|off and text_websocket_port= (default 6677, the port texthooker-ui connects to out of the box).
+// Loopback text feed for native hookers and an explicitly trusted browser origin.
 using System.Buffers.Binary;
-using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading.Channels;
+using Tsuki.App.Services;
 
 namespace Tsuki.App.Play;
 
@@ -22,22 +19,32 @@ internal sealed class TextWebSocketServer : IDisposable
     private const string HandshakeGuid = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 
     private const int MaxHandshakeBytes = 16 * 1024;
+    internal const int MaxConnections = 8;
+    internal const int MaxQueuedMessages = 16;
+    internal const int MaxTextBytes = 1 << 20;
+    private const int MaxFrameBytes = 1 << 20;
     private static readonly TimeSpan HandshakeTimeout = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan FrameTimeout = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan WriteTimeout = TimeSpan.FromSeconds(5);
 
     private readonly TcpListener _listener;
     private readonly Action<string>? _log;
     private readonly CancellationTokenSource _stop = new();
+    private readonly CancellationToken _stopToken;
+    private readonly string? _origin;
     private readonly Lock _lock = new();
     private readonly List<Client> _clients = [];
+    private readonly HashSet<TcpClient> _connections = [];
     private string? _latest;
     private int _served;
     private bool _disposed;
 
-    private TextWebSocketServer(TcpListener listener, Action<string>? log)
+    private TextWebSocketServer(TcpListener listener, Action<string>? log, string? origin)
     {
         _listener = listener;
         _log = log;
+        _stopToken = _stop.Token;
+        _origin = origin;
         Port = ((IPEndPoint)listener.LocalEndpoint).Port;
     }
 
@@ -62,6 +69,17 @@ internal sealed class TextWebSocketServer : IDisposable
     /// <summary>Clients served since the start (the tests).</summary>
     public int Served => Volatile.Read(ref _served);
 
+    internal int ConnectionCount
+    {
+        get
+        {
+            lock (_lock)
+            {
+                return _connections.Count;
+            }
+        }
+    }
+
     /// <summary>The last text broadcast, which a late client receives first.</summary>
     public string? Latest
     {
@@ -76,55 +94,76 @@ internal sealed class TextWebSocketServer : IDisposable
 
     /// <summary>Binds 127.0.0.1:<paramref name="port"/> (0 for any free port) and starts accepting.</summary>
     /// <exception cref="SocketException">The port is in use or cannot be bound.</exception>
-    public static TextWebSocketServer Start(int port, Action<string>? log = null)
+    public static TextWebSocketServer Start(int port, Action<string>? log = null, string? origin = null)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(port);
         ArgumentOutOfRangeException.ThrowIfGreaterThan(port, ushort.MaxValue);
         var listener = new TcpListener(Address, port);
         listener.Start(backlog: 8);
-        var server = new TextWebSocketServer(listener, log);
+        AppSettings.TryParseWebSocketOrigin(origin, out string? trustedOrigin);
+        var server = new TextWebSocketServer(listener, log, trustedOrigin);
         _ = Task.Run(server.AcceptLoopAsync);
         return server;
     }
 
     /// <summary>Sends <paramref name="text"/> to every client as one text frame and keeps it for late clients. Safe from any thread.</summary>
-    public void Broadcast(string text)
+    public bool Broadcast(string text)
     {
         ArgumentNullException.ThrowIfNull(text);
-        Client[] clients;
-        lock (_lock)
+        if (text.Length > MaxTextBytes || Encoding.UTF8.GetByteCount(text) > MaxTextBytes)
         {
-            _latest = text;
-            clients = [.. _clients];
+            return false;
         }
 
-        foreach (Client c in clients)
+        lock (_lock)
         {
-            c.Queue.Writer.TryWrite(text);
+            if (_disposed)
+            {
+                return false;
+            }
+
+            _latest = text;
+            foreach (Client c in _clients)
+            {
+                if (!c.Queue.Writer.TryWrite(text))
+                {
+                    c.Close();
+                }
+            }
         }
+
+        return true;
     }
 
     /// <summary>Stops accepting, closes every client.</summary>
     public void Dispose()
     {
-        if (_disposed)
-        {
-            return;
-        }
-
-        _disposed = true;
-        _stop.Cancel();
-        _listener.Stop();
         Client[] clients;
+        TcpClient[] connections;
         lock (_lock)
         {
+            if (_disposed)
+            {
+                return;
+            }
+
+            _disposed = true;
             clients = [.. _clients];
+            connections = [.. _connections];
             _clients.Clear();
+            _connections.Clear();
         }
 
+        _stop.Cancel();
+        _listener.Stop();
         foreach (Client c in clients)
         {
             c.Close();
+        }
+
+        foreach (TcpClient tcp in connections)
+        {
+            tcp.Dispose();
         }
 
         _stop.Dispose();
@@ -132,19 +171,30 @@ internal sealed class TextWebSocketServer : IDisposable
 
     private async Task AcceptLoopAsync()
     {
-        while (!_stop.IsCancellationRequested)
+        while (!_stopToken.IsCancellationRequested)
         {
             TcpClient tcp;
             try
             {
-                tcp = await _listener.AcceptTcpClientAsync(_stop.Token).ConfigureAwait(false);
+                tcp = await _listener.AcceptTcpClientAsync(_stopToken).ConfigureAwait(false);
             }
             catch (Exception e) when (e is OperationCanceledException or SocketException or ObjectDisposedException)
             {
                 return;
             }
 
-            _ = Task.Run(() => ServeAsync(tcp));
+            lock (_lock)
+            {
+                if (_disposed || _connections.Count >= MaxConnections)
+                {
+                    tcp.Dispose();
+                    continue;
+                }
+
+                _connections.Add(tcp);
+            }
+
+            _ = ServeAsync(tcp);
         }
     }
 
@@ -155,17 +205,17 @@ internal sealed class TextWebSocketServer : IDisposable
         {
             tcp.NoDelay = true;
             NetworkStream stream = tcp.GetStream();
-            string? key = await ReadHandshakeAsync(stream).ConfigureAwait(false);
+            (string? key, int status) = await ReadHandshakeAsync(stream).ConfigureAwait(false);
             if (key is null)
             {
-                await WriteAsync(stream, Encoding.ASCII.GetBytes("HTTP/1.1 400 Bad Request\r\nConnection: close\r\nContent-Length: 0\r\n\r\n")).ConfigureAwait(false);
+                string reason = status == 403 ? "Forbidden" : "Bad Request";
+                await WriteAsync(stream, Encoding.ASCII.GetBytes($"HTTP/1.1 {status} {reason}\r\nConnection: close\r\nContent-Length: 0\r\n\r\n")).ConfigureAwait(false);
                 return;
             }
 
             string accept = Convert.ToBase64String(SHA1.HashData(Encoding.ASCII.GetBytes(key + HandshakeGuid)));
             await WriteAsync(stream, Encoding.ASCII.GetBytes($"HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: {accept}\r\n\r\n")).ConfigureAwait(false);
             client = new Client(tcp, stream);
-            string? latest;
             lock (_lock)
             {
                 if (_disposed)
@@ -173,21 +223,26 @@ internal sealed class TextWebSocketServer : IDisposable
                     return;
                 }
 
+                if (_latest is { } latest)
+                {
+                    client.Queue.Writer.TryWrite(latest);
+                }
+
                 _clients.Add(client);
-                latest = _latest;
             }
 
             Interlocked.Increment(ref _served);
             _log?.Invoke($"websocket: client connected ({ClientCount} connected)");
-            if (latest is not null)
-            {
-                client.Queue.Writer.TryWrite(latest);                           // a late client gets the current line at once
-            }
-
             Task writer = WriteLoopAsync(client);
-            await ReadLoopAsync(client).ConfigureAwait(false);
-            client.Queue.Writer.TryComplete();
-            await writer.ConfigureAwait(false);
+            try
+            {
+                await ReadLoopAsync(client).ConfigureAwait(false);
+            }
+            finally
+            {
+                client.Close();
+                await writer.ConfigureAwait(false);
+            }
         }
         catch (Exception e) when (e is IOException or SocketException or ObjectDisposedException or OperationCanceledException or InvalidOperationException)
         {
@@ -213,13 +268,17 @@ internal sealed class TextWebSocketServer : IDisposable
             {
                 tcp.Dispose();
             }
+
+            lock (_lock)
+            {
+                _connections.Remove(tcp);
+            }
         }
     }
 
-    /// <summary>Reads the HTTP upgrade request and returns its Sec-WebSocket-Key, or null when it is not a WebSocket handshake.</summary>
-    private async Task<string?> ReadHandshakeAsync(NetworkStream stream)
+    private async Task<(string? Key, int Status)> ReadHandshakeAsync(NetworkStream stream)
     {
-        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(_stop.Token);
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(_stopToken);
         timeout.CancelAfter(HandshakeTimeout);
         var buffer = new byte[MaxHandshakeBytes];
         int length = 0;
@@ -228,62 +287,88 @@ internal sealed class TextWebSocketServer : IDisposable
         {
             if (length == buffer.Length)
             {
-                return null;
+                return (null, 400);
             }
 
             int n = await stream.ReadAsync(buffer.AsMemory(length), timeout.Token).ConfigureAwait(false);
             if (n == 0)
             {
-                return null;
+                return (null, 400);
             }
 
             length += n;
             end = buffer.AsSpan(0, length).IndexOf("\r\n\r\n"u8);
         }
 
-        string[] lines = Encoding.ASCII.GetString(buffer, 0, end).Split("\r\n");
-        if (lines.Length == 0 || !lines[0].StartsWith("GET ", StringComparison.Ordinal))
+        if (end + 4 != length)
         {
-            return null;
+            return (null, 400);
         }
 
-        string? key = null;
-        bool upgrade = false;
-        bool connection = false;
+        for (int i = 0; i < end; i++)
+        {
+            if (buffer[i] > 126 || (buffer[i] < 32 && buffer[i] is not (9 or 10 or 13)))
+            {
+                return (null, 400);
+            }
+        }
+
+        string[] lines = Encoding.ASCII.GetString(buffer, 0, end).Split("\r\n");
+        string[] request = lines[0].Split(' ');
+        if (request.Length != 3 || request[0] != "GET" || !request[1].StartsWith('/') || request[2] != "HTTP/1.1")
+        {
+            return (null, 400);
+        }
+
+        var headers = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         foreach (string line in lines.Skip(1))
         {
             int colon = line.IndexOf(':', StringComparison.Ordinal);
             if (colon <= 0)
             {
-                continue;
+                return (null, 400);
             }
 
-            string name = line[..colon].Trim();
+            string name = line[..colon];
             string value = line[(colon + 1)..].Trim();
-            if (name.Equals("Sec-WebSocket-Key", StringComparison.OrdinalIgnoreCase))
+            if (name.Any(c => c <= 32 || c >= 127) || !headers.TryAdd(name, value))
             {
-                key = value;
-            }
-            else if (name.Equals("Upgrade", StringComparison.OrdinalIgnoreCase))
-            {
-                upgrade = value.Contains("websocket", StringComparison.OrdinalIgnoreCase);
-            }
-            else if (name.Equals("Connection", StringComparison.OrdinalIgnoreCase))
-            {
-                connection = value.Contains("Upgrade", StringComparison.OrdinalIgnoreCase);
+                return (null, 400);
             }
         }
 
-        return upgrade && connection && key is { Length: > 0 } ? key : null;
+        if (!headers.TryGetValue("Upgrade", out string? upgrade) || !HasToken(upgrade, "websocket")
+            || !headers.TryGetValue("Connection", out string? connection) || !HasToken(connection, "Upgrade")
+            || !headers.TryGetValue("Sec-WebSocket-Version", out string? version) || version != "13"
+            || !headers.TryGetValue("Sec-WebSocket-Key", out string? key) || key.Length != 24
+            || !Convert.TryFromBase64String(key, new byte[16], out int keyLength) || keyLength != 16
+            || headers.ContainsKey("Transfer-Encoding")
+            || (headers.TryGetValue("Content-Length", out string? bodyLength) && bodyLength != "0"))
+        {
+            return (null, 400);
+        }
+
+        if (!headers.TryGetValue("Host", out string? host)
+            || !(host.Equals($"127.0.0.1:{Port}", StringComparison.Ordinal)
+                || host.Equals($"localhost:{Port}", StringComparison.OrdinalIgnoreCase)
+                || (Port == 80 && (host == "127.0.0.1" || host.Equals("localhost", StringComparison.OrdinalIgnoreCase))))
+            || (headers.TryGetValue("Origin", out string? origin) && (_origin is null || origin != _origin)))
+        {
+            return (null, 403);
+        }
+
+        return (key, 101);
     }
+
+    private static bool HasToken(string value, string token) => value.Split(',').Any(part => part.Trim().Equals(token, StringComparison.OrdinalIgnoreCase));
 
     private async Task WriteLoopAsync(Client client)
     {
         try
         {
-            await foreach (string text in client.Queue.Reader.ReadAllAsync(_stop.Token).ConfigureAwait(false))
+            await foreach (string text in client.Queue.Reader.ReadAllAsync(_stopToken).ConfigureAwait(false))
             {
-                await client.SendAsync(Frame(0x1, Encoding.UTF8.GetBytes(text)), _stop.Token).ConfigureAwait(false);
+                await client.SendAsync(Frame(0x1, Encoding.UTF8.GetBytes(text)), _stopToken).ConfigureAwait(false);
             }
         }
         catch (Exception e) when (e is IOException or SocketException or ObjectDisposedException or OperationCanceledException or InvalidOperationException)
@@ -296,55 +381,73 @@ internal sealed class TextWebSocketServer : IDisposable
     private async Task ReadLoopAsync(Client client)
     {
         var header = new byte[14];
-        while (!_stop.IsCancellationRequested)
+        var payload = new byte[4096];
+        var mask = new byte[4];
+        while (!_stopToken.IsCancellationRequested)
         {
-            await client.Stream.ReadExactlyAsync(header.AsMemory(0, 2), _stop.Token).ConfigureAwait(false);
+            await client.Stream.ReadExactlyAsync(header.AsMemory(0, 1), _stopToken).ConfigureAwait(false);
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(_stopToken);
+            timeout.CancelAfter(FrameTimeout);
+            await client.Stream.ReadExactlyAsync(header.AsMemory(1, 1), timeout.Token).ConfigureAwait(false);
             int opcode = header[0] & 0x0F;
             bool masked = (header[1] & 0x80) != 0;
+            bool control = opcode >= 0x8;
+            if (!masked || (header[0] & 0x70) != 0 || opcode is not (0x0 or 0x1 or 0x2 or 0x8 or 0x9 or 0xA)
+                || (control && ((header[0] & 0x80) == 0 || (header[1] & 0x7F) > 125)))
+            {
+                return;
+            }
+
             long length = header[1] & 0x7F;
             if (length == 126)
             {
-                await client.Stream.ReadExactlyAsync(header.AsMemory(2, 2), _stop.Token).ConfigureAwait(false);
+                await client.Stream.ReadExactlyAsync(header.AsMemory(2, 2), timeout.Token).ConfigureAwait(false);
                 length = BinaryPrimitives.ReadUInt16BigEndian(header.AsSpan(2));
+                if (length < 126)
+                {
+                    return;
+                }
             }
             else if (length == 127)
             {
-                await client.Stream.ReadExactlyAsync(header.AsMemory(2, 8), _stop.Token).ConfigureAwait(false);
+                await client.Stream.ReadExactlyAsync(header.AsMemory(2, 8), timeout.Token).ConfigureAwait(false);
                 length = (long)BinaryPrimitives.ReadUInt64BigEndian(header.AsSpan(2));
-            }
-
-            if (length is < 0 or > 1 << 20)
-            {
-                return;                                                       // nobody sends us a megabyte: drop the connection
-            }
-
-            var mask = new byte[4];
-            if (masked)
-            {
-                await client.Stream.ReadExactlyAsync(mask, _stop.Token).ConfigureAwait(false);
-            }
-
-            var payload = new byte[length];
-            if (length > 0)
-            {
-                await client.Stream.ReadExactlyAsync(payload, _stop.Token).ConfigureAwait(false);
-                if (masked)
+                if (length <= ushort.MaxValue)
                 {
-                    for (int i = 0; i < payload.Length; i++)
+                    return;
+                }
+            }
+
+            if (length is < 0 or > MaxFrameBytes || (opcode == 0x8 && length == 1))
+            {
+                return;
+            }
+
+            await client.Stream.ReadExactlyAsync(mask, timeout.Token).ConfigureAwait(false);
+            int offset = 0;
+            while (offset < length)
+            {
+                int count = (int)Math.Min(payload.Length, length - offset);
+                await client.Stream.ReadExactlyAsync(payload.AsMemory(0, count), timeout.Token).ConfigureAwait(false);
+                if (control)
+                {
+                    for (int i = 0; i < count; i++)
                     {
                         payload[i] ^= mask[i & 3];
                     }
                 }
+
+                offset += count;
             }
 
             switch (opcode)
             {
                 case 0x8:
                     // close: echo the status code (if any) and finish
-                    await client.SendAsync(Frame(0x8, payload.Length >= 2 ? payload.AsSpan(0, 2).ToArray() : []), _stop.Token).ConfigureAwait(false);
+                    await client.SendAsync(Frame(0x8, length >= 2 ? payload.AsSpan(0, 2) : []), _stopToken).ConfigureAwait(false);
                     return;
                 case 0x9:
-                    await client.SendAsync(Frame(0xA, payload), _stop.Token).ConfigureAwait(false);
+                    await client.SendAsync(Frame(0xA, payload.AsSpan(0, (int)length)), _stopToken).ConfigureAwait(false);
                     break;
                 default:
                     break;                                                    // text, binary, pong, continuation: nothing to do with them
@@ -389,7 +492,7 @@ internal sealed class TextWebSocketServer : IDisposable
 
         public NetworkStream Stream { get; } = stream;
 
-        public Channel<string> Queue { get; } = Channel.CreateUnbounded<string>(new UnboundedChannelOptions { SingleReader = true });
+        public Channel<string> Queue { get; } = Channel.CreateBounded<string>(new BoundedChannelOptions(MaxQueuedMessages) { SingleReader = true, FullMode = BoundedChannelFullMode.Wait });
 
         public async Task SendAsync(byte[] frame, CancellationToken stop)
         {
@@ -421,9 +524,10 @@ internal sealed class TextWebSocketServer : IDisposable
 }
 
 /// <summary>The WebSocket output of the text feed: starts the server when the switch goes on, stops it when it goes off, broadcasts each text.</summary>
-internal sealed class TextWebSocketOutput(Func<bool> enabled, Func<int> port, Action<string>? log = null) : ITextOutput, IDisposable
+internal sealed class TextWebSocketOutput(Func<bool> enabled, Func<int> port, Action<string>? log = null, Func<string?>? origin = null) : ITextOutput, IDisposable
 {
-    private readonly ConcurrentQueue<string> _pending = new();
+    private const int MaxPendingLogs = 64;
+    private readonly Channel<string> _pending = Channel.CreateBounded<string>(new BoundedChannelOptions(MaxPendingLogs) { SingleReader = true, FullMode = BoundedChannelFullMode.DropOldest });
     private TextWebSocketServer? _server;
     private int _failedPort = -1;
 
@@ -451,7 +555,7 @@ internal sealed class TextWebSocketOutput(Func<bool> enabled, Func<int> port, Ac
     /// <inheritdoc/>
     public void Tick()
     {
-        while (_pending.TryDequeue(out string? line))
+        for (int i = 0; i < MaxPendingLogs && _pending.Reader.TryRead(out string? line); i++)
         {
             log?.Invoke(line);
         }
@@ -462,7 +566,7 @@ internal sealed class TextWebSocketOutput(Func<bool> enabled, Func<int> port, Ac
             int p = port();
             try
             {
-                _server = TextWebSocketServer.Start(p, _pending.Enqueue);
+                _server = TextWebSocketServer.Start(p, line => _pending.Writer.TryWrite(line), origin?.Invoke());
                 log?.Invoke($"websocket: listening on ws://127.0.0.1:{_server.Port}");
                 Listening?.Invoke(_server.Port);
             }
@@ -493,7 +597,11 @@ internal sealed class TextWebSocketOutput(Func<bool> enabled, Func<int> port, Ac
             return false;
         }
 
-        _server.Broadcast(text);
+        if (!_server.Broadcast(text))
+        {
+            return false;
+        }
+
         Sent++;
         log?.Invoke($"websocket: {(kind == TextKind.Message ? "message" : "choice")}, {text.Length} chars to {_server.ClientCount} clients");
         return true;

@@ -19,6 +19,8 @@ ALLOWED_ROOT_FILES = {
     ".gitignore", ".gitattributes", ".editorconfig", "README.md", "LICENSE", "CONTRIBUTING.md",
     "Directory.Build.props", "Directory.Packages.props", "global.json",
     "NuGet.config", "nuget.config",
+    "requirements.in", "requirements.txt", "requirements-dev.in", "requirements-dev.txt",
+    ".python-version",
 }
 ALLOWED_ROOT_SUFFIXES = (".sln", ".slnx")
 BLOCKED_PREFIXES = ("samples/", "scratch/", "ref/", "third_party/", ".venv/")
@@ -52,6 +54,7 @@ def main() -> int:
             continue
         top_level = "/" not in path
         if not (path.startswith(ALLOWED_PREFIXES) or path in ALLOWED_ROOT_FILES
+                or path == ".github/workflows/python-security.yml"
                 or (top_level and path.endswith(ALLOWED_ROOT_SUFFIXES))):
             problems.append(f"{path}: not in the allow-list (docs/, tools/, src/, tests/, .claude/ or a known root file)")
             continue

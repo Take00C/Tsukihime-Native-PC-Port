@@ -300,13 +300,13 @@ function Test-Python {
     $area = 'Python'
     $py = Join-Path $TsukiProjectRoot '.venv\Scripts\python.exe'
     if (-not (Test-Path -LiteralPath $py)) {
-        Add-Result $area '.venv' 'MISSING' "$py not found" 'py -3.11 -m venv .venv; .venv\Scripts\python.exe -m pip install numpy pillow pytest numba capstone unicorn'
+        Add-Result $area '.venv' 'MISSING' "$py not found" 'py -3.14 -m venv .venv; .venv\Scripts\python.exe -m pip install --only-binary=:all: -r requirements-dev.txt'
         return
     }
     $envs = @{ PYTHONPATH = (Join-Path $TsukiProjectRoot 'tools'); PYTHONDONTWRITEBYTECODE = '1' }
     $r = Invoke-TsukiNative -FilePath $py -ArgumentList @((Join-Path $PSScriptRoot 'check_python.py')) -Env $envs -TimeoutSeconds 120
     if ($r.ExitCode -ne 0) {
-        Add-Result $area 'check_python.py' 'FAIL' "exit $($r.ExitCode): $($r.StdErr.Trim())"
+        Add-Result $area 'check_python.py' 'FAIL' "exit $($r.ExitCode): $($r.StdOut.Trim()) $($r.StdErr.Trim())"
         return
     }
     $j = $r.StdOut | ConvertFrom-Json
@@ -315,7 +315,7 @@ function Test-Python {
         $v = $prop.Value
         if ($v.imported) { Add-Result $area "package $($prop.Name)" 'OK' "$($v.version)" }
         elseif ($v.version) { Add-Result $area "package $($prop.Name)" 'FAIL' "installed $($v.version) but the import fails: $($v.error)" }
-        else { Add-Result $area "package $($prop.Name)" 'MISSING' "not installed ($($v.error))" ".venv\Scripts\python.exe -m pip install $($prop.Name)" }
+        else { Add-Result $area "package $($prop.Name)" 'MISSING' "not installed ($($v.error))" ".venv\Scripts\python.exe -m pip install --only-binary=:all: -r requirements-dev.txt" }
     }
     foreach ($prop in $j.project.PSObject.Properties) {
         $v = $prop.Value

@@ -62,14 +62,21 @@ Run these commands from the repository root to create the virtual environment an
 
 ```powershell
 py -3.14 -m venv .venv
-.venv\Scripts\python.exe -m pip install --only-binary=:all: numpy pillow pytest
-# Optional tools used by readers and tests:
-.venv\Scripts\python.exe -m pip install --only-binary=:all: numba capstone unicorn keystone-engine mypy pyflakes
-.venv\Scripts\python.exe tools\setup\check_python.py
+.venv\Scripts\python.exe -m pip install --only-binary=:all: -r requirements-dev.txt
+.venv\Scripts\python.exe tools\setup\check_python.py --security-only
+.venv\Scripts\python.exe -m pip_audit --strict --disable-pip --no-deps -r requirements-dev.txt
 ```
 
 Use a supported [Python 3.14 release](https://www.python.org/downloads/) before creating the environment.
-Recreate older environments without `--system-site-packages`. Use binary wheels for packages with native code.
+Recreate older environments without `--system-site-packages`. Pins include transitive dependencies;
+binary wheels avoid package build scripts. The gate checks interpreter age, isolation and installed pins.
+Repeat the dependency audit after updates because pins do not track new advisories.
+
+With `uv` available, update pins by editing `requirements.in` or `requirements-dev.in`, then regenerate with
+`uv pip compile --universal --python-version 3.14 --no-header --no-annotate requirements.in -o requirements.txt`
+and `uv pip compile --universal --python-version 3.14 --no-header --no-annotate -c requirements.txt requirements-dev.in -o requirements-dev.txt`.
+Reinstall `requirements-dev.txt` with the binary-only command above, then run the environment check,
+dependency audit and Python tests before sharing the change.
 
 - `numpy`, `pillow`, `pytest`: required.
 - `numba`: JIT kernels for MZX0 and the HE-VAG decoder; set `TSUKI_NO_NUMBA=1` to use the pure Python paths.
@@ -106,9 +113,9 @@ Bash on Linux, using a Python 3.14.10 or newer 3.14 interpreter:
 
 ```bash
 python3.14 -m venv .venv
-.venv/bin/python -m pip install --only-binary=:all: numpy pillow pytest
-.venv/bin/python -m pip install --only-binary=:all: numba capstone unicorn keystone-engine mypy pyflakes
-.venv/bin/python tools/setup/check_python.py
+.venv/bin/python -m pip install --only-binary=:all: -r requirements-dev.txt
+.venv/bin/python tools/setup/check_python.py --security-only
+.venv/bin/python -m pip_audit --strict --disable-pip --no-deps -r requirements-dev.txt
 export TSUKI_GAME_DIR="/path/to/CUSA47999"
 mkdir -p samples
 export PYTHONPATH=tools
