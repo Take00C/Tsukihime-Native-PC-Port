@@ -186,16 +186,22 @@ public static class SaveFile
     public static SaveStore Read(Stream stream)
     {
         ArgumentNullException.ThrowIfNull(stream);
+        if (stream.CanSeek && stream.Length - stream.Position > MaxFileBytes)
+        {
+            throw new SaveFormatException("the file is larger than any valid save");
+        }
+
         using var ms = new MemoryStream();
         byte[] chunk = new byte[81920];
         int n;
         while ((n = stream.Read(chunk, 0, chunk.Length)) > 0)
         {
-            ms.Write(chunk, 0, n);
-            if (ms.Length > MaxFileBytes)
+            if (ms.Length > MaxFileBytes - n)
             {
                 throw new SaveFormatException("the file is larger than any valid save");
             }
+
+            ms.Write(chunk, 0, n);
         }
 
         return FromBytes(ms.GetBuffer().AsSpan(0, (int)ms.Length));
@@ -205,6 +211,11 @@ public static class SaveFile
     /// <exception cref="SaveFormatException">The data is not a complete, undamaged save file of a known version.</exception>
     public static SaveStore FromBytes(ReadOnlySpan<byte> data)
     {
+        if (data.Length > MaxFileBytes)
+        {
+            throw new SaveFormatException("the file is larger than any valid save");
+        }
+
         if (data.Length < HeaderSize + 4)
         {
             throw new SaveFormatException($"the file is too short ({data.Length} bytes)");
@@ -345,13 +356,15 @@ public static class SaveFile
 
         try
         {
-            return FromBytes(File.ReadAllBytes(path));
+            using FileStream stream = File.OpenRead(path);
+            return Read(stream);
         }
         catch (SaveFormatException primary) when (File.Exists(backup))
         {
             try
             {
-                SaveStore store = FromBytes(File.ReadAllBytes(backup));
+                using FileStream stream = File.OpenRead(backup);
+                SaveStore store = Read(stream);
                 usedBackup = true;
                 return store;
             }

@@ -94,7 +94,13 @@ public sealed class RiffAtrac9
             throw new InvalidDataException("not a RIFF/WAVE stream");
         }
 
-        int riffSize = (int)BinaryPrimitives.ReadUInt32LittleEndian(b[4..]) + 8;
+        long declaredSize = BinaryPrimitives.ReadUInt32LittleEndian(b[4..]) + 8L;
+        if (declaredSize < 12 || declaredSize > b.Length)
+        {
+            throw new InvalidDataException("RIFF size is outside the stream");
+        }
+
+        int riffSize = (int)declaredSize;
         int o = 12;
         int channels = 0, rate = 0, align = 0, spb = 0;
         uint config = 0;
@@ -102,11 +108,17 @@ public sealed class RiffAtrac9
         int[] fact = [];
         var loops = new List<(int, int)>();
         int dataOff = -1, dataSize = -1;
-        while (o + 8 <= b.Length)
+        while (o <= riffSize - 8)
         {
             ReadOnlySpan<byte> id = b.Slice(o, 4);
-            int size = (int)BinaryPrimitives.ReadUInt32LittleEndian(b[(o + 4)..]);
-            ReadOnlySpan<byte> body = b.Slice(o + 8, Math.Min(size, b.Length - o - 8));
+            uint chunkSize = BinaryPrimitives.ReadUInt32LittleEndian(b[(o + 4)..]);
+            if (chunkSize > riffSize - o - 8)
+            {
+                throw new InvalidDataException("RIFF chunk size is outside the stream");
+            }
+
+            int size = (int)chunkSize;
+            ReadOnlySpan<byte> body = b.Slice(o + 8, size);
             if (id.SequenceEqual("fmt "u8))
             {
                 if (body.Length < 0x34)
@@ -129,6 +141,11 @@ public sealed class RiffAtrac9
             }
             else if (id.SequenceEqual("fact"u8))
             {
+                if (size % 4 != 0)
+                {
+                    throw new InvalidDataException("fact chunk is not whole sample counts");
+                }
+
                 fact = new int[size / 4];
                 for (int i = 0; i < fact.Length; i++)
                 {
@@ -137,8 +154,18 @@ public sealed class RiffAtrac9
             }
             else if (id.SequenceEqual("smpl"u8))
             {
-                int n = (int)BinaryPrimitives.ReadUInt32LittleEndian(body[28..]);
-                for (int k = 0; k < n && 36 + (24 * (k + 1)) <= body.Length; k++)
+                if (size < 36)
+                {
+                    throw new InvalidDataException("smpl chunk is shorter than its header");
+                }
+
+                uint n = BinaryPrimitives.ReadUInt32LittleEndian(body[28..]);
+                if (n > (size - 36) / 24)
+                {
+                    throw new InvalidDataException("smpl loop count exceeds the chunk");
+                }
+
+                for (int k = 0; k < n; k++)
                 {
                     ReadOnlySpan<byte> r = body[(36 + (24 * k))..];
                     loops.Add(((int)BinaryPrimitives.ReadUInt32LittleEndian(r[8..]), (int)BinaryPrimitives.ReadUInt32LittleEndian(r[12..])));
@@ -151,7 +178,13 @@ public sealed class RiffAtrac9
                 break;
             }
 
-            o += 8 + size + (size & 1);
+            long next = o + 8L + size + (size & 1);
+            if (next > riffSize)
+            {
+                throw new InvalidDataException("RIFF chunk padding is outside the stream");
+            }
+
+            o = (int)next;
         }
 
         if (extradata is null || dataOff < 0 || fact.Length == 0)
@@ -202,7 +235,9 @@ public sealed class RiffAtrac9
             problems.Add("data size is not whole superframes inside the stream");
         }
 
-        if (fact[0] < 0 || (fact.Length >= 3 && (long)fact[2] + fact[0] > (long)h.Superframes * spb))
+        long decoded = align > 0 ? (long)(dataSize / align) * spb : 0;
+        if (decoded > int.MaxValue || fact[0] < 0 || fact[0] > decoded
+            || (fact.Length >= 3 && (fact[2] < 0 || (long)fact[2] + fact[0] > decoded)))
         {
             problems.Add("fact range runs past the decoded samples");
         }

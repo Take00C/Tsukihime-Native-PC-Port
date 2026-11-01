@@ -31,6 +31,7 @@ public readonly record struct MonitorOrigin(int X, int Y)
 /// <param name="TextWebSocket"><c>text_websocket=</c> (package K23): a WebSocket on 127.0.0.1 broadcasts each new line (off when the key is absent).</param>
 /// <param name="TextWebSocketPort"><c>text_websocket_port=</c> (package K23): the WebSocket's port, 1..65535 (6677 when the key is absent).</param>
 /// <param name="ScreenshotNotice"><c>screenshot_notice=</c> (package K24): the short "Screenshot saved" notice after F12 (on when the key is absent).</param>
+/// <param name="TextWebSocketOrigin">The trusted browser page's ASCII HTTP or HTTPS origin. Absent means native clients only.</param>
 public readonly record struct AppSettingsData(
     PromptSetting Prompts = PromptSetting.Auto,
     bool? Fullscreen = null,
@@ -44,7 +45,8 @@ public readonly record struct AppSettingsData(
     bool? TextHooker = null,
     bool? TextWebSocket = null,
     int? TextWebSocketPort = null,
-    bool? ScreenshotNotice = null)
+    bool? ScreenshotNotice = null,
+    string? TextWebSocketOrigin = null)
 {
     /// <summary>The WebSocket port when the file names none (texthooker-ui's default).</summary>
     public const int DefaultTextWebSocketPort = 6677;
@@ -150,6 +152,35 @@ public static class AppSettings
         return false;
     }
 
+    /// <summary>Reads one ASCII browser origin without credentials, a path, a query or a fragment. Use punycode for internationalized hosts.</summary>
+    public static bool TryParseWebSocketOrigin(string? text, out string? origin)
+    {
+        origin = null;
+        if (string.IsNullOrWhiteSpace(text) || text.Any(c => c > 127 || char.IsWhiteSpace(c) || char.IsControl(c) || c == '\\')
+            || !Uri.TryCreate(text, UriKind.Absolute, out Uri? uri)
+            || uri.Scheme is not ("http" or "https") || uri.Host.Length == 0
+            || uri.UserInfo.Length != 0 || uri.AbsolutePath != "/" || uri.Query.Length != 0 || uri.Fragment.Length != 0)
+        {
+            return false;
+        }
+
+        try
+        {
+            string host = uri.IdnHost;
+            if (host.Any(c => c > 127))
+            {
+                return false;
+            }
+
+            origin = new UriBuilder(uri) { Host = host }.Uri.GetLeftPart(UriPartial.Authority);
+            return true;
+        }
+        catch (UriFormatException)
+        {
+            return false;
+        }
+    }
+
     /// <summary>Reads settings from text: lines of <c>key=value</c>, <c>#</c> comments, unknown keys and bad values left at their defaults.</summary>
     public static AppSettingsData Parse(string? text)
     {
@@ -199,6 +230,9 @@ public static class AppSettings
                     break;
                 case "text_websocket_port" when int.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out int port) && port is >= 1 and <= ushort.MaxValue:
                     data = data with { TextWebSocketPort = port };
+                    break;
+                case "text_websocket_origin" when TryParseWebSocketOrigin(value, out string? origin):
+                    data = data with { TextWebSocketOrigin = origin };
                     break;
                 case "screenshot_notice" when TryParseSwitch(value, out bool notice):
                     data = data with { ScreenshotNotice = notice };
@@ -274,6 +308,12 @@ public static class AppSettings
         {
             text.Append("# text_websocket_port: the WebSocket's port, 1..65535 (6677 when the line is missing)\n");
             text.Append(CultureInfo.InvariantCulture, $"text_websocket_port={port}\n");
+        }
+
+        if (TryParseWebSocketOrigin(data.TextWebSocketOrigin, out string? origin))
+        {
+            text.Append("# text_websocket_origin: the trusted page's HTTP or HTTPS origin, with no path. Use an ASCII or punycode host. Restart the program after changing it\n");
+            text.Append(CultureInfo.InvariantCulture, $"text_websocket_origin={origin}\n");
         }
 
         if (data.ScreenshotNotice is { } notice)

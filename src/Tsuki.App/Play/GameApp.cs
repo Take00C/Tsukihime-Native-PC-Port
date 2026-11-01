@@ -772,7 +772,7 @@ internal sealed class GameApp : IDisposable
             _runtime?.Ui.ShowToast(PortText.Get(PortString.TextCopied, _services.Language));
         };
         _hook = new TextHookOutput(() => _port.TextHookerOutput, new GdiTextHookSink(), Say);
-        _webSocket = new TextWebSocketOutput(() => _port.TextWebSocket, () => _port.TextWebSocketPort, Say);
+        _webSocket = new TextWebSocketOutput(() => _port.TextWebSocket, () => _port.TextWebSocketPort, Say, () => _port.TextWebSocketOrigin);
         // the WebSocket toasts carry an address or an error to read: the longer hold (package K24 made the toast brief)
         _webSocket.Listening += port => _runtime?.Ui.ShowToast(PortText.Format(PortString.TextWebSocketListening, _services.Language, port), brief: false);
         _webSocket.Failed += (port, error) => _runtime?.Ui.ShowToast(PortText.Format(PortString.TextWebSocketFailed, _services.Language, port, error), brief: false);

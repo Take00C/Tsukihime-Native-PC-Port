@@ -98,7 +98,7 @@ Before building a distributable candidate:
 3. Review `LICENSE`, `docs/THIRD_PARTY.md`, translated-file headers and dependency provenance.
    Verify packaged notices come from tracked files and the runtime packs actually resolved by the SDK.
 4. Follow the build and Python prerequisites in CONTRIBUTING. Use an isolated supported Python
-   environment and binary wheels. Do not install
+   environment, pinned binary wheels, the security gate and a fresh dependency audit. Do not install
    research tools into the system interpreter.
 5. Build warning-free and run the Synthetic, Data, Render and Python test programs. Data/GPU checks
    need their documented inputs; record missing-input and platform skips separately from passes.
@@ -269,5 +269,7 @@ A source build, synthetic tests and a smoke run establish different things. They
 playthrough, every controller or monitor, Windows runtime behavior from Linux, or compatibility with
 untested distributions. Keep these distinctions in release notes.
 
-Native decoder safety is not established by dependency checks. Do not describe a successful build
-or package audit as full security clearance.
+The game folder supports linked assets and is not a sandbox. Movie input is restricted to local
+MP4/MOV handling with H.264 and optional AAC, without external data references; that is not a decoder
+security guarantee. The known FFmpeg 9.0.2 PSSH denial-of-service exposure remains unresolved in the
+reviewed native dependency. Do not describe the dependency checks as full security clearance.

@@ -51,7 +51,7 @@ public static class ThumbnailCodec
         {
             int w = BinaryPrimitives.ReadUInt16LittleEndian(t.Data);
             int h = BinaryPrimitives.ReadUInt16LittleEndian(t.Data.AsSpan(2));
-            if (w <= 0 || h <= 0 || w > 4096 || h > 4096)
+            if (w <= 0 || h <= 0 || (long)w * h > Width * Height)
             {
                 return null;
             }

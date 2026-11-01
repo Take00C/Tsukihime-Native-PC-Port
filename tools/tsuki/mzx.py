@@ -217,7 +217,7 @@ if os.environ.get("TSUKI_NO_NUMBA", "") not in ("1", "true", "yes"):
         import numpy as _np
         import numba as _numba
 
-        @_numba.njit(cache=True, nogil=True)
+        @_numba.njit(cache=True, nogil=True, boundscheck=True)
         def _decode_nb_kernel(data, out, target, invert, reset):  # type: ignore[no-untyped-def]
             # returns (op, pos, ncmd, err) ; err: 0 ok, 1 input exhausted,
             # 2 literal past end, 3 backref distance missing, 4 backref before start
@@ -331,7 +331,11 @@ def decompress_ex(data: Buffer, invert: bool = False, *, max_output: int | None 
     if len(data) < HEADER_SIZE or data[:4] != MZX_MAGIC:
         raise MzxError("not an MZX0 stream")
     size = struct.unpack_from("<I", data, 4)[0]
+    if max_output is not None and max_output < 0:
+        raise MzxError("max_output must not be negative")
     target = size if max_output is None else min(size, max_output)
+    if target > (len(data) - HEADER_SIZE) * MAX_COMMAND_BYTES:
+        raise MzxError(f"MZX0 declared size {target} cannot come from a {len(data)}-byte stream")
     if use_numba is None:
         use_numba = HAVE_NUMBA and target >= 4096
     if use_numba and _decode_nb is not None:

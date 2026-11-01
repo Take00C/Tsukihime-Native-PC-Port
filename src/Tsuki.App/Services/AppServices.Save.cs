@@ -10,7 +10,7 @@ namespace Tsuki.App.Services;
 public sealed partial class AppServices
 {
     private const int QuickSaveCooldownFrames = 300;
-    private readonly Dictionary<int, (UiThumbnail Thumbnail, SlotThumbnail Source)> _thumbnails = [];
+    private readonly Dictionary<int, (UiThumbnail? Thumbnail, SlotThumbnail Source)> _thumbnails = [];
     private int _slotsVersion;
     private int _cachedVersion = -1;
     private List<UiSlot> _slotList = [];
@@ -103,6 +103,7 @@ public sealed partial class AppServices
         SlotThumbnail? stored = Store.GetThumbnail(slot);
         if (stored is null)
         {
+            _thumbnails.Remove(slot);
             return null;
         }
 
@@ -111,12 +112,12 @@ public sealed partial class AppServices
             return cached.Thumbnail;
         }
 
-        if (ThumbnailCodec.Decode(stored) is not { } t)
+        UiThumbnail? ui = null;
+        if (ThumbnailCodec.Decode(stored) is { } t)
         {
-            return null;
+            ui = new UiThumbnail(t.Width, t.Height, ++_thumbVersion, t.Rgba);
         }
 
-        var ui = new UiThumbnail(t.Width, t.Height, ++_thumbVersion, t.Rgba);
         _thumbnails[slot] = (ui, stored);
         return ui;
     }
@@ -175,6 +176,7 @@ public sealed partial class AppServices
         }
 
         Store.Delete(slot);
+        _thumbnails.Remove(slot);
         SlotsChanged();
         return Commit();
     }

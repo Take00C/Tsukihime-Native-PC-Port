@@ -29,11 +29,13 @@ public sealed unsafe class MoviePipeline : IDisposable
     private readonly VideoDecoder _vdec;
     private readonly AudioStreamDecoder? _adec;
     private readonly PacketQueue _vpq = new();
+    private readonly Lock _lifetimeLock = new();
     private readonly MoviePipelineOptions _options;
     private readonly double _frameRate;
     private Thread? _demuxThread;
     private Thread? _decodeThread;
     private volatile bool _stop;
+    private bool _disposed;
     private bool _endQueued;
     private readonly double _loopPoint;
     private readonly long _loopStartIndex;
@@ -165,15 +167,29 @@ public sealed unsafe class MoviePipeline : IDisposable
     /// <summary>Starts the demux and decode threads.</summary>
     public void Start()
     {
-        if (_demuxThread != null)
+        lock (_lifetimeLock)
         {
-            throw new InvalidOperationException("the pipeline is already started");
-        }
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            if (_stop || _demuxThread != null)
+            {
+                throw new InvalidOperationException("the pipeline is already started or stopped");
+            }
 
-        _demuxThread = new Thread(DemuxLoop) { Name = "tsuki-movie-demux", IsBackground = true };
-        _decodeThread = new Thread(DecodeLoop) { Name = "tsuki-movie-vdec", IsBackground = true };
-        _demuxThread.Start();
-        _decodeThread.Start();
+            try
+            {
+                var demux = new Thread(DemuxLoop) { Name = "tsuki-movie-demux", IsBackground = true };
+                demux.Start();
+                _demuxThread = demux;
+                var decode = new Thread(DecodeLoop) { Name = "tsuki-movie-vdec", IsBackground = true };
+                decode.Start();
+                _decodeThread = decode;
+            }
+            catch
+            {
+                Dispose();
+                throw;
+            }
+        }
     }
 
     private bool QueuesFull()
@@ -194,9 +210,15 @@ public sealed unsafe class MoviePipeline : IDisposable
 
     private void DemuxLoop()
     {
-        AVPacket* pkt = ffmpeg.av_packet_alloc();
+        AVPacket* pkt = null;
         try
         {
+            pkt = ffmpeg.av_packet_alloc();
+            if (pkt == null)
+            {
+                throw new OutOfMemoryException("av_packet_alloc failed");
+            }
+
             long packetsThisPass = 0;
             while (!_stop)
             {
@@ -263,6 +285,8 @@ public sealed unsafe class MoviePipeline : IDisposable
             }
 
             Pcm.Complete();
+            _adec?.Dispose();
+            _dmx.Dispose();
             _demuxEnded = true;
         }
     }
@@ -404,6 +428,7 @@ public sealed unsafe class MoviePipeline : IDisposable
         }
         finally
         {
+            _vdec.Dispose();
             Frames.EndOfStream = true;
         }
     }
@@ -411,19 +436,39 @@ public sealed unsafe class MoviePipeline : IDisposable
     /// <summary>Stops both threads (waits up to 2 s for each) and wakes anything blocked on the queues.</summary>
     public void Stop()
     {
-        _stop = true;
-        Frames?.Close();
-        _vpq.Close();
-        _demuxThread?.Join(2000);
-        _decodeThread?.Join(2000);
+        lock (_lifetimeLock)
+        {
+            _stop = true;
+            Frames?.Close();
+            _vpq.Close();
+            _demuxThread?.Join(2000);
+            _decodeThread?.Join(2000);
+        }
     }
 
     /// <inheritdoc />
     public void Dispose()
     {
-        Stop();
-        _vdec?.Dispose();
-        _adec?.Dispose();
-        _dmx?.Dispose();
+        lock (_lifetimeLock)
+        {
+            if (_disposed)
+            {
+                return;
+            }
+
+            _disposed = true;
+            Stop();
+            // Started workers release their native objects only after their last native call.
+            if (_decodeThread == null)
+            {
+                _vdec?.Dispose();
+            }
+
+            if (_demuxThread == null)
+            {
+                _adec?.Dispose();
+                _dmx?.Dispose();
+            }
+        }
     }
 }

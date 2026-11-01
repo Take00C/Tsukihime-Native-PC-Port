@@ -187,8 +187,9 @@ winget install --id BtbN.FFmpeg.LGPL.Shared.9.0 -e
 **Not needed:** Visual Studio or Build Tools, any C/C++ compiler, Ren'Py, KiriKiri, an
 emulator, Mesa.
 
-**Python tools:** Python 3.14.10 or a newer 3.14 release, with an isolated `.venv`.
-See [Python tools](../CONTRIBUTING.md#python-tools) for setup and tests.
+**Python tools:** Python 3.14.10 or a newer 3.14 security release, with an isolated `.venv`
+and the pinned `requirements-dev.txt`. See [Python tools](../CONTRIBUTING.md#python-tools)
+for the environment and advisory checks.
 The original Windows setup also used Gyan FFmpeg 9.0.2, git 2.55 and winget 1.29.
 
 **NuGet packages** are restored by `dotnet restore`, pinned in `Directory.Packages.props` **at
