@@ -52,7 +52,7 @@ internal static class Smoke
             report.Check("ffmpeg.load", true, $"FFmpeg {v.Build}, libavcodec {v.Avcodec}, libavutil {v.Avutil}, license \"{v.License}\"");
             IReadOnlyList<string> modules = FfmpegLibrary.LoadedModulePaths();
             bool local = modules.Count > 0 && modules.All(m => InFolder(m, FfmpegLibrary.RootPath));
-            report.Check("ffmpeg.app_folder", local, $"{modules.Count} FFmpeg modules loaded: {string.Join(", ", modules)}");
+            report.Check(OperatingSystem.IsLinux() ? "ffmpeg.library_folder" : "ffmpeg.app_folder", local, $"{modules.Count} FFmpeg modules loaded: {string.Join(", ", modules)}");
             foreach (string name in FfmpegLibrary.RequiredDecoders)
             {
                 DecoderInfo? d = FfmpegLibrary.FindDecoder(name);
@@ -72,7 +72,7 @@ internal static class Smoke
         string? sdlPath = Sdl.LibraryPath;
         bool sdlLocal = sdlPath is not null && Unprefixed(sdlPath).StartsWith(Unprefixed(AppContext.BaseDirectory), StringComparison.OrdinalIgnoreCase);
         report.Check("sdl.app_folder", sdlLocal,
-            sdlPath is null ? "SDL3.dll came from the runtime's default probing, not the app folder" : "SDL3.dll loaded from " + sdlPath);
+            sdlPath is null ? "SDL came from the runtime's default probing, not the app folder" : "SDL loaded from " + sdlPath);
         GlDevice device = GlDevice.Create(window.GetProcAddress);
         GlContextInfo c = window.Context;
         bool sdlSays33Core = c.CoreProfile && c.Major == 3 && c.Minor >= 3;

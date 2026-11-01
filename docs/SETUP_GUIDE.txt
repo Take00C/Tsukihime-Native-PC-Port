@@ -1,6 +1,8 @@
 Tsukihime PC port: the player's setup guide (セットアップガイド)
 
-This guide covers the Windows programs.
+This guide covers the Windows programs. For Linux requirements, setup and running the player,
+see the Linux guide (docs/LINUX.md). Sections 3, 5, 6 and the appendices also explain shared player features;
+Windows launcher pages and Windows paths apply only on Windows.
 
 This guide describes version 0.1.1. Downloaded builds may differ from the current source.
 Windows packages include SETUP_GUIDE.txt beside the programs, opened by
@@ -26,7 +28,7 @@ profile, described in section 5.7. Linked assets are supported, but this user-ma
 
 The original Windows port was developed and played against CUSA47999, update 01.01. It recognises the
 official update's eboot.bin and the 1.01 backport for older console firmware, whose game tables match.
-These historical checks do not establish end-to-end gameplay for every later build.
+These historical checks do not establish end-to-end gameplay for every later build or the Linux port.
 
 Other title IDs and the unpatched 01.00 base game are unverified. For an unknown eboot.bin, the player
 searches for and validates the tables it needs. If they are found, the launcher says
@@ -112,7 +114,7 @@ suffix matching ignores case. CUSA47999-app beside CUSA47999-patch also works.
 
 The update is identified by param.sfo category gp, or by its suffix if that file is absent.
 Its files, eboot.bin and param.sfo override the base's. A known base eboot.bin at least as new as
-the update marks it not needed.
+the update marks it not needed, unless both APP_VER values show the update is newer than the base.
 An update alone is insufficient: keep the base beside it.
 
 3.4 Checking the folder
@@ -364,7 +366,7 @@ an image elsewhere. Import backs up the current save before replacing save.dat. 
 the source image.
 
 Only one game can use a save directory at a time. --save-dir selects a separate profile, including
-settings and crash logging; see appendix B.
+settings and crash logging; see appendix B. Linux profile locations are in the Linux guide.
 
 6. For Japanese learners (日本語学習者向け)
 
@@ -378,7 +380,7 @@ In LunaTranslator use its game/process selection; in Textractor use Attach to ga
 Advance one line and select the thread named ExtTextOutW, TextOutW or GetTextExtentPoint32W.
 They carry identical text; no H-code is needed. These calls draw nothing visible.
 Config > System > Text Hooker Output disables them. Real LunaHook/LunaTranslator/Textractor
-integration was not part of the original verification.
+integration was not part of the original verification. This Windows API output does not apply on Linux.
 
 2. Text WebSocket: browser dictionary pages, off by default.
 Enable Config > System > Text WebSocket, or set text_websocket=on in your profile's

@@ -32,7 +32,7 @@ public sealed class WindowPlacementSmokeTests
         Assert.Equal((800, 450), (placed.Width, placed.Height));
         Assert.Equal((800, 450), window.WindowSize);
         window.Sync();
-        Assert.Equal((800, 450), window.PixelSize);
+        AssertPixelSize(window, 800, 450);
         Assert.InRange(placed.X, first.WorkX, first.WorkX + first.WorkWidth - 800);
         Assert.InRange(placed.Y, first.WorkY, first.WorkY + first.WorkHeight - 450);
         Assert.Equal(WindowFit.Centre(first.WorkX, first.WorkY, first.WorkWidth, first.WorkHeight, 800, 450), (placed.X, placed.Y));
@@ -46,12 +46,12 @@ public sealed class WindowPlacementSmokeTests
         Assert.False(placed.MonitorMatched);
         Assert.Equal(WindowPlacement.DisplayOf(window), placed.Display);
         window.Sync();
-        Assert.Equal((640, 360), window.PixelSize);
+        AssertPixelSize(window, 640, 360);
         Placement again = WindowPlacement.Place(window, null, null, null, null);          // no size asked: the window's own, which fits
         Assert.Equal((640, 360), (again.Width, again.Height));
         Assert.False(again.Clamped);
         window.Sync();
-        Assert.Equal((640, 360), window.PixelSize);
+        AssertPixelSize(window, 640, 360);
     }
 
     [Fact]
@@ -69,12 +69,28 @@ public sealed class WindowPlacementSmokeTests
         Assert.True(placed.X + placed.Width <= d.WorkX + d.WorkWidth && placed.Y + placed.Height <= d.WorkY + d.WorkHeight, $"{placed}: inside the work area");
         window.Sync();
         Assert.Equal((placed.Width, placed.Height), window.WindowSize);
-        Assert.Equal((placed.Width, placed.Height), window.PixelSize);
+        AssertPixelSize(window, placed.Width, placed.Height);
 
         Placement small = WindowPlacement.Resize(window, 640, 360);
         Assert.Equal((640, 360), (small.Width, small.Height));
         Assert.False(small.Clamped);
         window.Sync();
         Assert.Equal((640, 360), window.WindowSize);
+    }
+
+    private static unsafe void AssertPixelSize(GameWindow window, int width, int height)
+    {
+        Assert.Equal((width, height), window.WindowSize);
+        if (OperatingSystem.IsWindows())
+        {
+            Assert.Equal((width, height), window.PixelSize);
+            return;
+        }
+
+        float density = SDL.SDL3.SDL_GetWindowPixelDensity(window.Handle);
+        Assert.True(density > 0, "SDL did not report the window pixel density.");
+        (int pw, int ph) = window.PixelSize;
+        Assert.InRange(Math.Abs(pw - width * density), 0, 1);
+        Assert.InRange(Math.Abs(ph - height * density), 0, 1);
     }
 }

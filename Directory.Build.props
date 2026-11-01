@@ -64,7 +64,7 @@
     <TsukiFFmpegBinDir>$(MSBuildThisFileDirectory)third_party\ffmpeg\bin\</TsukiFFmpegBinDir>
   </PropertyGroup>
   <!-- only the four libraries Tsuki.Media loads (FfmpegLibrary.RequiredDlls); avfilter, avdevice and swscale of the package are 36 MB nothing uses (package R1) -->
-  <ItemGroup Condition="'$(TsukiUsesFFmpeg)' == 'true'">
+  <ItemGroup Condition="'$(TsukiUsesFFmpeg)' == 'true' and ($([System.String]::Copy('$(RuntimeIdentifier)').StartsWith('win-')) or ('$(RuntimeIdentifier)' == '' and $([MSBuild]::IsOSPlatform('Windows'))))">
     <None Include="$(TsukiFFmpegBinDir)avutil-*.dll;$(TsukiFFmpegBinDir)swresample-*.dll;$(TsukiFFmpegBinDir)avcodec-*.dll;$(TsukiFFmpegBinDir)avformat-*.dll"
           Link="%(Filename)%(Extension)"
           CopyToOutputDirectory="PreserveNewest"
@@ -73,7 +73,7 @@
   </ItemGroup>
   <Target Name="TsukiCheckFFmpegDlls"
           BeforeTargets="BeforeBuild"
-          Condition="'$(TsukiUsesFFmpeg)' == 'true' and !Exists('$(TsukiFFmpegBinDir)avcodec-63.dll')">
+          Condition="'$(TsukiUsesFFmpeg)' == 'true' and ($([System.String]::Copy('$(RuntimeIdentifier)').StartsWith('win-')) or ('$(RuntimeIdentifier)' == '' and $([MSBuild]::IsOSPlatform('Windows')))) and (!Exists('$(TsukiFFmpegBinDir)avutil-61.dll') or !Exists('$(TsukiFFmpegBinDir)swresample-7.dll') or !Exists('$(TsukiFFmpegBinDir)avcodec-63.dll') or !Exists('$(TsukiFFmpegBinDir)avformat-63.dll'))">
     <Error Code="TSUKI001"
            Text="FFmpeg DLLs not found in $(TsukiFFmpegBinDir). Run tools/setup/ffmpeg_dlls.ps1 (ARCHITECTURE 0.5)." />
   </Target>

@@ -4,7 +4,7 @@
     <None Include="$(TsukiRepoRoot)CONTRIBUTING.md" Link="CONTRIBUTING.md" CopyToPublishDirectory="PreserveNewest" Visible="false" />
     <None Include="$(TsukiRepoRoot)LICENSE" Link="LICENSE" CopyToPublishDirectory="PreserveNewest" Visible="false" />
     <None Include="$(TsukiRepoRoot)assets/branding/tsukihime-logo.png" Link="assets/branding/tsukihime-logo.png" CopyToPublishDirectory="PreserveNewest" Visible="false" />
-    <None Include="$(TsukiRepoRoot)docs/SETUP_GUIDE.md;$(TsukiRepoRoot)docs/THIRD_PARTY.md"
+    <None Include="$(TsukiRepoRoot)docs/SETUP_GUIDE.md;$(TsukiRepoRoot)docs/LINUX.md;$(TsukiRepoRoot)docs/THIRD_PARTY.md"
           Link="docs/%(Filename)%(Extension)" CopyToPublishDirectory="PreserveNewest" Visible="false" />
   </ItemGroup>
 

@@ -18,7 +18,9 @@ public sealed class PersonalBuildTests
     [Fact]
     public void ANormalBuildCarriesTheCrescentIconGroupAndNoPersonalMark()
     {
-        string exe = Built("Tsukihime.exe");
+        string host = Built(OperatingSystem.IsWindows() ? "Tsukihime.exe" : "Tsukihime");
+        Assert.True(File.Exists(host), host);
+        string exe = OperatingSystem.IsWindows() ? host : Built("Tsukihime.dll");
         Assert.True(File.Exists(exe), exe);
         byte[]? group = PeIcons.IconGroup(exe);
         Assert.NotNull(group);
@@ -34,7 +36,11 @@ public sealed class PersonalBuildTests
 
         Assert.Contains(PeIcons.ApplicationIconGroup, PeIcons.IconGroupIds(exe)!);
         Assert.Null(PeIcons.IconGroup(exe, 12345));                                           // no such group
-        Assert.Null(PeIcons.Marks(exe));                                                      // the apphost is native: no managed metadata
+        Assert.Null(PeIcons.Marks(host));                                                     // the apphost has no managed metadata
+        if (OperatingSystem.IsLinux())
+        {
+            Assert.Equal(new byte[] { 0x7F, 0x45, 0x4C, 0x46 }, File.ReadAllBytes(host)[..4]);
+        }
 
         AssemblyMarks? marks = PeIcons.Marks(Built("Tsukihime.dll"));
         Assert.NotNull(marks);

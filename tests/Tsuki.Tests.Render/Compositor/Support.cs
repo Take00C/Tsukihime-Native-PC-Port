@@ -20,7 +20,11 @@ internal static class Oracle
         get
         {
             string? env = Environment.GetEnvironmentVariable("TSUKI_PYTHON");
-            return string.IsNullOrWhiteSpace(env) ? Path.Combine(RepoRoot, ".venv", "Scripts", "python.exe") : env;
+            return string.IsNullOrWhiteSpace(env)
+                ? OperatingSystem.IsWindows()
+                    ? Path.Combine(RepoRoot, ".venv", "Scripts", "python.exe")
+                    : Path.Combine(RepoRoot, ".venv", "bin", "python")
+                : env;
         }
     }
 

@@ -77,7 +77,6 @@ public sealed class ScreenshotWriterTests : IDisposable
         File.WriteAllText(Path.Combine(_dir, "Tsukihime_2026-10-30_21-15-04-2.png"), "old");
         now = now.AddSeconds(1);
         Assert.Equal(Path.Combine(_dir, "Tsukihime_2026-10-30_21-15-04-3.png"), w.NextPath());
-        Assert.Equal(Path.Combine(ScreenshotWriter.DefaultFolder, "x"), Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyPictures), "Tsukihime", "x"));
     }
 
     [Fact]

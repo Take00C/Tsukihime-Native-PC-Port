@@ -5,17 +5,31 @@ https://ffmpeg.org, loaded from the application folder at run time:
 
   avcodec-63.dll  avformat-63.dll  avutil-61.dll  swresample-7.dll
 
-They are the unmodified DLLs of BtbN's "win64-lgpl-shared-9.0" build of FFmpeg 9.0.1
-(ffmpeg version n9.0.1-11-ge47273f4d9-20260831; winget package BtbN.FFmpeg.LGPL.Shared.9.0 9.0.1-20260831).
+They are the unmodified DLLs of BtbN's "win64-lgpl-shared-9.0" build.
+Build banner: n9.0.2-39-g7adfbe40dc-20261031.
+Official release: https://github.com/BtbN/FFmpeg-Builds/releases/tag/autobuild-2026-10-31-12-59
+Binary archive: ffmpeg-n9.0.2-39-g7adfbe40dc-win64-lgpl-shared-9.0.zip on that release page.
 
 Licence: GNU Lesser General Public License, version 3 or later (the build is configured with --enable-version3; avcodec_license()
 answers "LGPL version 3 or later"). The licence text is FFmpeg-LGPL.txt next to this file; because the LGPL v3 incorporates the terms of
 the GNU General Public License v3, that text is FFmpeg-GPL-3.0.txt beside it. No GPL component is in the build.
 
-Source: the FFmpeg source of that tag is at https://git.ffmpeg.org/ffmpeg.git (tag n9.0.1, commit e47273f4d9 of the release/9.0
-branch is the exact build point) and https://github.com/FFmpeg/FFmpeg/releases/tag/n9.0.1; the exact binaries, their build scripts and
-configuration are published on the release page https://github.com/BtbN/FFmpeg-Builds/releases ("ffmpeg-n9.0.1-11-ge47273f4d9-win64-lgpl-shared-9.0",
-the 2026-08-31 autobuild; the same release carries the matching source archive). A copy of that source is available on request from the
-port's GitHub repository (an issue is enough), and a release may carry the source archive as a second file. The port does not link against
-FFmpeg: the DLLs are loaded dynamically (FFmpeg.AutoGen bindings, MIT), so they can be replaced by another build of the same major versions,
-as the LGPL asks.
+FFmpeg source commit: 7adfbe40dcde598f93a6963d2f7b22cd75202ccc on release/9.0, 39 commits after n9.0.2.
+The n9.0.2 release tag is not this build's source revision.
+Source: https://github.com/FFmpeg/FFmpeg/commit/7adfbe40dcde598f93a6963d2f7b22cd75202ccc
+Source archive: https://github.com/FFmpeg/FFmpeg/archive/7adfbe40dcde598f93a6963d2f7b22cd75202ccc.tar.gz
+
+BtbN build scripts commit: 5031c6f1082414e53688d39e521849905071070d, used by the dated autobuild.
+Build scripts: https://github.com/BtbN/FFmpeg-Builds/tree/5031c6f1082414e53688d39e521849905071070d
+Build scripts archive: https://github.com/BtbN/FFmpeg-Builds/archive/5031c6f1082414e53688d39e521849905071070d.tar.gz
+The build uses ./build.sh win64 lgpl-shared 9.0, with addins/9.0.sh, variants/win64-lgpl-shared.sh,
+the dependency recipes in scripts.d/, their patches in patches/, and the toolchain in images/base-win64/.
+The scripts normally fetch the moving release/9.0 branch. To rebuild this revision, pin that checkout to the exact FFmpeg
+commit above and use --extra-version=20261031. Download the two source archives separately from the links above.
+The BtbN archive contains build and dependency recipes, not the FFmpeg source. Neither source archive is included in the binary ZIP.
+
+The port loads the DLLs dynamically through the FFmpeg.AutoGen bindings, MIT, so they can be replaced by another build of the
+same major versions, as the LGPL asks.
+
+Build configuration recorded in all four DLLs:
+--prefix=/ffbuild/prefix --pkg-config-flags=--static --pkg-config=pkg-config --cross-prefix=x86_64-w64-mingw32- --arch=x86_64 --target-os=mingw32 --enable-version3 --disable-debug --enable-shared --disable-static --disable-w32threads --enable-pthreads --enable-iconv --enable-zlib --enable-libxml2 --enable-libvmaf --enable-fontconfig --enable-libharfbuzz --enable-libfreetype --enable-libfribidi --enable-lcms2 --enable-vulkan --enable-libdav1d --enable-libvorbis --enable-librav1e --enable-librsvg --disable-libxcb --disable-xlib --disable-libpulse --enable-gmp --enable-lzma --enable-liblcevc-dec --enable-opencl --enable-amf --enable-libaom --disable-avisynth --enable-chromaprint --disable-libdavs2 --disable-libdvdread --disable-libdvdnav --disable-libfdk-aac --enable-ffnvcodec --enable-cuda-llvm --disable-frei0r --enable-libgme --enable-libkvazaar --enable-libaribb24 --enable-libaribcaption --enable-libass --enable-libbluray --enable-libjxl --enable-libmp3lame --enable-libopus --enable-libplacebo --enable-librist --enable-libssh --enable-libtheora --enable-libvpx --enable-libwebp --enable-libzmq --enable-lv2 --enable-libvpl --enable-openal --enable-liboapv --enable-libopencore-amrnb --enable-libopencore-amrwb --enable-libopenh264 --enable-libopenjpeg --enable-libopenmpt --disable-librubberband --enable-schannel --enable-sdl2 --enable-libsnappy --enable-libsoxr --enable-libsrt --enable-libsvtav1 --enable-libtwolame --enable-libuavs3d --disable-libdrm --enable-vaapi --enable-vapoursynth --disable-libvidstab --enable-libvvenc --disable-whisper --disable-libx264 --disable-libx265 --disable-libxavs2 --disable-libxvid --enable-libzimg --enable-libzvbi --extra-cflags=-DLIBTWOLAME_STATIC --extra-cxxflags= --extra-libs=-lgomp --extra-ldflags=-pthread --extra-ldexeflags= --cc=x86_64-w64-mingw32-gcc --cxx=x86_64-w64-mingw32-g++ --ar=x86_64-w64-mingw32-gcc-ar --ranlib=x86_64-w64-mingw32-gcc-ranlib --nm=x86_64-w64-mingw32-gcc-nm --extra-version=20261031

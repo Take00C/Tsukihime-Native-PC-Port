@@ -275,7 +275,7 @@ internal sealed class GameApp : IDisposable
     internal static string PlayerMessage(Exception e, Language language = Language.En) => e switch
     {
         StartupFailure s => s.Message,
-        FfmpegMissingException f => PortText.Format(PortString.FfmpegMissing, language, string.Join(", ", f.MissingFiles)),
+        FfmpegMissingException f => PortText.Format(OperatingSystem.IsLinux() ? PortString.LinuxFfmpegMissing : PortString.FfmpegMissing, language, string.Join(", ", f.MissingFiles)),
         _ => e.Message,
     };
 

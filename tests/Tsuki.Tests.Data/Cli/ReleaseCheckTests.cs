@@ -10,6 +10,10 @@ namespace Tsuki.Tests.Data.Cli;
 /// </summary>
 public sealed class ReleaseCheckTests : IDisposable
 {
+    private static string HostName => OperatingSystem.IsWindows() ? "Tsukihime.exe" : "Tsukihime";
+
+    private static string IconName => OperatingSystem.IsWindows() ? "Tsukihime.exe" : "Tsukihime.dll";
+
     private readonly string _root = Path.Combine(Path.GetTempPath(), "tsuki-k28-release-" + Guid.NewGuid().ToString("N"));
     private readonly byte[] _crescent;
 
@@ -48,7 +52,7 @@ public sealed class ReleaseCheckTests : IDisposable
     {
         string folder = Path.Combine(_root, name);
         Directory.CreateDirectory(folder);
-        foreach (string file in new[] { "Tsukihime.exe", "Tsukihime.dll" })
+        foreach (string file in new[] { HostName, "Tsukihime.dll" })
         {
             File.Copy(Path.Combine(AppContext.BaseDirectory, file), Path.Combine(folder, file));
         }
@@ -63,7 +67,7 @@ public sealed class ReleaseCheckTests : IDisposable
         var dumped = new List<string>();
         ReleaseCheckResult result = ReleaseCheck.Run(folder, _crescent, (program, frames) => dumped.Add($"{program}:{frames.Count}"));
         Assert.True(result.Ok, string.Join("; ", result.Problems));
-        Assert.Contains(result.Notes, n => n.StartsWith("Tsukihime.exe: the icon group is the crescent", StringComparison.Ordinal));
+        Assert.Contains(result.Notes, n => n.StartsWith(IconName + ": the icon group is the crescent", StringComparison.Ordinal));
         Assert.Contains(result.Notes, n => n.StartsWith("Tsukihime.dll: version", StringComparison.Ordinal) && n.EndsWith("no personal mark", StringComparison.Ordinal));
         Assert.Equal([$"Tsukihime:{FaceIcon.DecodeIco(_crescent).Count}"], dumped);
 
@@ -99,7 +103,7 @@ public sealed class ReleaseCheckTests : IDisposable
     {
         // the icon images sit in the executable's resources: changing a few pixels of the first one keeps the file a valid PE image with another icon
         string folder = NormalFolder("icon");
-        string exe = Path.Combine(folder, "Tsukihime.exe");
+        string exe = Path.Combine(folder, IconName);
         byte[] bytes = File.ReadAllBytes(exe);
         byte[] group = PeIcons.IconGroup(exe)!;
         IReadOnlyList<IconFrame> frames = FaceIcon.DecodeIco(group);
@@ -121,7 +125,18 @@ public sealed class ReleaseCheckTests : IDisposable
         ReleaseCheckResult result = ReleaseCheck.Run(folder, _crescent);
         Assert.False(result.Ok);
         Assert.Single(result.Problems);
-        Assert.StartsWith("Tsukihime.exe carries an icon that is not the port's crescent", result.Problems[0], StringComparison.Ordinal);
+        Assert.StartsWith(IconName + " carries an icon that is not the port's crescent", result.Problems[0], StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ALinuxHostWithoutItsPlayerAssemblyIsRefused()
+    {
+        string folder = Path.Combine(_root, "linux-host-only");
+        Directory.CreateDirectory(folder);
+        File.WriteAllBytes(Path.Combine(folder, "Tsukihime"), [0x7F, 0x45, 0x4C, 0x46]);
+        ReleaseCheckResult result = ReleaseCheck.Run(folder, _crescent);
+        Assert.False(result.Ok);
+        Assert.Equal("Tsukihime.dll is not in " + folder + ": the Linux player assembly is missing", Assert.Single(result.Problems));
     }
 
     [Fact]
