@@ -187,8 +187,9 @@ winget install --id BtbN.FFmpeg.LGPL.Shared.9.0 -e
 **Not needed:** Visual Studio or Build Tools, any C/C++ compiler, Ren'Py, KiriKiri, an
 emulator, Mesa.
 
-**Already present and used:** Python 3.11 with `.venv` (numpy, pillow, pytest, numba,
-capstone, unicorn), Gyan FFmpeg 9.0.2, git 2.55 and winget 1.29.
+**Python tools:** Python 3.14.10 or a newer 3.14 release, with an isolated `.venv`.
+See [Python tools](../CONTRIBUTING.md#python-tools) for setup and tests.
+The original Windows setup also used Gyan FFmpeg 9.0.2, git 2.55 and winget 1.29.
 
 **NuGet packages** are restored by `dotnet restore`, pinned in `Directory.Packages.props` **at
 the repository root** (decision 6; not under `src/`, because `tests/` is outside `src/` and both
@@ -293,7 +294,7 @@ Directory.Build.props      (repository root) net10.0, Nullable, TreatWarningsAsE
                            third_party/ffmpeg/bin/*.dll next to a project's output
 Directory.Packages.props   (repository root) pinned package versions (0.5)
 src/
-  Tsuki.slnx       the solution: the projects below, the three test projects and the spikes
+  Tsuki.slnx       the Windows solution, including the launcher and development spikes
   Tsuki.Data       pure C#. Ports of the tsuki readers: HED8/HED4/NAM32/NAM8/MRG/mrgd00, MZX0
                    (+ XOR 0xFF scripts, LV wrapper), MZP (PAL8/PAL4/HEP8/RGB565+LO+A, borders,
                    tile flags), catalog + picture names + NAM search, script_text, allscr +
@@ -316,6 +317,7 @@ src/
                    folder dialog, message boxes, user folders
   Tsuki.Ui         screens: state machines + draw lists (9); the small UI kit for tier-1 screens
   Tsuki.App        Program.cs: first-run setup, main loop, error handling, crash log
+  Tsuki.Launcher   Windows WPF launcher, profile management, shortcuts and ready checks
   Tsuki.Cli        verify | dump | trace | explore | render-checkpoint | decode-all | save-check
   Tsuki.DevBridge  dev builds only: JSON command channel into the running app (10.1)
   Spikes/          S1.AudioLoop, S2.MovieSync, S3.Blend1080, S4.BigPicture: the throwaway M0
@@ -327,6 +329,8 @@ tests/
   Tsuki.Tests.Synthetic   no game data: CI anywhere
   Tsuki.Tests.Data        needs TSUKI_GAME_DIR + samples/golden; skips cleanly otherwise
   Tsuki.Tests.Render      needs a GL context (the local GPU)
+tools/tsuki/       Python reference readers for containers, images, text, scripts and audio
+tools/eboot/       Python SELF/ELF, symbols, disassembly, table and save readers
 tools/oracle/      Python: writes golden files from the user's copy (10.1); replays C# traces
 tools/setup/       PowerShell: FFmpeg DLL copy, environment check, hook install
 third_party/ffmpeg LOCAL ONLY (gitignored)
@@ -425,7 +429,7 @@ with a synthetic clock and no GPU. The frame choice is shell code (`Tsuki.Media`
    the CUSA47999 folder. The folder is only ever opened read-only. No build carries a
    hard-coded game path: every program, tool and test reads `TSUKI_GAME_DIR` (or its `--game`
    argument) and says so when it is missing (decision 3; the earlier dev-only default path was
-   removed before publication, `docs/PUBLISHING.md` P1-P6).
+   removed before publication; see the [release preflight](PUBLISHING.md#2-release-preflight)).
 2. Build check (RR 3.3).
    - The eboot must be 12,767,802 bytes with the expected SHA-256 (about 30 ms).
    - The structural probes and the FORMATS 2 counts must match: 12 triplet archives with
@@ -438,7 +442,7 @@ with a synthetic clock and no GPU. The frame choice is shell code (`Tsuki.Media`
    - No cache is written: the tables are small and the extraction is redone on every start.
      (The original plan allowed an optional cache under `%LOCALAPPDATA%`; nothing uses one.)
 4. Locations, as built (the original plan said `%APPDATA%\TsukihimePort\settings.json` and
-   `%USERPROFILE%\Saved Games\TsukihimePort\`; the README's "Saves and settings" is the reference):
+   `%USERPROFILE%\Saved Games\TsukihimePort\`; the [setup guide](SETUP_GUIDE.md) is the reference):
    - the 140 save slots, the system data and the config in one file, `%APPDATA%\Tsuki\save.dat`
      (the previous generation as `save.dat.bak`; `--save-dir <dir>` chooses another folder);
    - the PC port's own choices in `%APPDATA%\Tsuki\settings.ini` beside it, the remembered game

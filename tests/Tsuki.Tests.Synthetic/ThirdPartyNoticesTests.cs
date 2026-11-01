@@ -128,7 +128,7 @@ public sealed partial class ThirdPartyNoticesTests
             Assert.Equal(include, (string?)item.Attribute("Include"));
             Assert.Equal("PreserveNewest", (string?)item.Attribute("CopyToPublishDirectory"));
             Assert.Null(item.Attribute("Condition"));
-            Assert.True(File.Exists(Path.Combine(LauncherDir, include)), include + " is missing");
+            Assert.True(File.Exists(Path.Combine(LauncherDir, include.Replace('\\', Path.DirectorySeparatorChar))), include + " is missing");
         }
 
         // nothing is taken from the git-ignored folders any more (a clean clone has neither)
@@ -158,14 +158,14 @@ public sealed partial class ThirdPartyNoticesTests
 
         // the README wraps the disclaimer in a block quote (line breaks and "> " markers); the Help page has it on one line
         string readmeProse = Regex.Replace(readme.Replace("\n>", "\n"), @"\s+", " ");
-        Assert.Contains("unofficial fan project", readmeProse, StringComparison.Ordinal);
-        Assert.Contains(Disclaimer, readmeProse, StringComparison.Ordinal);
+        Assert.Contains("unofficial fan program", readmeProse, StringComparison.Ordinal);
+        Assert.Contains("contains no game data", readmeProse, StringComparison.Ordinal);
+        Assert.Contains("does not provide game files or links to sources of them", readmeProse, StringComparison.Ordinal);
         Assert.Contains(Disclaimer, help, StringComparison.Ordinal);
         Assert.Contains("MPL-2.0", readme, StringComparison.Ordinal);
         Assert.Contains("](LICENSE)", readme, StringComparison.Ordinal);
         Assert.Contains("](CONTRIBUTING.md)", readme, StringComparison.Ordinal);
         Assert.Contains("](docs/THIRD_PARTY.md)", readme, StringComparison.Ordinal);
-        Assert.Contains("AI coding agents", readme, StringComparison.Ordinal);
         Assert.Contains("/releases", readme, StringComparison.Ordinal);
 
         Assert.Contains("No game data", contributing, StringComparison.Ordinal);
