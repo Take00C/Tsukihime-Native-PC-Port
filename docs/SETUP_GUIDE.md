@@ -1,115 +1,74 @@
 # Tsukihime PC port: the player's setup guide (セットアップガイド)
 
-This guide is for players, not developers. It tells you what the port is, what you need, how to get your
-own game files into the shape the port reads, how to start it the first time, how to play, what Japanese
-learners can switch on, and what to do when something goes wrong. It describes version 0.1.0 of the
-programs (`Tsukihime.exe` and `TsukihimeLauncher.exe`) as they were on 2026-10-30; the launcher's Help page
-and the README carry the same facts in shorter form. The download holds this guide as `SETUP_GUIDE.txt` next
-to the programs, and the launcher's **Help & about** page has a button, *Open the setup guide*, that opens it.
+**This guide covers the Windows programs.**
 
-The short version: unzip the port anywhere, start `TsukihimeLauncher.exe`, point it at your own extracted
-`CUSA47999` game folder on the Game files page, press PLAY.
+This guide describes version 0.1.1. Downloaded builds may differ from the current source.
+Windows packages include `SETUP_GUIDE.txt` beside the programs, opened by
+**Help & about > Open the setup guide**. The Markdown copy is in `docs/`.
 
----
+To start: extract the whole program archive, run `TsukihimeLauncher.exe`, choose your extracted
+`CUSA47999` folder on **Game files**, then press **PLAY**.
 
 ## 1. What this is (これは何か)
 
-**Tsukihime PC port is an unofficial fan project.** It is not affiliated with, endorsed by or supported by
-TYPE-MOON, Aniplex, HuneX or Sony. TSUKIHIME and all of its art, music, text and characters belong to their
-rights holders.
+**Tsukihime PC port is an unofficial fan program**, unaffiliated with TYPE-MOON, Aniplex, HuneX or Sony.
+TSUKIHIME and its assets belong to their rights holders.
 
-It is a **native Windows version of the engine** of *TSUKIHIME -A piece of blue glass moon-* (PlayStation 4,
-title id CUSA47999): a clean reimplementation, written from a study of the game's data formats and of the
-behaviour of the console program. It is not an emulator and it does not run the PS4 program. Every time it
-starts, it reads the files of **your own copy of the game** and plays them with sound, movies, menus, saves,
-backlog, rewind, flowchart and gallery, in Japanese, English, Simplified Chinese and Traditional Chinese.
+It reimplements the engine of *TSUKIHIME -A piece of blue glass moon-* for PS4. It reads your extracted
+game files directly, without an emulator or conversion, and supports the languages present in your copy:
+Japanese, English, Simplified Chinese and Traditional Chinese.
 
-**The port contains no game data.** The download holds the port's own programs and libraries and nothing
-from the game: no pictures, no sound, no text, no fonts, no `eboot.bin`. You must supply the game files
-yourself, from a copy you own. **Downloading a game you do not own is piracy; this project does not support
-it, and does not provide game files or links to any source of them.**
-
-The port **never writes into your game folder**. It opens the files read-only. Your saves and settings live
-in your Windows profile (section 5.7).
+**No game data is included.** Supply files from your own copy. This program does not provide game files
+or links to sources of them. The game folder is read-only to the player; saves and settings go into your
+profile, described in section 5.7. Linked assets are supported, but this user-managed folder is not a sandbox.
 
 ### 1.1 The verified build, and what is untested
 
-The port was played end to end on **one** build: the Asian release CUSA47999 (the one that carries
-Japanese, English and both Chinese variants), application version **01.01**, that is the base game with
-the official 1.01 update applied. The program knows that update's `eboot.bin` by its size and SHA-256 and
-shows it as *known build: CUSA47999 01.01 (official 1.01 update eboot)*. A second `eboot.bin` is known too,
-the 1.01 program file of the "backport" update package made for older console firmware
-(*CUSA47999 01.01 (1.01 eboot of the 5.05 / 6.72 / 7.xx backport)*); its game tables are byte for byte the
-same as the official one's, so it runs the same way.
+The original Windows port was developed and played against **CUSA47999, update 01.01**. It recognises the
+official update's `eboot.bin` and the 1.01 backport for older console firmware, whose game tables match.
+These historical checks do not establish end-to-end gameplay for every later build.
 
-Honestly untested, because no such copy was available while the port was built:
+Other title IDs and the unpatched 01.00 base game are unverified. For an unknown `eboot.bin`, the player
+searches for and validates the tables it needs. If they are found, the launcher says
+*Ready, but not the verified build*. Missing tables stop startup and are named in the log.
 
-- **Other releases** of the game (a Japan-only release, any release with another title id) and a **01.00
-  base game without the update**. The port does not refuse them outright: for any `eboot.bin` it does not
-  know, it searches the program file for the tables it needs and checks each one before use. If every table
-  is found, the game runs and the launcher says *Ready, but not the verified build*. If one is missing, the
-  game refuses to start with a message that names the build and the missing tables and asks you to report
-  it with the log (section 7).
-- **Korean.** The Asian release has a Korean slot without real text or fonts, so Korean is never offered.
-- **A real game pad in hand.** Pads are supported through SDL3 (PlayStation and Xbox-style pads, button
-  prompts that follow the pad), and the mapping was tested with simulated input; nobody plugged a pad in
-  during development.
-- **A second monitor**, and the text-hooker programs of section 6 (LunaHook, LunaTranslator, Textractor):
-  the port does what those programs' documentation says they hook, but they were not run against it.
-
----
+Only languages with usable text and fonts are offered. The Asian release's Korean slot lacks these.
+Real controllers, a second monitor and LunaHook/LunaTranslator/Textractor were not exercised in the
+original verification; simulated controller input and the native text-output functions were checked.
 
 ## 2. What you need (必要なもの)
 
-| You need | Notes |
+| You need | Details |
 |---|---|
-| **Your own copy of the PS4 game** | *TSUKIHIME -A piece of blue glass moon-* for PlayStation 4, as extracted files (section 3). The game folder is about **44 GB** (44.1 GB as Windows counts it); the separate update folder, if you keep it, about 400 MB. |
-| **Windows 10 or 11, 64-bit** | The programs are 64-bit Windows programs. Everything they need (the .NET runtime, SDL3, FFmpeg) is in the download; there is nothing to install. |
-| **Any graphics with OpenGL 3.3** (no gaming card needed) | Laptop integrated graphics are fine: Intel HD / UHD / Iris (about 2012 on) and AMD Radeon integrated graphics all have it, as does any desktop graphics card of the last ten years. The port draws a 1920 x 1080 picture with a few layers and adapts its picture memory to the graphics chip (512 MB at least). The game checks OpenGL 3.3 when it starts and says *Your graphics driver does not provide OpenGL 3.3* when it fails. Remote-desktop sessions and some virtual machines have no OpenGL 3.3. |
-| **Disk space** | About **44 GB** for the game files plus about **260 MB** for the port (the zip is about 105 MB, unpacked about 250 MB), plus a few MB for saves and screenshots. The game files can sit on any drive, an external one too; the game reads them in place and does not copy them. |
-| **Input** | A keyboard and a mouse, or a game pad. |
-| **Sound** | Any Windows audio device. The game also runs without one. |
-
----
+| Your own extracted PS4 game | `CUSA47999`, about **44 GB**. A separate update uses about 400 MB. See section 3. |
+| Windows 10 or 11, 64-bit | The download includes .NET, SDL3 and FFmpeg. No separate .NET installation, Python or emulator is needed to play. |
+| OpenGL 3.3 graphics driver | Integrated graphics work if their driver supports OpenGL 3.3. The game checks at startup. Remote Desktop and some virtual machines do not provide it. |
+| Disk space | About **260 MB** for the Windows program, plus game files, saves and screenshots. The game can stay on another drive, including an external drive. |
+| Input and sound | Keyboard and mouse or a controller. Any Windows audio device works; the game can also run without one. |
 
 ## 3. Getting your game files (ゲームデータの用意)
 
 ### 3.1 What the port reads
 
-The port reads the game's **extracted application folder**: the folder that holds `eboot.bin` (the game's
-program file), `image\` (the picture, sound, text and movie archives) and `sce_sys\` (with `param.sfo`, the
-game's description). Extraction tools name this folder after the title id, **`CUSA47999`**. If you also
-have the game's **update (patch)**, it is either already merged into that folder or sits in a second folder
-beside it; both are fine (section 3.3).
-
-There are two ways to such a folder, and both start from a copy you own.
+Choose an **extracted application folder** containing `eboot.bin`, `image\`, `data\` and
+`sce_sys\param.sfo`. It is normally called `CUSA47999`. An update may be merged into this folder or kept
+beside it as described in section 3.3. Encrypted packages and console installation packages cannot be
+played directly.
 
 ### 3.2 Two routes
 
-**Route A: dump your own copy from your own PS4.** A PlayStation 4 that can run homebrew software can
-copy an installed game (disc or digital) to a USB drive with a game-dumping application, as a `.pkg` file
-or directly as the extracted folder. The **shadPS4** emulator project documents how its users dump their
-own games; follow its official documentation and nothing else:
-<https://github.com/shadps4-emu/shadPS4> (the README and the `documentation` folder; the project's wiki
-pages belong to the same repository). This guide does not describe how to run homebrew on a console and
-does not link to anything but that project page. Dump the base game and, if the update is installed on
-the console, the update as well.
+- **Dump your own copy from your PS4.** Follow the official shadPS4 documentation linked from
+  <https://github.com/shadps4-emu/shadPS4>. Dump the base game and its installed update. A dumping tool
+  may produce extracted files or `.pkg` backups.
+- **Extract your own `.pkg` backups.** Use a PKG extraction tool for the base game and, separately, its
+  update. The shadPS4 documentation describes the tools its community uses. The player cannot open a
+  `.pkg`: extract it first, then choose the resulting folder. A 1.01 backport update is recognised too.
 
-**Route B: you already have your own copy as `.pkg` backups.** A `.pkg` is a sealed package; the port
-cannot read it (if you point the launcher at one it answers *A .pkg file was chosen: extract it first, then
-choose the extracted CUSA47999 folder*). Extract the game `.pkg`, and then the update `.pkg` if you have
-one, with a PKG extraction tool into a folder of your choice. The shadPS4 documentation above describes the
-tools its community uses for this; the port's own messages say the same (*Extract it first: shadPS4, or a
-PKG extractor*). If your update came as a "backport" package for older console firmware, that is fine
-too: its program file is one of the two the port knows.
-
-**Never download games, licence keys or console firmware.** A download of a game you do not own is piracy
-and is not supported here.
+This guide does not cover enabling homebrew or provide game, licence-key or firmware downloads.
 
 ### 3.3 What the finished folder looks like
 
-After extraction you have one of these two shapes (the parent folder `D:\Games\` is an example; any drive
-and any parent folder will do):
+Example layout; any parent folder or drive is fine:
 
 ```
 D:\Games\
@@ -137,152 +96,103 @@ D:\Games\
       allpac3.hed  allpac3.mrg  allscr.mrg  script_text.mrg
 ```
 
-**Where the update folder goes.** Side by side with the game folder, in the same parent, under the game
-folder's name plus a suffix: `CUSA47999-patch` (some PKG extractors), `CUSA47999-UPDATE` (shadPS4),
-`CUSA47999_patch`, `CUSA47999-update` or `CUSA47999_update`, in any letter case. A base folder named
-`CUSA47999-app` next to `CUSA47999-patch` is understood too. The port recognises an update folder by its
-`param.sfo` (category `gp`), or by the suffix when there is no `param.sfo`. The two folders are read **as
-one game**: the update's files take precedence over the base's, and the update's `eboot.bin` and
-`param.sfo` are the ones that count, as on the console. There is one exception: when the game folder's own
-`eboot.bin` is already a known 1.01 program file (a merged dump with a leftover update folder beside it, as
-some extractors' install step leaves behind), the game folder is used as it is and the launcher notes that
-the update folder *is not needed*.
+Keep a separate update beside the base under the same parent. Recognised names are
+`CUSA47999-patch`, `CUSA47999-UPDATE`, `CUSA47999_patch`, `CUSA47999-update` and `CUSA47999_update`;
+suffix matching ignores case. `CUSA47999-app` beside `CUSA47999-patch` also works.
 
-An update folder **alone** cannot be played: the launcher says *Only the update folder was found; the base
-game must be beside it*.
+The update is identified by `param.sfo` category `gp`, or by its suffix if that file is absent.
+Its files, `eboot.bin` and `param.sfo` override the base's. A known base `eboot.bin` at least as new as
+the update marks it *not needed*.
+An update alone is insufficient: keep the base beside it.
 
 ### 3.4 Checking the folder
 
-Start `TsukihimeLauncher.exe`, open **Game files**, press **Browse…** and choose the folder. You may choose
-the `CUSA47999` folder itself, the folder above it (the game is found one or two levels down), a folder
-inside it (`image\`, `data\`, `sce_sys\`) or the file `eboot.bin`: all lead to the same game. You may also
-type or paste the path into the box and press Enter.
+In **Game files > Browse…**, select the game folder. You may also select a parent up to two levels above
+it, its `image\`, `data\` or `sce_sys\` folder, or `eboot.bin`. To enter a path manually, paste it and
+press Enter. If several games are found, select the exact game folder.
 
-A good folder shows, on the Game files page:
-
-- **Status**: *Ready: this is the game the port was made for* (the verified build), or *Ready, but not the
-  verified build: …* (another build whose tables were all found; the game runs).
-- **Title and version**: `CUSA47999 · version 01.01`. The base package's own `param.sfo` says 01.00, so a
-  merged dump adds *(param.sfo says 01.00)*; the version shown is the one the program file is identified as.
-- **Build**: *known build: CUSA47999 01.01 (official 1.01 update eboot)*, with a note about an update folder
-  beside the game when there is one (*its files take precedence*, or *is not needed*).
-- **Languages**: `日本語, English, 简体中文, 繁體中文` (the languages your copy carries; a language that is
-  missing from your dump is not offered anywhere).
-- **Size on disk**: about 44 GB. **Build checks**: all passed, for example *78 of 78 passed*.
-  **Contents**: *20 archives and data files, 134 movies*.
-
-A folder with a problem shows the reason under the path box (section 7.1) and the failed checks as a list.
-
----
+Check **Status**, **Title and version**, **Build**, **Languages** and **Build checks**. The supported
+update shows `CUSA47999 · version 01.01`; a merged dump may add *param.sfo says 01.00* because its base
+metadata was retained. A validated unknown build can run with a warning. Missing languages are not
+selectable. The known layout has about 44 GB, 20 archives and data files, and 134 movies.
+Failed checks list missing or damaged files; section 7 gives remedies.
 
 ## 4. First start (はじめての起動)
 
 ### 4.1 Unpack
 
-Unzip the release into any folder you like, for example `D:\Tsukihime PC port\`. There is no installer and
-nothing is written to the registry. The folder holds `TsukihimeLauncher.exe` (the launcher),
-`Tsukihime.exe` (the game), their libraries (about 280 files: the .NET runtime, `SDL3.dll`, the four FFmpeg
-libraries), `README.md`, this guide as `SETUP_GUIDE.txt`, and a `licenses\` folder with the third-party
-notices. Keep all of it together: the game loads its libraries from its own folder, and the launcher starts
-`Tsukihime.exe` from beside itself.
+Extract the whole archive into a folder you can write to, for example `D:\Tsukihime PC port\`.
+Keep `TsukihimeLauncher.exe`, `Tsukihime.exe`, their runtime and native libraries, `README.md`,
+`SETUP_GUIDE.txt`, `docs\`, `assets\` and `licenses\` together. There is no installer or registry setup.
+To update, close both programs and extract the new archive over the old program folder or into a new
+folder. Your existing `%APPDATA%\Tsuki` saves, settings and remembered game folder remain separate.
 
-The programs are not code-signed, so Windows may show a SmartScreen notice the first time you start one
-("Windows protected your PC"): *More info*, then *Run anyway*. That is a Windows notice about unknown
-publishers, not a finding about the file.
+The programs are unsigned. If Windows SmartScreen blocks a download you trust, **More info > Run anyway**
+starts it. This notice identifies an unknown publisher; it is not a security assessment of the build.
 
 ### 4.2 The launcher
 
-`TsukihimeLauncher.exe` is the front door. Its sidebar has seven pages: **Play**, **Game files**,
-**Display**, **Language & sound**, **Controls**, **Saves**, **Help & about**. The footer shows a status line
-(the window size or monitor, the mode, the language, the button prompts), a **Log** button and a big
-**PLAY** button. The launcher itself is in English; the game is in the language you choose.
-
-Only one launcher runs at a time (*The Tsukihime launcher is already open*), and only one game.
+The English launcher has seven pages: **Play**, **Game files**, **Display**, **Language & sound**,
+**Controls**, **Saves**, **Help & about**. The footer has status, **Log** and **PLAY**.
+Only one launcher runs at a time; reopening it brings the existing window forward.
 
 ### 4.3 Game files
 
-The first thing to do: **Game files > Browse…**, choose your `CUSA47999` folder (section 3.4). The launcher
-checks it (a moment: it reads the program file and lists the archives) and remembers it
-in `%APPDATA%\Tsuki\game_dir.txt`, where the game reads it too. Nothing in the folder is changed. A folder
-that is not the game is **not** remembered, and the sentence under the box says why.
+First select your game through **Game files > Browse…**, as in section 3.4. A valid folder is remembered
+in `%APPDATA%\Tsuki\game_dir.txt`, shared with the player. Invalid choices are explained and not saved.
 
 ### 4.4 The Ready check
 
-Back on **Play**, the **Ready check** card has five rows, each with a check mark or a warning sign. A row
-with a warning has a **Fix** link that opens the page where it is fixed.
+On **Play**, read all five **Ready check** rows. A warning's **Fix** link opens the relevant page.
 
-| Row | What it checks | What it says when it is fine |
-|---|---|---|
-| **Game folder** | The folder is set and holds the game; which build | *CUSA47999 found, version 01.01: verified build* (and *update folder … beside it* when there is one). *… : other version of a known release … tables found by content* is a warning with a Fix link: the game runs, but on a build the port has not played. |
-| **Game files** | The archives, the movies and the program tables | *20 archives and 134 movies verified* (or *checked; 66 tables located by content in 0.4 s* for another build) |
-| **Game program** | `Tsukihime.exe` and the FFmpeg libraries are next to the launcher | *Tsukihime.exe and the FFmpeg libraries found* |
-| **Graphics** | The name of your graphics adapter | *… ; OpenGL 3.3 is checked at start*. The launcher cannot test OpenGL itself; the game does, in its first second. |
-| **Saves** | The save folder can be written; what `save.dat` holds | *No saves yet; they are created on the first play* or *12 save slots in %APPDATA%\Tsuki* |
-
-The chips under the banner say the same in one line: `CUSA47999 · game version 01.01`, plus *not the
-verified build* for another build, plus the launcher's version.
+| Row | What to check |
+|---|---|
+| Game folder | The intended game and build are selected. A validated unknown build remains a warning. |
+| Game files | Required archives, movies and program tables pass their checks. |
+| Game program | `Tsukihime.exe` and all four FFmpeg DLLs are beside the launcher. |
+| Graphics | Your graphics adapter is listed. OpenGL 3.3 is checked by the game at startup. |
+| Saves | The profile is writable. No saves yet is normal on first launch. |
 
 ### 4.5 Quick settings, Display, Language, Controls
 
-**Quick settings** (Play page): the game language (only the languages your copy carries are shown), a
-**Fullscreen** switch, the **Button prompts** style and the **Desktop shortcut** row. The same choices with
-more room are on their own pages:
+The Play page offers language, Fullscreen, Button prompts and Desktop shortcut. Detailed settings are on:
 
-- **Display**: **Fullscreen** (borderless fullscreen on the chosen monitor; off, the game opens as a window),
-  **VSync** (on by default; turn it off only if the picture stutters), the **Window size** presets
-  (1280 × 720, 1600 × 900, 1920 × 1080, 2560 × 1440: only the ones that fit the chosen monitor are offered;
-  the default is 1600 × 900), the **Monitor** to open on, and the graphics adapter's name. The game's
-  window is a real window with a title bar, centred, never larger than 90 % of the monitor's work area (a
-  size that does not fit is scaled down, 16:9 kept; the note under the presets says the size the game will
-  open with), and a size you drag the window to is remembered. In the game, **Alt+Enter** or **F11** and
-  **Config > System > Display Mode / Window Size** change the same things, and the launcher shows what the
-  game last chose.
-- **Language & sound**: four tiles for the game language (Japanese, English, Simplified Chinese,
-  Traditional Chinese). It takes effect at the next start; inside the game, Config switches it at once,
-  and the window title follows (月姫 / TSUKIHIME / 月姬 -A piece of blue glass moon-). The voices are
-  Japanese in every language, as in the original. Volumes are **not** set here: they are saved with your
-  progress, so they live in the game's own **Config > Sound**.
-- **Controls**: **Button prompts** (*Auto* shows key caps for the keyboard and mouse, the game's own
-  PlayStation icons for a PlayStation pad and Xbox glyphs for any other pad, following the device you used
-  last; *Keyboard*, *PlayStation* and *Xbox* pin one style), the full key table (section 5.1) and the game
-  controllers Windows reports as connected.
+- **Display**: borderless Fullscreen, VSync, Monitor and Window size. VSync defaults to on; try off if
+  the picture stutters. Size presets are 1280 × 720, 1600 × 900, 1920 × 1080 and 2560 × 1440 when they
+  fit. The default is 1600 × 900. Windows are centred and scaled to at most 90% of the monitor's work
+  area, preserving 16:9; the note below the presets shows the result. Dragged sizes are remembered.
+  In-game **Alt+Enter / F11** and **Config > System > Display Mode / Window Size** change these too.
+- **Language & sound**: choose an available language for the next start. In-game Config changes it
+  immediately, including the window title. Voices remain Japanese. Volumes are in **Config > Sound**
+  in the game and are saved with your progress.
+- **Controls**: choose **Auto**, **Keyboard**, **PlayStation** or **Xbox** button prompts. Auto follows
+  the last device used; the others pin a style. This page also lists keys and connected controllers.
 
-Everything these pages change goes into a small text file, `%APPDATA%\Tsuki\settings.ini`, which the game
-reads when it starts (appendix A).
+Launcher settings go into `%APPDATA%\Tsuki\settings.ini`, read when the game starts. See appendix A.
 
 ### 4.6 PLAY, the desktop shortcut, and Tsukihime.exe on its own
 
-**PLAY** starts `Tsukihime.exe` from the launcher's folder with your game folder, the window mode of the
-Fullscreen switch, and a log file (`%APPDATA%\Tsuki\last_run.log`). The button reads *RUNNING* while the
-game is up; the launcher minimises and comes back when the game ends. If the game ends with an error, a
-toast says *The game closed with an error (code N). Press Log to see why.*
+**PLAY** starts the player with your folder, selected window mode and
+`%APPDATA%\Tsuki\last_run.log`. The launcher minimises while the button says **RUNNING**, then returns
+when the game ends. An error directs you to **Log**.
 
-You do not need the launcher every time. **Desktop shortcut** (Play page, under the quick settings, or
-Game files > Shortcuts) puts `Tsukihime.lnk` on your desktop; Game files > Shortcuts also makes a desktop
-shortcut to the launcher and Start menu entries (*Start menu > Programs > Tsukihime*). A shortcut that
-already exists is replaced only after you confirm. The game's shortcut and window carry a small portrait
-of Arcueid as their icon, cut at run time from your own copy's files and stored in
-`%APPDATA%\Tsuki\icons\`; the bare `.exe` files keep the port's own crescent moon.
+**Desktop shortcut** on Play, or **Game files > Shortcuts**, creates `Tsukihime.lnk`.
+The latter also offers a launcher shortcut and **Start menu > Programs > Tsukihime** entries.
+Replacing an existing shortcut asks for confirmation. The game window and shortcuts use an icon made
+locally from your copy and stored under `%APPDATA%\Tsuki\icons\`; the bare executables keep the crescent.
 
-**Starting `Tsukihime.exe` directly** (a double-click, or the shortcut) works once the folder is known: it
-uses the remembered folder and the same saves and settings. On a machine where no folder was ever chosen,
-the first start explains in your Windows display language what it needs (*Tsukihime needs your own copy of
-the PS4 game. In the next window, choose the extracted CUSA47999 folder …*) and opens a folder dialog;
-the choice is remembered. A wrong folder is explained the same way. Started directly, the game writes no
-`last_run.log` (section 7.2).
+You can launch `Tsukihime.exe` directly or through its shortcut. It uses the same profile and remembered
+folder. With no folder chosen, it explains what is needed in your Windows display language and opens
+a folder dialog. Direct starts do not write `last_run.log`; use `--log` or the launcher for diagnostics.
 
-In the game: a notice screen first (press any key), then the title with **CONTINUE** (when you have a
-save), **NEW GAME**, **LOAD GAME**, **CONFIG**, **GALLERY** and **EXIT** (the port's own addition; it asks
-*Are you sure you want to quit without saving?*).
-
----
+Press a key at the notice screen to reach the title: **CONTINUE** when a save exists, **NEW GAME**,
+**LOAD GAME**, **CONFIG**, **GALLERY** or **EXIT**. Exit asks before quitting without saving.
 
 ## 5. Playing (遊び方)
 
 ### 5.1 Keyboard and mouse
 
-The same table is on the launcher's Controls page and in the README; the game's guide line at the bottom of
-every menu shows the keys for what is on screen.
+The launcher’s Controls page lists these keys. Menu guide lines show the currently available actions.
 
 | Keys | What they do |
 |---|---|
@@ -323,14 +233,10 @@ you use (the game's own PlayStation icons, or Xbox glyphs), or the style you pin
 
 ### 5.3 Skip, auto, rewind, backlog
 
-- **Fast-forward**: hold Ctrl (or the right trigger). **Skip**: Tab (or the wheel button) latches it on
-  and off. Whether skipping stops at unread text is the game's own setting in Config, as on the PS4.
-- **Auto mode**: A, or a shoulder button; the text speed and the auto speed are the game's own settings in
-  Config.
-- **Rewind**: hold Backspace (or the left trigger) to go back page by page.
-- **Backlog**: wheel up, Page Up or I; voices replay there, and you can jump back to a line.
-- **The mode panel**: Up, or the pointer at the top edge, slides in a panel with previous scene, rewind,
-  auto, skip, next scene, quick save / load and the voice replay.
+The keys above distinguish held fast-forward from latched skip. **Config** controls whether skip stops
+at unread text, text speed and auto speed. Backlog offers voice replay and jumping back to a line.
+**Up**, or the pointer at the top edge, opens the mode panel with previous/next scene, rewind, auto,
+skip, quick save/load and voice replay.
 
 ### 5.4 Saves and quick save
 
@@ -341,12 +247,11 @@ quick load; Delete removes the slot under the cursor and M copies it. At a chapt
 
 ### 5.5 Screenshots
 
-**F12** saves the picture on the screen, at the window's own size, as
-`%USERPROFILE%\Pictures\Tsukihime\Tsukihime_<date>_<time>.png`, and shows a small *Screenshot saved*
-notice in the bottom-left corner for a second and a half. The notice is never in the picture.
-**Config > System > Screenshot Notice** turns the notice off (the picture is still saved). Print Screen,
-Win+Print Screen, Alt+Print Screen and Win+Shift+S are Windows' own screenshot keys and do nothing in the
-game, so a Windows screenshot never presses a key in it.
+**F12** saves a PNG at the current window size to
+`%USERPROFILE%\Pictures\Tsukihime\Tsukihime_<date>_<time>.png`. The brief *Screenshot saved* notice is
+excluded from the picture. **Config > System > Screenshot Notice** hides the notice without disabling
+screenshots. Print Screen, Win+Print Screen, Alt+Print Screen and Win+Shift+S remain Windows shortcuts
+and do not trigger game actions.
 
 ### 5.6 The port's own rows in Config
 
@@ -362,149 +267,125 @@ The game's Config screen is the PS4's, with a few rows the port adds at the bott
 
 ### 5.7 Your saves and settings on disk; backups; importing a PS4 save
 
-Everything the port writes for you is in **`%APPDATA%\Tsuki`** (paste that into the address bar of a
-File Explorer window, or use **Saves > Open folder** in the launcher):
+Saves and settings stay in **`%APPDATA%\Tsuki`**, including profiles made by older versions.
+Paste that path into File Explorer or choose **Saves > Open folder**. Screenshots use Pictures instead.
 
-| File | What it is |
+| File | Purpose |
 |---|---|
-| `save.dat` | All 140 slots, the system data (what you have read and unlocked) and the game's config, in one file. The previous generation is kept as `save.dat.bak`, and a damaged file is set aside and the backup used. |
-| `settings.ini` | The port's own choices (appendix A). |
-| `game_dir.txt` | The remembered game folder. |
-| `last_run.log`, `crash.log` | The log of the last run started by the launcher, and the log of failures (section 7.2). |
-| `backups\<date>-<time>\` | The backups the Saves page makes. |
-| `icons\tsukihime.ico` | The Arcueid icon built from your copy. |
+| `save.dat` | All 140 slots, read/unlocked progress and game config. `save.dat.bak` keeps the previous generation. A damaged save is set aside and the backup tried; if neither is usable, a new profile starts. |
+| `settings.ini` | Port settings, listed in appendix A. |
+| `game_dir.txt` | Remembered game folder. |
+| `last_run.log`, `crash.log` | Launcher-started run log and failure log. |
+| `backups\<date>-<time>\` | Launcher backups. |
+| `icons\tsukihime.ico` | Icon made from your own copy. |
 
-The launcher's **Saves** page: **Back up now** copies `save.dat` and `settings.ini` into
-`backups\yyyyMMdd-HHmmss\`; the list shows every backup with its date and slot count, and **Restore** puts
-one back after asking (your current save is backed up first, so a restore can be undone; settings are left
-as they are). Back up before you try anything new.
+Close the game before backing up, restoring or importing. **Saves > Back up now** copies `save.dat`
+and `settings.ini` into `backups\yyyyMMdd-HHmmss\`. Choose a backup by its date and slot count, then
+**Restore**. Restore backs up the current save first and replaces only `save.dat`, leaving settings
+unchanged. Restore the newly made backup to undo it. Back up before troubleshooting changes.
 
-**Import a PS4 save**: if you played the game on a PS4 or in shadPS4, the launcher can take over its
-**4 MiB save image** (`savedata000`). It looks for one under
-`%APPDATA%\shadPS4\home\<user>\savedata\CUSA47999` and offers *Import it*; **Choose a file…** takes an
-image from anywhere. The image is only read, never changed; it replaces `save.dat` after your current save
-has been backed up.
+For a **PS4 or shadPS4 save**, use its **4 MiB** image, normally `savedata000`. The launcher looks under
+`%APPDATA%\shadPS4\home\<user>\savedata\CUSA47999` and offers **Import it**; **Choose a file…** accepts
+an image elsewhere. Import backs up the current save before replacing `save.dat`. It never changes
+the source image.
 
-Only one game can run on the same saves at a time: a second `Tsukihime.exe` says *Tsukihime is already
-running* and ends.
-
----
+Only one game can use a save directory at a time. `--save-dir` selects a separate profile, including
+settings and crash logging; see appendix B.
 
 ## 6. For Japanese learners (日本語学習者向け)
 
-The game draws its text from the PS4's pre-rendered glyph pictures, so a text hooker sees nothing of it
-by itself. The port therefore offers the plain text of each line in three ways. All three carry the same
-text (the line as the backlog shows it: markup and ruby readings removed, a choice list one line per
-choice, the speaker's name on a line above when the game shows a name plate), each line once, when it
-starts displaying, as one whole line (never letter by letter).
+The game draws glyph pictures, so dictionary tools need one of these text outputs. They receive each
+whole line once when it starts displaying, with markup and ruby readings removed, the speaker on a
+line above when shown, and each choice on its own line.
 
-**1. Text Hooker Output (on by default): LunaHook / LunaTranslator, Textractor.**
-Start the game (PLAY, or `Tsukihime.exe`). In the hooker, attach to the process **`Tsukihime.exe`**
-(LunaTranslator: *Select game* or the process list; Textractor: *Attach to game*). `Tsukihime.exe` is a
-64-bit program, so use the hooker's x64 build. Advance one line in the game, then pick the text thread
-that shows it: the thread is named after a Windows text function, **`ExtTextOutW`** (the usual pick),
-`TextOutW` or `GetTextExtentPoint32W`; all three carry the same text. No H-code is needed. The port
-passes each line once through these functions on an invisible drawing surface; nothing is drawn anywhere
-by them. **Config > System > Text Hooker Output** turns this off. This was not tried with a real hooker
-running during development (section 1.1); the functions are the ones these programs hook by default.
+**1. Text Hooker Output: Windows native hookers, on by default.**
+Start the game, then use a hooker's x64 build to attach to **`Tsukihime.exe`**.
+In LunaTranslator use its game/process selection; in Textractor use **Attach to game**.
+Advance one line and select the thread named **`ExtTextOutW`**, `TextOutW` or `GetTextExtentPoint32W`.
+They carry identical text; no H-code is needed. These calls draw nothing visible.
+**Config > System > Text Hooker Output** disables them. Real LunaHook/LunaTranslator/Textractor
+integration was not part of the original verification.
 
-**2. Text WebSocket (off by default): browser texthooker pages with Yomitan.**
-Switch on **Config > System > Text WebSocket** (or put `text_websocket=on` into `settings.ini`). The game
-then listens on **`ws://127.0.0.1:6677`** (texthooker-ui's default address) and sends each new line as
-one text message to every connected page; a page that connects while a line is on screen gets that line
-at once. Open your texthooker page, let it connect, and read with Yomitan. The server listens on the
-local machine only, so no firewall prompt appears and nothing from outside can connect. A small notice
-says *Text WebSocket: ws://127.0.0.1:6677* when it starts, or why it could not (a port in use: change
-`text_websocket_port=` in `settings.ini`; there is no row for it in the game).
+**2. Text WebSocket: browser dictionary pages, off by default.**
+Enable **Config > System > Text WebSocket**, or set `text_websocket=on` in your profile's
+`settings.ini`. Open a browser texthooker page and connect it to **`ws://127.0.0.1:6677`**.
+Install Yomitan, import your dictionaries and enable lookup on the page. Each new line is sent as
+one text message; a page connecting during a line receives that line immediately.
 
-**3. Copy Text to Clipboard (off by default): clipboard watchers.**
-**Config > System > Copy Text to Clipboard** puts each new line on the Windows clipboard for Yomitan's
-clipboard monitor, Textractor's clipboard thread, or the "clipboard" input of a translator. A notice says
-*Text copied to the clipboard* once per session, at the first copy.
+The server listens on the local machine only. Browser or extension permissions may block local
+connections. If the port is already in use, close the game, set `text_websocket_port` to an unused
+port from 1 to 65535, restart, and change the page's connection address too. The port has no row in
+the game settings.
 
----
+**3. Copy Text to Clipboard: clipboard watchers, off by default.**
+Enable **Config > System > Copy Text to Clipboard**, then select clipboard input in your dictionary
+or translator, such as Yomitan's clipboard monitor or Textractor's clipboard thread. Each new line
+replaces the clipboard; a notice appears on the first copy of the session.
 
 ## 7. Troubleshooting (トラブルシューティング)
 
 ### 7.1 The messages and what they mean
 
-The launcher speaks English; the game speaks the language you chose (Japanese, English or Chinese), so
-the game's messages below appear in that language on your screen.
+The launcher uses English; game messages use the selected game language.
 
-| You see | It means | What to do |
-|---|---|---|
-| *Not chosen yet. Point the launcher at your CUSA47999 folder.* / *Choose your game folder first.* | No game folder has been chosen | Game files > Browse… (section 3.4) |
-| *The remembered folder is gone.* / *The game folder … no longer exists.* | The folder was moved, renamed, or is on a drive that is not connected (or whose letter changed) | Connect the drive, or choose the folder again |
-| *eboot.bin is not in this folder.* / *No eboot.bin in this folder.* / *That folder does not contain eboot.bin.* / *… holds no game: no folder with eboot.bin and image\ was found in it, not even one or two levels down.* | The chosen folder is not the game | Choose the `CUSA47999` folder (the one with `eboot.bin` and `image\`), or a folder at most two levels above it |
-| *A .pkg file was chosen: extract it first, then choose the extracted CUSA47999 folder.* / *… is a PS4 package file (.pkg). Extract it first (shadPS4, or a PKG extractor) …* | A sealed package was chosen; the port reads extracted folders only | Extract it (section 3.2), then choose the folder |
-| *Only the update folder was found; the base game must be beside it.* / *… holds only the game's update (patch) …* | An update folder (category `gp`, or a `-patch` / `-UPDATE` name) without the base game next to it | Put the base game folder beside it (section 3.3), or choose the base game folder |
-| *Several game folders are inside the chosen one; choose one of them.* | The folder above holds more than one game | Choose the `CUSA47999` folder itself |
-| *The game files are not complete: see the problems on this page.* / *The game folder is incomplete: … is missing from …* / a list of failed checks on the Game files page | A file of the dump is missing or damaged (an interrupted extraction, a dump of part of the game) | Compare with the tree in section 3.3; extract or dump again. The failed checks name the files |
-| *This copy of the game (…, eboot.bin SHA-256 …) is a build the port does not know, and these tables could not be found in its program: … Please report it together with the log file.* | Your `eboot.bin` is a build the port has never seen, and part of what it needs could not be located in it | The game cannot run on this copy. Report it (section 7.3) |
-| A small notice *Not the verified build: …* when the game starts; *Ready, but not the verified build* in the launcher | Your build is not the one the port was played on, but everything it needs was found | Nothing; play. If something looks wrong, say so in a report, with the Build row's text |
-| *The FFmpeg libraries are missing next to Tsukihime.exe (avcodec-63.dll, …)* / Ready check: *avutil-61.dll is missing (and 3 more)* | One of `avutil-61.dll`, `swresample-7.dll`, `avcodec-63.dll`, `avformat-63.dll` is not beside `Tsukihime.exe` | Unzip the whole release again into the same folder. If an antivirus quarantined a file, restore it: these are FFmpeg's own unmodified libraries (licenses\FFmpeg-SOURCE.txt says which build) |
-| *Tsukihime.exe is not next to the launcher* | The zip was not unpacked whole, or files were moved | Unzip the whole release again |
-| *Your graphics driver does not provide OpenGL 3.3.* / *The game window could not be created.* | The graphics driver gave no OpenGL 3.3 context (an old or generic driver, a remote-desktop session, a virtual machine, a laptop with a very old or generic driver) | Install the current driver from Intel, AMD or NVIDIA (on a laptop, the laptop maker's or Intel's / AMD's driver; Windows' basic display driver has no OpenGL 3.3); a laptop with two graphics chips can run the game on either (Windows Settings > System > Display > Graphics); do not run over Remote Desktop |
-| *Tsukihime is already running.* / *The game is already running.* / *The game is already running in another window.* | A second game on the same saves was refused | Use the one that is open. If none is visible, end `Tsukihime.exe` in Task Manager |
-| *The Tsukihime launcher is already open.* | A second launcher was refused | The first one comes to the front |
-| *The save file could not be written: … Saves made now are kept until the game closes only.* / Ready check: *The save folder cannot be written: …* / *save.dat is a folder, not a file* | `%APPDATA%\Tsuki` cannot be written (permissions, a full disk, a folder named `save.dat`) | Free space or fix the permissions of `%APPDATA%\Tsuki`; rename a folder called `save.dat`. Saves made in the meantime are lost when the game closes |
-| *Your save file was damaged, so the previous generation (save.dat.bak) was used instead …* / *Your save file was damaged (…) … a new profile was started. The launcher's Saves page can restore a backup.* | `save.dat` could not be read; the damaged file was moved aside (the message says where) | Check the Saves page and restore a backup if you have one |
-| *The log file … could not be opened: … The game goes on without a log file.* | The launcher's log file is locked or its folder read-only | Close other copies; check `%APPDATA%\Tsuki` |
-| *The text WebSocket could not start on port 6677: …* | Another program uses that port | Put another `text_websocket_port=` into `settings.ini` and let your page connect there |
-| *The game closed with an error (code N). Press Log to see why.* | The game ended with a failure | Press **Log**; the last lines say what happened. Report it (section 7.3) |
-| The game opens fullscreen when you wanted a window (or the other way round) | The Fullscreen switch of the launcher, or Alt+Enter / F11 in the game, decided the last mode | Set the switch on the Display page (the launcher passes it on every PLAY), or press Alt+Enter in the game; Config > System > Display Mode shows the current mode |
-| The window is smaller than the size you chose | A size that does not fit the monitor's work area (90 % of it at most) is scaled down | Pick a preset the Display page offers; the note under the presets says the size the game opens with |
-| No sound, or sound only sometimes | Volumes are in the game's own Config > Sound; *Mute in Background* fades the sound out while another window has the focus | Check Config > Sound and the Windows output device; the log counts audio failures |
-| The language you want is not offered | Your copy does not carry it (the Languages row on Game files says what it has) | Nothing to do in the port; the voices are Japanese in every language anyway |
-| Windows: *Windows protected your PC* | SmartScreen does not know the publisher (the programs are not code-signed) | *More info > Run anyway*, once per program |
+| Message or symptom | What to do |
+|---|---|
+| No folder chosen, remembered folder gone, or folder no longer exists | Connect its drive or select it again in **Game files > Browse…**. |
+| No `eboot.bin`, or no game found within two levels | Choose the extracted root containing `eboot.bin` and `image\`. |
+| A `.pkg` file was chosen | Extract it first, then select the extracted folder. |
+| Only the update folder was found | Put the base beside the update, or select the base. See section 3.3. |
+| Several game folders found | Select the exact game folder. |
+| Incomplete game folder or failed checks | Read the named missing/damaged files, compare section 3.3, then extract or dump your own copy again. |
+| Unknown build and missing tables | This copy cannot run. Report the log and build information. |
+| Ready, but not the verified build | Required tables were found. You can play, but report problems with the Build row's text. |
+| FFmpeg libraries missing | Keep `avutil-61.dll`, `swresample-7.dll`, `avcodec-63.dll` and `avformat-63.dll` beside `Tsukihime.exe`. Extract the complete release again. If antivirus quarantined a file, check the alert and download provenance before deciding whether to restore it. `licenses\FFmpeg-SOURCE.txt` identifies the intended build. |
+| `Tsukihime.exe` is not next to the launcher | Extract the entire archive into one folder. |
+| OpenGL 3.3 unavailable or window could not be created | Install your GPU or laptop maker's driver. Avoid Remote Desktop. On a dual-GPU laptop, select a compatible GPU in **Windows Settings > System > Display > Graphics**. |
+| Game already running | Use the open game. If none is visible, check Task Manager for `Tsukihime.exe`; ending it loses unsaved progress. |
+| Launcher already open | Use the existing window, which is brought forward. |
+| Save folder/file cannot be written, or `save.dat` is a folder | Free disk space, correct profile permissions or rename that directory. Saves held only in memory are lost when the game closes. |
+| Damaged save; backup used or new profile started | The message names the file set aside. Check **Saves** and restore a backup if needed. |
+| Log could not be opened | Close programs locking the file and check profile permissions. The game continues without that log. |
+| Text WebSocket could not start or page cannot connect | Check port conflicts and browser permissions in section 6. Restart after changing settings. |
+| Game closed with error code | Press **Log**, read the last lines and report the failure. |
+| Wrong fullscreen/window mode | Change the launcher's Display switch, passed on each PLAY, or press **Alt+Enter / F11** in the game. |
+| Window smaller than requested | It is clamped to 90% of the monitor's work area. Choose an offered preset. |
+| No sound or sound stops when unfocused | Check **Config > Sound**, **Mute in Background** and the Windows output device. The log counts audio failures. |
+| Language unavailable | It lacks usable text/fonts in this copy. Check the Languages row; voices remain Japanese. |
+| Windows protected your PC | See the unsigned-program instructions in section 4.1. |
 
 ### 7.2 Where the log is
 
-- **`%APPDATA%\Tsuki\last_run.log`**: the log of the last run **started from the launcher** (PLAY passes
-  `--log` with that path). The **Log** button in the launcher's footer, and *Open the log* on the Help page,
-  open it in Notepad. Its first line names the port's version and the FFmpeg build; the lines `layout:`,
-  `build:`, `languages:` and `tables:` say what was found in your folder; `window:` and `window mode:` say
-  how the window was placed; a failure is at the end.
-- **`%APPDATA%\Tsuki\crash.log`**: appended to whenever the game fails, however it was started; the error
-  box names it (*Details: …*).
-- A game started **directly** (`Tsukihime.exe`, the desktop shortcut) writes **no** `last_run.log`. To get
-  a log of such a start, start it from the launcher instead, or start `Tsukihime.exe --log <file>` from a
-  command prompt (appendix B).
+- **`%APPDATA%\Tsuki\last_run.log`** is written by runs started with **PLAY**.
+  **Log**, or **Help & about > Open the log**, opens it. The first lines identify the program and FFmpeg;
+  `layout:`, `build:`, `languages:` and `tables:` describe the copy; window lines describe placement.
+  Failures appear at the end.
+- **`%APPDATA%\Tsuki\crash.log`** records failures however the player was started; the error box gives
+  its location. A custom `--save-dir` puts it in that profile instead.
+- Direct starts and desktop shortcuts do not create `last_run.log`. Use the launcher or
+  `Tsukihime.exe --log <file>` to record one.
 
 ### 7.3 How to report a problem
 
-Give the people who look after the port:
+Include reproduction steps, expected and actual behavior, the run/crash log, Build and Languages rows,
+Windows version, GPU/driver, monitor arrangement and input device. For unknown builds, the log already
+includes the `eboot.bin` size and SHA-256. You may redact personal folder names before sharing logs.
 
-1. **The log**: `last_run.log` from a start through the launcher that showed the problem (and `crash.log`
-   if the game failed).
-2. **What the launcher says about your copy**: the **Build** and **Languages** rows of the Game files page
-   and the **Status** line (or the chip under the banner: `CUSA47999 · game version 01.01`, with *not the
-   verified build* if it says so). The `build:` line of the log carries the same; for a build the port does
-   not know it adds the size and the SHA-256 of your `eboot.bin`.
-3. **Your machine**: Windows version, graphics card, one or two monitors, keyboard / mouse / pad.
-4. **What you did**, step by step, and what you saw.
-
-Attach **no game files** (no archives, no `eboot.bin`, no movies, no `param.sfo`): they are the game's
-copyrighted data, and the log already says everything the port knows about them. A screenshot of an
-error message is useful; pictures of the game's own content are not needed.
+Do not attach game files, saves, story text or screenshots of the game. Use line IDs or script offsets
+and describe rendering problems in words. A crop showing only the port's own error is fine.
 
 ### 7.4 What to try first
 
-1. Unzip the whole release again into one folder; start **the launcher** and read the **Ready check**.
-2. On **Game files**, press **Check again**; choose the folder again if the status is not *Ready*.
-3. Update the graphics driver (Intel, AMD or NVIDIA; on a laptop, the laptop maker's or Intel's / AMD's driver).
-   Integrated graphics are fine; nothing needs a gaming card.
-4. **Saves > Back up now**, then try the change you were about to make.
-5. Start the game from the launcher so that `last_run.log` is written, reproduce the problem, press
-   **Log**, and read the last lines.
-
----
+1. Close the game and **Saves > Back up now** before changing anything.
+2. Extract the whole release again and read the launcher's **Ready check**.
+3. Use **Game files > Check again** and reselect the folder if needed.
+4. Check the graphics driver and the specific remedy in section 7.1.
+5. Reproduce through the launcher, then open **Log** and read the last lines.
 
 ## Appendix A: settings.ini (設定ファイル)
 
-`%APPDATA%\Tsuki\settings.ini` is a text file of `key=value` lines, read once when the game starts. The
-launcher writes it; you can edit it with Notepad (a `#` starts a comment; unknown keys and bad values are
-ignored).
+`%APPDATA%\Tsuki\settings.ini` contains `key=value` lines. Close the game and launcher before editing
+it in Notepad, then restart. A `#` starts a comment; unknown keys and bad values are ignored.
 
 | Key | Values | Effect |
 |---|---|---|
@@ -531,7 +412,7 @@ is a windowed program, so its text output shows only through a pipe). The ones a
 | `--game <folder>` | Use this game folder for this run (else the `TSUKI_GAME_DIR` environment variable, else the remembered `game_dir.txt`, else the folder dialog) |
 | `--lang ja\|en\|zc\|zt` | The language of a new profile for this run |
 | `--fullscreen`, `--windowed` | The window mode of this run (remembered for the next) |
-| `--save-dir <folder>` | Keep saves, settings and the log of this run in another folder than `%APPDATA%\Tsuki` |
+| `--save-dir <folder>` | Use another profile for saves, settings, remembered game folder and crash log. A run log still needs `--log` |
 | `--log <file>` | Write the run's log to this file |
 | `--prompts auto\|keyboard\|playstation\|xbox` | The button prompts for this run |
 | `--screenshot-dir <folder>` | Where F12 saves for this run (default `Pictures\Tsukihime`) |

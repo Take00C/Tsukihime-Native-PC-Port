@@ -6,6 +6,10 @@ that the repository or the release download carries, each with the notice its li
 programs in the `licenses\` folder (`FFmpeg-LGPL.txt`, `FFmpeg-GPL-3.0.txt`, `FFmpeg-SOURCE.txt`, `knife-MPL-2.0.txt`, `SDL3-zlib.txt`,
 `LICENSE.txt`, and this file as `THIRD_PARTY.md`); the copies the build takes are tracked in `src/Tsuki.Launcher/Licenses/`.
 
+Self-contained publishes include `licenses/dotnet-LICENSE.txt` and
+`licenses/dotnet-THIRD-PARTY-NOTICES.txt`, copied unchanged from the resolved .NET runtime pack.
+These full notices must match the runtime in the package.
+
 ## knife (MPL-2.0)
 
 knife by AuroraWright, https://github.com/AuroraWright/knife, is a Rust reimplementation of the same

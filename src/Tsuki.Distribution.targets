@@ -1,0 +1,24 @@
+<Project>
+  <ItemGroup>
+    <None Include="$(TsukiRepoRoot)README.md" Link="README.md" CopyToPublishDirectory="PreserveNewest" Visible="false" />
+    <None Include="$(TsukiRepoRoot)CONTRIBUTING.md" Link="CONTRIBUTING.md" CopyToPublishDirectory="PreserveNewest" Visible="false" />
+    <None Include="$(TsukiRepoRoot)LICENSE" Link="LICENSE" CopyToPublishDirectory="PreserveNewest" Visible="false" />
+    <None Include="$(TsukiRepoRoot)assets/branding/tsukihime-logo.png" Link="assets/branding/tsukihime-logo.png" CopyToPublishDirectory="PreserveNewest" Visible="false" />
+    <None Include="$(TsukiRepoRoot)docs/SETUP_GUIDE.md;$(TsukiRepoRoot)docs/THIRD_PARTY.md"
+          Link="docs/%(Filename)%(Extension)" CopyToPublishDirectory="PreserveNewest" Visible="false" />
+  </ItemGroup>
+
+  <Target Name="TsukiIncludeRuntimeNotices" BeforeTargets="ComputeFilesToPublish" DependsOnTargets="ResolveFrameworkReferences"
+          Condition="'$(SelfContained)' == 'true'">
+    <ItemGroup>
+      <_TsukiRuntimePack Include="@(ResolvedRuntimePack)" Condition="'%(ResolvedRuntimePack.FrameworkName)' == 'Microsoft.NETCore.App'" />
+    </ItemGroup>
+    <Error Condition="'@(_TsukiRuntimePack)' == ''" Text="The .NET runtime package was not resolved for its licence notices." />
+    <Error Condition="!Exists('%(_TsukiRuntimePack.PackageDirectory)/LICENSE.TXT') or !Exists('%(_TsukiRuntimePack.PackageDirectory)/THIRD-PARTY-NOTICES.TXT')"
+           Text="The resolved .NET runtime package is missing its licence or third-party notices." />
+    <ItemGroup>
+      <ResolvedFileToPublish Include="@(_TsukiRuntimePack->'%(PackageDirectory)/LICENSE.TXT')" RelativePath="licenses/dotnet-LICENSE.txt" CopyToPublishDirectory="PreserveNewest" />
+      <ResolvedFileToPublish Include="@(_TsukiRuntimePack->'%(PackageDirectory)/THIRD-PARTY-NOTICES.TXT')" RelativePath="licenses/dotnet-THIRD-PARTY-NOTICES.txt" CopyToPublishDirectory="PreserveNewest" />
+    </ItemGroup>
+  </Target>
+</Project>

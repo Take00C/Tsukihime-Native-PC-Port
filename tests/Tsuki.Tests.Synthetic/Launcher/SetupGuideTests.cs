@@ -64,8 +64,42 @@ public sealed partial class SetupGuideTests
         Assert.NotNull(item);
         Assert.Equal(@"..\..\docs\SETUP_GUIDE.txt", (string?)item.Attribute("Include"));
         Assert.Equal("PreserveNewest", (string?)item.Attribute("CopyToPublishDirectory"));
-        // the README travels the same way; the guide follows its example
-        Assert.Contains(project.Descendants("None"), e => (string?)e.Attribute("Link") == "README.md" && (string?)e.Attribute("CopyToPublishDirectory") == "PreserveNewest");
+        Assert.Contains(project.Descendants("Import"), e => (string?)e.Attribute("Project") == @"..\Tsuki.Distribution.targets");
+        XDocument distribution = XDocument.Load(Path.Combine(Repo.Src, "Tsuki.Distribution.targets"));
+        Assert.Contains(distribution.Descendants("None"), e => (string?)e.Attribute("Link") == "README.md" && (string?)e.Attribute("CopyToPublishDirectory") == "PreserveNewest");
+    }
+
+    [Fact]
+    public void PublishedDocumentationIncludesItsLocalLinksAndImages()
+    {
+        XDocument distribution = XDocument.Load(Path.Combine(Repo.Src, "Tsuki.Distribution.targets"));
+        var files = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (XElement item in distribution.Descendants("None"))
+        {
+            foreach (string source in ((string)item.Attribute("Include")!).Split(';'))
+            {
+                string path = source.Replace("$(TsukiRepoRoot)", Repo.Root + Path.DirectorySeparatorChar, StringComparison.Ordinal);
+                string destination = ((string)item.Attribute("Link")!).Replace("%(Filename)%(Extension)", Path.GetFileName(path), StringComparison.Ordinal);
+                Assert.True(File.Exists(path), path);
+                files.Add(destination, path);
+            }
+        }
+
+        foreach ((string destination, string source) in files.Where(f => f.Key.EndsWith(".md", StringComparison.Ordinal)))
+        {
+            foreach (Match match in LocalLink().Matches(File.ReadAllText(source)))
+            {
+                string link = (match.Groups[1].Success ? match.Groups[1].Value : match.Groups[2].Value).Split('#')[0];
+                if (link.Length == 0 || Uri.TryCreate(link, UriKind.Absolute, out _))
+                {
+                    continue;
+                }
+
+                string root = Path.Combine(Path.GetTempPath(), "tsuki-documentation-links");
+                string target = Path.GetFullPath(Path.Combine(root, Path.GetDirectoryName(destination) ?? string.Empty, link));
+                Assert.Contains(Path.GetRelativePath(root, target).Replace('\\', '/'), files.Keys);
+            }
+        }
     }
 
     [Fact]
@@ -116,8 +150,8 @@ public sealed partial class SetupGuideTests
     [Fact]
     public void TheGuideStatesTheGameFolderPrecedenceOfTheProgram()
     {
-        // Tsukihime.exe: --game, then TSUKI_GAME_DIR, then the remembered game_dir.txt, then the dialog (GameApp.ResolveGameFolder); README and the guide say the same order
-        foreach (string text in new[] { Markdown, Text, File.ReadAllText(Path.Combine(Repo.Root, "README.md")) })
+        // Both guide copies describe the folder lookup order.
+        foreach (string text in new[] { Markdown, Text })
         {
             int env = text.IndexOf("TSUKI_GAME_DIR", StringComparison.Ordinal);
             int remembered = text.IndexOf("game_dir.txt", StringComparison.Ordinal);
@@ -168,9 +202,12 @@ public sealed partial class SetupGuideTests
             {
                 Assert.DoesNotContain(name, text, StringComparison.Ordinal);
             }
-            // the one link the guide may carry is the shadPS4 project page
+            // The guide names the emulator, trusted origin and example hostnames.
             var links = Link().Matches(text).Select(m => m.Value).Distinct().ToList();
-            Assert.All(links, l => Assert.StartsWith("https://github.com/shadps4-emu/shadPS4", l));
+            Assert.All(links, l => Assert.True(l.StartsWith("https://github.com/shadps4-emu/shadPS4", StringComparison.Ordinal)
+                || l.StartsWith("https://renji-xd.github.io", StringComparison.Ordinal)
+                || l.StartsWith("https://xn--bcher-kva.example", StringComparison.Ordinal)
+                || l.StartsWith("https://bücher.example", StringComparison.Ordinal), l));
         }
     }
 
@@ -179,4 +216,7 @@ public sealed partial class SetupGuideTests
 
     [GeneratedRegex(@"https?://[^\s)>\]]+")]
     private static partial Regex Link();
+
+    [GeneratedRegex(@"\[[^\]]*\]\(([^)]+)\)|(?:src|href)=""([^""]+)""")]
+    private static partial Regex LocalLink();
 }

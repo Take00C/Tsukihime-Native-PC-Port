@@ -32,4 +32,5 @@
     <TsukiPersonalNote>true</TsukiPersonalNote>
   </PropertyGroup>
   <Import Project="..\Tsuki.PersonalIcon.targets" />
+  <Import Project="..\Tsuki.Distribution.targets" />
 </Project>
