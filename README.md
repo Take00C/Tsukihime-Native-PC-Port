@@ -53,7 +53,7 @@ The setup guide explains supported folder layouts, including separate base-game 
 
 ## Status and support
 
-The port was developed against **CUSA47999, update 1.01**. Other builds are checked at startup and may be refused if required tables or files cannot be found. Only languages present in your game files are offered. Current source version is **0.1.1**. Linux instructions cover building from source.
+The port was developed against **CUSA47999, update 1.04**. Other builds are checked at startup and may be refused if required tables or files cannot be found. Only languages present in your game files are offered. Current source version is **0.1.4**. Linux instructions cover building from source.
 
 Report problems through Issues with reproduction steps and the relevant log. Include the build information and your operating system, graphics card and driver. See [CONTRIBUTING.md](CONTRIBUTING.md) for details. Do not attach game files, saves, story text or screenshots of the game.
 
