@@ -88,11 +88,18 @@ public sealed class AppRuntimeTests(ITestOutputHelper output)
 
         public InputScript? Script { get; set; }
 
+        /// <summary>When set, every step must end with the story running or a screen open (issue #7, package K38: the dead black screen that took no key).</summary>
+        public bool NoDeadFrames { get; set; }
+
         public void Step()
         {
             _nominal += 16_666_667;
             InputFrame input = Input.Sample(Runtime.Frame + 1);
             Runtime.Step(input, _nominal, _list);
+            if (NoDeadFrames)
+            {
+                Assert.True(Services.StoryActive || Ui.Active, $"step {Runtime.Frame}: no story and no screen (the dead black screen of issue #7)");
+            }
         }
 
         public bool RunUntil(Func<bool> condition, int limit)
@@ -372,5 +379,502 @@ public sealed class AppRuntimeTests(ITestOutputHelper output)
         Assert.True(rig.RunUntil(() => rig.Ui.Find<GalleryScreen>() is not null, 9000), "the replay never ended in the gallery");
         Assert.False(rig.Services.StoryActive);
         output.WriteLine($"replay of scene 240 ended in the gallery at frame {rig.Runtime.Frame}");
+    }
+
+    // ---- issue #7 (package K38): a scene entered from a flowchart, then Esc and the flowchart again ------------------------------------------------------------
+
+    private static IUiGalleryTables GalleryTables => Source.Eboot.Gallery ?? throw new InvalidOperationException("the game has no gallery tables");
+
+    /// <summary>The profile has finished the scenes of the first <paramref name="columns"/> chart columns (the system data's scene and edge bits; all of them for -1).</summary>
+    private static void FinishScenes(Rig rig, int columns = -1)
+    {
+        foreach (ChartNodeRow row in GalleryTables.ChartColumns.Take(columns < 0 ? int.MaxValue : columns).SelectMany(c => c.Nodes))
+        {
+            if (row.Scene > 0)
+            {
+                SystemData.SetSceneSeen(rig.Host.Vars, row.Scene);
+                SystemData.SetSceneDone(rig.Host.Vars, row.Scene);
+            }
+
+            if (row.Link >= 564)
+            {
+                SystemData.SetEdgeSeen(rig.Host.Vars, row.Link);
+            }
+        }
+    }
+
+    /// <summary>The playthrough has passed the scenes and edges of the first <paramref name="columns"/> chart columns (its own marks F[201..272], F[600..687]).</summary>
+    private static void PlayedThrough(Rig rig, int columns)
+    {
+        foreach (ChartNodeRow row in GalleryTables.ChartColumns.Take(columns).SelectMany(c => c.Nodes))
+        {
+            if (row.Scene is > 0 and <= 0x23F)
+            {
+                rig.Host.Vars.SetF(201 + (row.Scene >> 3), (ushort)(rig.Host.Vars.GetF(201 + (row.Scene >> 3)) | (1 << (row.Scene & 7))));
+            }
+
+            int e = row.Link - 564;
+            if (e is >= 0 and < 704)
+            {
+                rig.Host.Vars.SetF(600 + (e >> 3), (ushort)(rig.Host.Vars.GetF(600 + (e >> 3)) | (1 << (e & 7))));
+            }
+        }
+    }
+
+    private static Rig ProfileWithProgress()
+    {
+        var rig = new Rig();
+        rig.Auto.Paused = true;
+        rig.Services.SetGlobal(110 + (485 >> 4), (ushort)(1 << (485 & 15)));       // the prologue was read
+        rig.Services.SetGlobal(10, 1);                                             // a story was started
+        return rig;
+    }
+
+    private static string Screens(Rig rig) => string.Join('>', rig.Ui.Stack.Select(s => s.GetType().Name));
+
+    private static string Centre(RectF r) => $"{(int)(r.X + (r.W / 2f))},{(int)(r.Y + (r.H / 2f))}";
+
+    // the Yes of a confirm dialog (object 0 at x 330, y 249.01 of 640 x 448, touch rect (0, -2)-(72, 24); Dialogs.ConfirmDialog.OnOpened)
+    private static readonly string DialogYes = Centre(new RectF(330f * UiMetrics.UnitX, 247f * UiMetrics.UnitY, 73f * UiMetrics.UnitX, 27f * UiMetrics.UnitY));
+
+    /// <summary>A node of the open chart other than the cursor's that has a scene and is fully in view (for a click), nearest above the cursor first.</summary>
+    private static (ChartNode Node, ChartRecord Record) OtherNodeInView(FlowchartScreen chart)
+    {
+        float cursorY = chart.Chart.Nodes[chart.Selected].Y;
+        var candidates = new List<(ChartNode, ChartRecord, float)>();
+        for (int i = 0; i < chart.Chart.Nodes.Count; i++)
+        {
+            ChartNode n = chart.Chart.Nodes[i];
+            float y = n.Y - chart.Scroll;
+            if (i == chart.Selected || y < 0f || y + FlowchartChart.NodeH > FlowchartChart.ViewHeight || chart.Chart.CellOf(i) is not { } cell
+                || chart.Chart.RecordAt(cell) is not { ScriptScene: >= 0 } rec)
+            {
+                continue;
+            }
+
+            candidates.Add((n, rec, n.Y <= cursorY ? cursorY - n.Y : 100_000f + n.Y - cursorY));
+        }
+
+        (ChartNode node, ChartRecord record, _) = candidates.MinBy(c => c.Item3);
+        return (node, record);
+    }
+
+    private static FlowchartScreen OpenInGameChart(Rig rig, string open, string tab)
+    {
+        rig.Play(open);
+        Assert.True(rig.RunUntil(() => rig.Ui.Top is SystemMenuScreen, 60), "the system menu did not open: " + Screens(rig));
+
+        // the menu's backdrop fades in from nothing every time (after a jump or a load it was left at full alpha, and the next menu showed it at once)
+        Assert.InRange(rig.Ui.Context.Backdrop.A, 0f, 0.2f);
+        rig.Run(30);
+        rig.Play(tab);
+        Assert.True(rig.RunUntil(() => rig.Ui.Top is FlowchartScreen, 120), "the chart did not open: " + Screens(rig));
+        var chart = (FlowchartScreen)rig.Ui.Top!;
+        Assert.False(chart.Gallery);
+        rig.Run(40);
+        Assert.Equal(1f, chart.Fade);
+        Assert.Equal(rig.Services.CurrentNode, chart.Chart.RecordAt(chart.Cell)?.Node);
+        return chart;
+    }
+
+    private void JumpedTo(Rig rig, ChartRecord target)
+    {
+        Assert.True(rig.RunUntil(() => !rig.Ui.Active, 150), "the screens did not leave after the jump: " + Screens(rig));
+        Assert.True(rig.Services.StoryActive);
+        Assert.Equal(GamePhase.Running, rig.Host.Phase);
+        Assert.Equal(target.Node, rig.Services.CurrentNode);
+        output.WriteLine($"frame {rig.Runtime.Frame}: jumped to node {target.Node} (scene {target.ScriptScene}), script {rig.Host.Script}");
+        rig.Run(60);
+    }
+
+    /// <summary>
+    /// Issue #7 (package K38), the way through the story's menu: Esc, FlowChart, an earlier node, "rewind to this scene?", Yes, the scene starts over; then Esc and
+    /// FlowChart again. By keys, then by the mouse (a right click, the tab, a click on a node, a click on Yes) with the backlog in between, then once more after a
+    /// save and a load. No step ends with no story and no screen, the chart reopens on the scene that runs, and every menu fades its backdrop in from nothing.
+    /// </summary>
+    [GameDataFact]
+    public void JumpingFromTheInGameChartThenOpeningItAgainWorksByKeysByTheMouseAndAfterALoad()
+    {
+        Rig rig = ProfileWithProgress();
+        const int Columns = 14;
+        FinishScenes(rig, Columns);
+        rig.Run(5);
+        rig.Ui.Clear();
+
+        // the playthrough is in the last scene of the first columns (as a save from there)
+        PlayedThrough(rig, Columns);
+        FlowNodeRow start = Source.Eboot.GameFlow.Nodes.Last(r => r.Column < Columns && r.Scene > 0 && r.ScriptScene is >= 0 and < 2000);
+        Assert.True(rig.Services.FlowchartJump(start.Column, start.Scene, start.ScriptScene));
+        rig.Run(60);
+        rig.NoDeadFrames = true;
+
+        // keys: Esc, FlowChart (the fourth tab), Up to an earlier scene, Enter, Yes (first), Enter
+        FlowchartScreen chart = OpenInGameChart(rig, "3:Esc", "2:Down;14:Down;26:Down;38:Decide*2");
+        Assert.Equal(start.Scene, chart.Chart.RecordAt(chart.Cell)?.Node);
+        ChartRecord target = default;
+        for (int i = 0; i < 6 && (target.Node <= 0 || target.Node == start.Scene || target.ScriptScene < 0); i++)
+        {
+            rig.Play("2:Up");
+            rig.Run(30);
+            target = chart.Chart.RecordAt(chart.Cell) ?? default;
+        }
+
+        Assert.True(target.ScriptScene >= 0 && target.Node != start.Scene, "no earlier scene above the cursor");
+        rig.Play("2:Decide*2");
+        Assert.True(rig.RunUntil(() => rig.Ui.Top is ConfirmDialog, 60));
+        rig.Run(25);
+        Assert.True(((ConfirmDialog)rig.Ui.Top!).CursorOnYes);
+        rig.Play("2:Decide*2");
+        JumpedTo(rig, target);
+
+        // Esc and FlowChart again (the menu kept the tab): the chart is on the scene that runs now
+        chart = OpenInGameChart(rig, "3:Esc", "2:Decide*2");
+
+        // the mouse, with the backlog first: the chart and the menu close, the wheel opens the backlog of a few pages and Esc closes it, a right click opens the menu,
+        // a click on the FlowChart tab the chart, a click on a node the question, a click on Yes jumps
+        rig.Play("2:Esc;60:Esc");
+        Assert.True(rig.RunUntil(() => !rig.Ui.Active, 150), "the chart and the menu did not close: " + Screens(rig));
+        rig.Auto.Paused = false;
+        rig.Run(150);
+        rig.Auto.Paused = true;
+        rig.Run(10);
+        rig.Play("2:wheel=1");
+        Assert.True(rig.RunUntil(() => rig.Ui.Top is BacklogScreen, 60), "the backlog did not open: " + Screens(rig));
+        rig.Run(40);
+        rig.Play("2:Esc");
+        Assert.True(rig.RunUntil(() => !rig.Ui.Active, 90), "the backlog did not close: " + Screens(rig));
+        chart = OpenInGameChart(rig, "3:rclick=960,540", "2:click=" + Centre(SystemMenuScreen.TabRect((int)MenuTab.FlowChart)));
+        (ChartNode node, target) = OtherNodeInView(chart);
+        rig.Play($"2:click={(int)(node.X + (FlowchartChart.NodeW / 2f))},{(int)(node.Y - chart.Scroll + (FlowchartChart.NodeH / 2f))}");
+        Assert.True(rig.RunUntil(() => rig.Ui.Top is ConfirmDialog, 60), "a click on a node did not ask: " + Screens(rig));
+        rig.Run(25);
+        rig.Play("2:click=" + DialogYes);
+        JumpedTo(rig, target);
+        chart = OpenInGameChart(rig, "3:rclick=960,540", "2:click=" + Centre(SystemMenuScreen.TabRect((int)MenuTab.FlowChart)));
+
+        // a save and a load in between: Esc to the menu, Save (three tabs up), the free slot; back, Load, the newest slot, Yes; then Esc and FlowChart again
+        int jumps = rig.Host.RestoreCount;
+        rig.Play("2:Esc");
+        Assert.True(rig.RunUntil(() => rig.Ui.Top is SystemMenuScreen, 90));
+        rig.Run(20);
+        rig.Play("2:Up;14:Up;26:Up;38:Decide*2");
+        Assert.True(rig.RunUntil(() => rig.Ui.Top is SaveLoadScreen, 90), "the save list did not open: " + Screens(rig));
+        rig.Run(40);
+        rig.Play("2:Decide*2");
+        Assert.True(rig.RunUntil(() => rig.Services.Slots.Any(s => s.Used && s.Index < 100), 300), "the save list did not store a slot");
+        rig.Run(120);
+        rig.Play("2:Esc");
+        Assert.True(rig.RunUntil(() => rig.Ui.Top is SystemMenuScreen, 120), "the save list did not close: " + Screens(rig));
+        rig.Run(20);
+        rig.Play("2:Down;14:Decide*2");
+        Assert.True(rig.RunUntil(() => rig.Ui.Top is SaveLoadScreen, 90), "the load list did not open: " + Screens(rig));
+        rig.Run(40);
+        rig.Play("2:Decide*2");
+        Assert.True(rig.RunUntil(() => rig.Ui.Top is ConfirmDialog, 90), "the load did not ask: " + Screens(rig));
+        rig.Run(25);
+        rig.Play("2:Decide*2");
+        Assert.True(rig.RunUntil(() => !rig.Ui.Active && rig.Host.RestoreCount > jumps, 600), "the load did not run: " + Screens(rig));
+        rig.Run(60);
+        Assert.Equal((int)MenuTab.Load, rig.Ui.Context.MenuTab);                // the menu keeps the tab it was left on: FlowChart is two down
+        chart = OpenInGameChart(rig, "3:Esc", "2:Down;14:Down;26:Decide*2");
+        rig.Play("2:Esc;60:Esc");
+        Assert.True(rig.RunUntil(() => !rig.Ui.Active, 150));
+        Assert.True(rig.Services.StoryActive);
+    }
+
+    private static FlowchartScreen OpenGalleryChart(Rig rig)
+    {
+        rig.Ui.Clear();
+        GalleryScreen gallery = rig.Ui.Push(new GalleryScreen());
+        rig.Run(40);
+        Assert.Same(gallery, rig.Ui.Top);
+
+        // the hub's third button is the Flowchart; the chart opens on its first record
+        rig.Play("2:Down;14:Down;26:Decide*2");
+        Assert.True(rig.RunUntil(() => rig.Ui.Top is FlowchartScreen, 120), "the chart did not open from the gallery");
+        var chart = (FlowchartScreen)rig.Ui.Top!;
+        rig.Run(40);
+        return chart;
+    }
+
+    private void ReplayRuns(Rig rig, int node)
+    {
+        Assert.True(rig.RunUntil(() => rig.Services.ReplayActive && rig.Host.Phase == GamePhase.Running && !rig.Ui.Active, 300), "the replay did not start: " + Screens(rig));
+        rig.Run(120);
+        output.WriteLine($"frame {rig.Runtime.Frame}: replay of node {node}: scene {rig.Host.SceneId}, script {rig.Host.Script}");
+    }
+
+    private FlowchartScreen BackOnTheGalleryChart(Rig rig, int node, string yes)
+    {
+        var dialog = Assert.IsType<ConfirmDialog>(rig.Ui.Top);
+        rig.Run(25);
+        Assert.True(dialog.CursorOnYes);
+        long asked = rig.Runtime.Frame;
+        rig.Play(yes);
+
+        // the menu leaves by itself (no key) and the gallery reopens on the chart, the cursor on the node the replay started from
+        Assert.True(rig.RunUntil(() => rig.Ui.Top is FlowchartScreen { Gallery: true }, 400), "not back on the gallery's chart: " + Screens(rig) + $", story {rig.Services.StoryActive}");
+        output.WriteLine($"back on the gallery's chart {rig.Runtime.Frame - asked} frames after Yes");
+        var back = (FlowchartScreen)rig.Ui.Top!;
+        Assert.False(rig.Services.StoryActive);
+        Assert.False(rig.Services.ReplayActive);
+        Assert.Null(rig.Ui.Find<SystemMenuScreen>());
+        Assert.IsType<TitleScreen>(rig.Ui.Stack[0]);
+        Assert.NotNull(rig.Ui.Find<GalleryScreen>());
+        Assert.Equal(node, back.Chart.RecordAt(back.Cell)?.Node);
+        rig.Run(60);
+        Assert.Equal(1f, back.Fade);
+        return back;
+    }
+
+    /// <summary>
+    /// Issue #7 (package K38), the player's route: GALLERY, Flowchart, a node (the scene replays), Esc, FlowChart again, "Do you want to return to the flowchart?",
+    /// Yes. The menu leaves by itself, the gallery comes back on the chart with the cursor on the node the replay started from, and no step on the way ends with no
+    /// story and no screen (the black screen that took no key). Then the same node again, by the mouse (a right click, the tab, a click on Yes) with the backlog in
+    /// between, and the chart still takes its keys afterwards.
+    /// </summary>
+    [GameDataFact]
+    public void EndingAChartReplayFromTheSystemMenuReturnsToTheGalleryChartTwiceInARow()
+    {
+        Rig rig = ProfileWithProgress();
+        FinishScenes(rig, 10);
+        rig.Run(5);
+        rig.NoDeadFrames = true;
+        FlowchartScreen chart = OpenGalleryChart(rig);
+        ChartRecord rec = chart.Chart.RecordAt(chart.Cell) ?? throw new InvalidOperationException("the chart has no record under its cursor");
+        Assert.True(rec.ScriptScene >= 0, "the first record has no scene to replay");
+        rig.Play("2:Decide*2");
+        ReplayRuns(rig, rec.Node);
+
+        // keys: Esc, FlowChart (the fourth tab), the dialog with Yes first, Enter
+        rig.Play("3:Esc");
+        Assert.True(rig.RunUntil(() => rig.Ui.Top is SystemMenuScreen, 30));
+        rig.Run(30);
+        rig.Play("2:Down;14:Down;26:Down;38:Decide*2");
+        Assert.True(rig.RunUntil(() => rig.Ui.Top is ConfirmDialog, 120), "the end-replay dialog did not open: " + Screens(rig));
+        FlowchartScreen back = BackOnTheGalleryChart(rig, rec.Node, "2:Decide*2");
+
+        // again from the chart that came back: the same node, the backlog of a few pages, then the mouse
+        rig.Play("2:Decide*2");
+        ReplayRuns(rig, rec.Node);
+        rig.Auto.Paused = false;
+        rig.Run(150);
+        rig.Auto.Paused = true;
+        rig.Run(10);
+        rig.Play("2:wheel=1");
+        Assert.True(rig.RunUntil(() => rig.Ui.Top is BacklogScreen, 60), "the backlog did not open: " + Screens(rig));
+        rig.Run(40);
+        rig.Play("2:Esc");
+        Assert.True(rig.RunUntil(() => !rig.Ui.Active, 90));
+        Assert.True(rig.Services.ReplayActive);
+        rig.Play("3:rclick=960,540");
+        Assert.True(rig.RunUntil(() => rig.Ui.Top is SystemMenuScreen, 30));
+        rig.Run(30);
+        rig.Play("2:click=" + Centre(SystemMenuScreen.TabRect((int)MenuTab.FlowChart)));
+        Assert.True(rig.RunUntil(() => rig.Ui.Top is ConfirmDialog, 120), "the end-replay dialog did not open on a click: " + Screens(rig));
+        back = BackOnTheGalleryChart(rig, rec.Node, "2:click=" + DialogYes);
+
+        // the chart still works: Esc goes back to the hub, which takes input
+        rig.Play("2:Esc");
+        Assert.True(rig.RunUntil(() => rig.Ui.Top is GalleryScreen, 120));
+    }
+
+    /// <summary>
+    /// Issue #7 (package K38) over the whole chart, every fifth node: in the story, a jump to the node from the chart, then Esc and FlowChart again (the chart opens
+    /// on the node, or says it cannot be used where the PS4 says so), every fifth of those once more by Yes on the cursor; in the gallery, a replay of the node, then
+    /// Esc, FlowChart, Yes back to the chart on the same node. No exception, no step with no story and no screen.
+    /// </summary>
+    [GameDataFact]
+    public void EveryFifthNodeJumpsAndReplaysAndComesBackToItsChart()
+    {
+        Rig rig = ProfileWithProgress();
+        FinishScenes(rig);
+        rig.Run(5);
+        rig.Ui.Clear();
+        rig.NoDeadFrames = true;
+        var problems = new List<string>();
+
+        // in the story
+        List<FlowNodeRow> nodes = [.. Source.Eboot.GameFlow.Nodes.Where(r => r.ScriptScene >= 0 && r.Scene > 0)];
+        int jumps = 0;
+        for (int i = 0; i < nodes.Count; i += 5)
+        {
+            FlowNodeRow r = nodes[i];
+            string at = $"jump to node {r.Scene} (column {r.Column}, scene {r.ScriptScene})";
+            rig.NoDeadFrames = false;
+            rig.Ui.Clear();
+            PlayedThrough(rig, GalleryTables.ChartColumns.Count);
+            Assert.True(rig.Services.FlowchartJump(r.Column, r.Scene, r.ScriptScene), at + ": refused");
+            rig.NoDeadFrames = true;
+            rig.Run(30);
+            rig.Ui.Context.MenuTab = (int)MenuTab.FlowChart;
+            rig.Play("1:Esc");
+            Assert.True(rig.RunUntil(() => rig.Ui.Top is SystemMenuScreen, 90), at + ": no system menu: " + Screens(rig));
+            rig.Run(20);
+            rig.Play("1:Decide*2");
+            Assert.True(rig.RunUntil(() => rig.Ui.Top is FlowchartScreen or MessagePopup, 60), at + ": FlowChart did nothing: " + Screens(rig));
+            if (rig.Ui.Top is MessagePopup)
+            {
+                // the prologue's nodes: "You cannot use the flowchart yet." (scene 1 is not entered in this playthrough)
+                problems.Add(at + $": the chart is not available here (F110 {rig.Services.CurrentNode})");
+                continue;
+            }
+
+            var chart = (FlowchartScreen)rig.Ui.Top!;
+            rig.Run(35);
+            if (chart.Chart.RecordAt(chart.Cell)?.Node != rig.Services.CurrentNode)
+            {
+                // the eight scenes that start inside a script (2000..2007) set F110 to a node of another column: the cursor stays on the first record (sub_F8FC)
+                problems.Add(at + $": the chart opened on node {chart.Chart.RecordAt(chart.Cell)?.Node}, F110 is {rig.Services.CurrentNode}");
+            }
+
+            if (i % 25 == 0 && chart.Chart.RecordAt(chart.Cell) is { ScriptScene: >= 0 } again)
+            {
+                rig.Play("1:Decide*2");
+                Assert.True(rig.RunUntil(() => rig.Ui.Top is ConfirmDialog, 30), at + ": no rewind question");
+                rig.Run(20);
+                rig.Play("1:Decide*2");
+                Assert.True(rig.RunUntil(() => !rig.Ui.Active, 120), at + ": the second jump left " + Screens(rig));
+                Assert.Equal(again.Node, rig.Services.CurrentNode);
+                rig.Run(30);
+            }
+            else
+            {
+                rig.Play("1:Esc;40:Esc");
+                rig.Run(100);
+            }
+
+            Assert.True(rig.Services.StoryActive, at + ": the story is gone");
+            jumps++;
+        }
+
+        // in the gallery
+        rig.NoDeadFrames = false;
+        List<ChartNodeRow> rows = [.. GalleryTables.ChartColumns.SelectMany(c => c.Nodes).Where(r => r.ScriptScene >= 0 && r.Scene > 0).DistinctBy(r => r.Scene)];
+        int replays = 0;
+        for (int i = 0; i < rows.Count; i += 5)
+        {
+            ChartNodeRow r = rows[i];
+            string at = $"replay of node {r.Scene} (scene {r.ScriptScene})";
+            rig.Ui.Clear();
+            rig.Ui.Context.Gallery.Mode = (int)GalleryMode.Flowchart;              // as GalleryScreen.ReplayFromChart leaves it
+            rig.Ui.Context.Gallery.Node = r.Scene;
+            rig.Services.ReplayScene(r.ScriptScene, r.Scene);
+            Assert.True(rig.RunUntil(() => rig.Services.ReplayActive && rig.Host.Phase == GamePhase.Running && !rig.Ui.Active, 300), at + ": did not start");
+            rig.NoDeadFrames = true;
+            rig.Run(40);
+            rig.Ui.Context.MenuTab = (int)MenuTab.FlowChart;
+            rig.Play("1:Esc");
+            Assert.True(rig.RunUntil(() => rig.Ui.Top is SystemMenuScreen, 90), at + ": no system menu: " + Screens(rig));
+            rig.Run(20);
+            rig.Play("1:Decide*2");
+            Assert.True(rig.RunUntil(() => rig.Ui.Top is ConfirmDialog, 60), at + ": no end-replay question: " + Screens(rig));
+            rig.Run(20);
+            rig.Play("1:Decide*2");
+            Assert.True(rig.RunUntil(() => rig.Ui.Top is FlowchartScreen { Gallery: true }, 300), at + ": not back on the chart: " + Screens(rig));
+            var back = (FlowchartScreen)rig.Ui.Top!;
+            Assert.True(back.Chart.RecordAt(back.Cell)?.Node == r.Scene, at + $": back on node {back.Chart.RecordAt(back.Cell)?.Node}");
+            rig.NoDeadFrames = false;
+            replays++;
+        }
+
+        foreach (string p in problems)
+        {
+            output.WriteLine(p);
+        }
+
+        output.WriteLine($"{jumps} jumps, {replays} replays");
+        Assert.True(jumps >= 90 && replays >= 90);
+        Assert.All(problems, p => Assert.True(p.Contains("not available", StringComparison.Ordinal) || p.Contains("scene 20", StringComparison.Ordinal), p));
+    }
+
+    // ---- package K39 (review of K38): the replay flag after a replay --------------------------------------------------------------------------------------------
+
+    /// <summary>
+    /// A chart replay left by the system menu's Title tab, then the title's CONTINUE / LOAD GAME: the loaded story is not a replay, so Esc and FlowChart open the
+    /// in-game chart. The host's replay flag, which a rewind keeps, survived the load: the story asked "Do you want to return to the flowchart?" (the gallery's mode
+    /// was still the chart), and Yes threw it away into the gallery; in v0.1.2 onto the black screen of issue #7.
+    /// </summary>
+    [GameDataFact]
+    public void AStoryLoadedAfterAChartReplayLeftByTheTitleTabOpensTheInGameChart()
+    {
+        Rig rig = ProfileWithProgress();
+        const int Columns = 14;
+        FinishScenes(rig, Columns);
+        rig.Run(5);
+        rig.Ui.Clear();
+
+        // a save in the story (the chart is available there), then back to the title
+        PlayedThrough(rig, Columns);
+        FlowNodeRow start = Source.Eboot.GameFlow.Nodes.Last(r => r.Column < Columns && r.Scene > 0 && r.ScriptScene is >= 0 and < 2000);
+        Assert.True(rig.Services.FlowchartJump(start.Column, start.Scene, start.ScriptScene));
+        Assert.True(rig.RunUntil(() => rig.Host.History is { Staging.Used: not 0 }, 900), "no page to save");
+        Assert.True(rig.Services.Save(0));
+        rig.Services.ReturnToTitle();
+        Assert.True(rig.RunUntil(() => rig.Ui.Top is TitleScreen, 60));
+
+        // GALLERY, Flowchart, the first node replays; Esc, the Title tab (four down from Save)
+        rig.NoDeadFrames = true;
+        FlowchartScreen chart = OpenGalleryChart(rig);
+        ChartRecord rec = chart.Chart.RecordAt(chart.Cell) ?? throw new InvalidOperationException("the chart has no record under its cursor");
+        rig.Play("2:Decide*2");
+        ReplayRuns(rig, rec.Node);
+        rig.Play("3:Esc");
+        Assert.True(rig.RunUntil(() => rig.Ui.Top is SystemMenuScreen, 30));
+        rig.Run(30);
+        rig.Ui.Context.MenuTab = (int)MenuTab.Save;
+        rig.Play("2:Up;14:Decide*2");
+        Assert.True(rig.RunUntil(() => rig.Ui.Find<SystemMenuScreen>() is null && rig.Ui.Find<TitleScreen>() is not null, 300), "not on the title: " + Screens(rig));
+        Assert.False(rig.Services.StoryActive);
+        Assert.Equal((int)GalleryMode.Flowchart, rig.Ui.Context.Gallery.Mode);
+
+        // the title's CONTINUE: the saved story, which is no replay
+        Assert.True(rig.Services.Load(0));
+        Assert.True(rig.RunUntil(() => !rig.Ui.Active, 300), "the story did not take the screen: " + Screens(rig));
+        Assert.False(rig.Services.ReplayActive);
+        Assert.False(rig.Host.ReplayRequested);
+        rig.Run(60);
+
+        // Esc, FlowChart (one up from Title): the in-game chart on the scene that runs, not the end of a replay
+        FlowchartScreen inGame = OpenInGameChart(rig, "3:Esc", "2:Up;14:Decide*2");
+        Assert.Equal(start.Scene, inGame.Chart.RecordAt(inGame.Cell)?.Node);
+        rig.Play("2:Esc;60:Esc");
+        Assert.True(rig.RunUntil(() => !rig.Ui.Active, 150));
+        Assert.True(rig.Services.StoryActive);
+    }
+
+    /// <summary>
+    /// A language change during a chart replay builds a new host and carries the page into it; the replay must still end back on the gallery's chart. The new host
+    /// had no replay flag, and the replay ended on the title.
+    /// </summary>
+    [GameDataFact]
+    public void AChartReplayEndsBackOnTheGalleryChartAfterALanguageChange()
+    {
+        Rig rig = ProfileWithProgress();
+        FinishScenes(rig, 10);
+        rig.Run(5);
+        rig.Auto.HoldChoice = false;
+        rig.NoDeadFrames = true;
+        FlowchartScreen chart = OpenGalleryChart(rig);
+        ChartRecord rec = chart.Chart.RecordAt(chart.Cell) ?? throw new InvalidOperationException("the chart has no record under its cursor");
+        rig.Play("2:Decide*2");
+        ReplayRuns(rig, rec.Node);
+
+        // a page is on show, so the new host gets it through a slot (a replay with no page yet starts its ARCHIVE scene over instead, AppServices.RebuildHost)
+        Assert.True(rig.RunUntil(() => rig.Host.History is { Staging.Used: not 0 } && rig.Host.CurrentMessage is not null, 600), "no page in the replay");
+        GameHost before = rig.Host;
+        rig.Services.Config.Language = (short)Language.Ja;
+        rig.Services.ConfigChanged(ConfigChange.Language);
+        Assert.NotSame(before, rig.Host);
+        Assert.True(rig.Services.ReplayActive);
+
+        // the autoplay skips to the end of the scene
+        rig.Auto.Paused = false;
+        Assert.True(rig.RunUntil(() => !rig.Services.StoryActive, 12000), "the replay did not end");
+        Assert.True(rig.RunUntil(() => rig.Ui.Top is FlowchartScreen { Gallery: true }, 120), "not back on the gallery's chart: " + Screens(rig));
+        var back = (FlowchartScreen)rig.Ui.Top!;
+        Assert.Equal(rec.Node, back.Chart.RecordAt(back.Cell)?.Node);
+        Assert.Equal(Language.Ja, rig.Services.Language);
+        output.WriteLine($"frame {rig.Runtime.Frame}: the replay of node {rec.Node} ended back on the gallery's chart");
     }
 }

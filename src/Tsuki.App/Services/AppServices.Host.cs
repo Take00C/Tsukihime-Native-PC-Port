@@ -27,7 +27,9 @@ public sealed partial class AppServices
         {
             var temp = new SaveStore();
             temp.SaveManual(0, carry, Date());
-            host.LoadSlot(temp, 0);
+
+            // a replay's page stays a replay on the new host: it still ends back in the gallery (package K39: it ended on the title)
+            host.LoadSlot(temp, 0, replay: old.ReplayRequested);
             host.SetSkipLatch(false);
         }
         else if (running)

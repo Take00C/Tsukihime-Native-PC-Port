@@ -60,6 +60,7 @@ public sealed class HostRebuildTests
         var rig = new AppRig(Waiting);
         var ui = new UiRoot(UiTestKit.Data(), rig.Services);
         var runtime = new AppRuntime(rig.Services, ui, null, null);
+        rig.Services.SetGlobal(110 + (485 >> 4), (ushort)(1 << (485 & 15)));   // the prologue was read: the title that takes over does not start it at once
         rig.Services.StartScene(100);
         long n = 0;
         for (int i = 0; i < 10; i++)
@@ -80,7 +81,9 @@ public sealed class HostRebuildTests
         runtime.Step(new InputFrame { Frame = ++n }, n * 16_666_667L, new DisplayList(2048));
         Assert.Contains(log, l => l.Contains("story host not started", StringComparison.Ordinal));
         Assert.False(rig.Services.StoryActive);
-        runtime.Step(new InputFrame { Frame = ++n }, n * 16_666_667L, new DisplayList(2048));
+
+        // the title takes over in the same step (package K38: the hand-off used to wait for the next step, a frame with no story and no screen)
         Assert.Contains(ui.Stack, s => s is TitleScreen);
+        Assert.DoesNotContain(log, l => l.Contains("nothing on screen", StringComparison.Ordinal));
     }
 }

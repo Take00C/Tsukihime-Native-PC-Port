@@ -238,14 +238,16 @@ public sealed class AppRuntime
         }
 
         // the title asked for while a menu is still up (the system menu's Title button, the safety net below) waits until the menu has closed
-        if (!Ui.Active && Services.TakePendingTitle())
+        if (ApplyPendingHandOff())
         {
-            Services.StopStoryOutputs();
-            Ui.Push(new TitleScreen());
             story = false;
         }
 
         Ui.Step(uiWasActive ? raw : input with { Pressed = PadButtons.None, Repeated = PadButtons.None, MenuPressed = PadButtons.None, MenuRepeated = PadButtons.None, ShellPressed = ShellActions.None, Pointer = input.Pointer with { Pressed = PointerButtons.None, Wheel = 0 } });
+
+        // a menu that left the story in its step (the system menu's Title tab, the end of a replay) has cleared the screens: the title or the gallery takes over in the
+        // same frame, so nothing is ever drawn with no story and no screen (package K38)
+        ApplyPendingHandOff();
 
         if (_promptSave is not null && !Ui.Stack.Contains(_promptSave))
         {
@@ -337,6 +339,17 @@ public sealed class AppRuntime
         {
             _ending = false;
             EndStory();
+        }
+
+        ApplyPendingHandOff();
+        if (!Services.StoryActive && !Ui.Active)
+        {
+            // nothing is on the screen: no story runs and no screen is open. No path should end a step here (a story ends into the title or the gallery, a menu that
+            // leaves the story hands over first); one that does would leave the player on a black screen that takes no key, so the title takes over and the log says
+            // so (package K38: issue #7 was such a screen, from the end of a replay under the system menu)
+            Logged?.Invoke("nothing on screen (no story, no menu): back to the title");
+            Services.StopStoryOutputs();
+            Ui.Push(new TitleScreen());
         }
 
         long t4b = Stopwatch.GetTimestamp();
@@ -439,6 +452,39 @@ public sealed class AppRuntime
         {
             Ui.Push(new TitleScreen());
         }
+    }
+
+    /// <summary>
+    /// The hand-offs a menu asked for while it was still on the stack, performed once no screen is open: the title (the system menu's Title tab, the safety nets) or
+    /// the gallery (a replay ended from the system menu, which reopens the gallery on the chart the replay was picked from; the title when the data has no gallery).
+    /// True when a screen was pushed.
+    /// </summary>
+    private bool ApplyPendingHandOff()
+    {
+        if (Ui.Active)
+        {
+            return false;
+        }
+
+        if (Services.TakePendingTitle())
+        {
+            Services.StopStoryOutputs();
+            Ui.Push(new TitleScreen());
+            return true;
+        }
+
+        if (Services.TakePendingGalleryReturn())
+        {
+            Services.StopStoryOutputs();
+            if (!Ui.ReturnToGallery())
+            {
+                Ui.Push(new TitleScreen());
+            }
+
+            return true;
+        }
+
+        return false;
     }
 
     // The last frame of a page that was being read (a message fully shown in an open window), grabbed at most once in StoryThumbnailGap steps: the thumbnail of

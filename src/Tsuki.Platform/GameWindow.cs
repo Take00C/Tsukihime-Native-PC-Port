@@ -362,6 +362,13 @@ public sealed unsafe partial class GameWindow : IDisposable
         IsHidden = false;
     }
 
+    /// <summary>Hides the window (a crash box must not end up behind a borderless fullscreen window that no longer presents; package K38).</summary>
+    public void Hide()
+    {
+        SDL_HideWindow(Handle);
+        IsHidden = true;
+    }
+
     /// <summary>Presents the back buffer.</summary>
     public void Swap() => SDL_GL_SwapWindow(Handle);
 

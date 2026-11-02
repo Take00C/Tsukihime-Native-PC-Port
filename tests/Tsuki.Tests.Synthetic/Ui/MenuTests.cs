@@ -111,6 +111,26 @@ public sealed class MenuTests
     }
 
     [Fact]
+    public void AStoryLoadedFromTheTitleOpensItsFirstMenuWithTheBackdropFadingInFromNothing()
+    {
+        // package K39: the title's load list fades the backdrop in (0.02 a frame) and nothing faded it out when the loaded story took the screen, so the story's
+        // first system menu showed it at full strength at once
+        var services = new PreviewServices();
+        UiRoot root = UiTestKit.Root(services);
+        root.Push(new TitleScreen());
+        root.Push(new SaveLoadScreen(save: false));
+        UiTestKit.Run(root, 60);
+        Assert.True(root.Context.Backdrop.A > 0.9f);
+        root.Clear();                                                          // the loaded story takes the screen (AppRuntime: a story started under the title)
+        UiTestKit.Run(root, 5);
+        Assert.True(root.OpenSystemMenu());
+        UiTestKit.Run(root, 1);
+        Assert.InRange(root.Context.Backdrop.A, 0.01f, 0.1f);
+        UiTestKit.Run(root, 30);
+        Assert.Equal(1f, root.Context.Backdrop.A);
+    }
+
+    [Fact]
     public void CancelSquareAndL2CloseTheMenuAndCutTheBackdrop()
     {
         foreach (PadButtons close in new[] { PadButtons.Cancel, PadButtons.Square, PadButtons.L2 })

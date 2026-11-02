@@ -70,7 +70,10 @@ public interface IUiGalleryServices : IUiProgress
     /// <param name="node">The flowchart node (or scene) the replay was picked from, for the way back.</param>
     void ReplayScene(int scriptScene, int node);
 
-    /// <summary>The system menu's FlowChart during a replay picked in the gallery's flowchart was confirmed: ends the replay, the story returns to the gallery.</summary>
+    /// <summary>
+    /// The system menu's FlowChart during a replay picked in the gallery's flowchart was confirmed and the menu has faded out (knife <c>leave_to_title</c> with F024
+    /// kept): ends the replay; the host reopens the gallery (<see cref="UiRoot.ReturnToGallery"/>) once no screen is left on the stack. Called with the stack empty.
+    /// </summary>
     void EndReplay();
 
     /// <summary>

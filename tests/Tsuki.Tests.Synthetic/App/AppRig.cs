@@ -23,10 +23,21 @@ internal sealed class AppRig
 
     private long _inputFrame;
 
-    public AppRig(string script = ThreePages, string? savePath = null, SaveStore? store = null, AudioCommandPlayer? audio = null)
+    /// <param name="script">The script of scene 100.</param>
+    /// <param name="savePath">The save file, or none.</param>
+    /// <param name="store">The slots and the system data, or a fresh store.</param>
+    /// <param name="audio">The audio player, or none.</param>
+    /// <param name="copies">How many scripts hold <paramref name="script"/> (scenes 100, 101, ...); 11 or more give scene 110, which a gallery replay starts when the
+    /// rig has no ARCHIVE scene (3000 falls back to START_SCRIPT, GameHost.EnterScene), so a replay can run (package K39).</param>
+    public AppRig(string script = ThreePages, string? savePath = null, SaveStore? store = null, AudioCommandPlayer? audio = null, int copies = 1)
     {
         Rig = new GameRig().Line(2, "alpha line").Line(3, "beta line").Line(4, "gamma line").Line(5, "delta line").Line(6, "epsilon line")
-            .Line(43960, "1. ").Line(43961, "2. ").Line(43962, "3. ").Script(script);
+            .Line(43960, "1. ").Line(43961, "2. ").Line(43962, "3. ");
+        for (int i = 0; i < Math.Max(1, copies); i++)
+        {
+            Rig.Script(script);
+        }
+
         Rig.Build();
         Store = store ?? NewStore();
         Services = new AppServices(new AppServicesParts

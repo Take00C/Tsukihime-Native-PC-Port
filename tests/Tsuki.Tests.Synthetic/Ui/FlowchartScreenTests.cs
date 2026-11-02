@@ -94,6 +94,11 @@ public sealed class FlowchartScreenTests
         Assert.Contains("commit", s.Calls);
         Assert.Contains("flow jump 2 3 303", s.Calls);
         Assert.False(root.Active);
+        // the menu's backdrop goes with the menu (package K38): it stayed at full alpha under the new scene, so the next system menu's backdrop did not fade in
+        Assert.False(root.Context.Backdrop.Visible);
+        Assert.True(root.OpenSystemMenu());
+        Run(root, 1);
+        Assert.InRange(root.Context.Backdrop.A, 0.01f, 0.2f);
     }
 
     [Fact]
@@ -191,7 +196,46 @@ public sealed class FlowchartScreenTests
     }
 
     [Fact]
-    public void DuringAReplayFromTheChartTheMenuTabEndsTheReplay()
+    public void DuringAReplayFromTheChartTheMenuTabEndsTheReplayOnceTheMenuHasLeft()
+    {
+        (UiRoot root, PreviewServices s) = OpenMenu(p =>
+        {
+            GalleryKit.ReadChain(p);
+            p.ReplayActive = true;
+        });
+        root.Context.Gallery.Mode = (int)GalleryMode.Flowchart;
+        ToFlowChart(root);
+        var dialog = Assert.IsType<ConfirmDialog>(root.Top);
+        var menu = Assert.IsType<SystemMenuScreen>(root.Stack[0]);
+        Run(root, 20);
+        Assert.True(dialog.CursorOnYes);
+        Press(root, PadButtons.Decide);
+
+        // knife leave_to_title (sub_4D7E0): once the dialog has answered (it holds its Yes for 15 frames), the menu and its backdrop fade out at 1/30 a frame, and the
+        // replay ends only when no screen is left, so that the gallery can reopen over an empty stack. Issue #7 (package K38): the services were told while the menu
+        // and the dialog were still up, the gallery could not open, and the player was left on a black screen
+        int frames = 0;
+        for (; frames < 120 && !s.Calls.Contains("end replay"); frames++)
+        {
+            Assert.True(root.Active, "the screens left before the hand-off");
+            Run(root, 1);
+            if (root.Active && !dialog.Waiting && !root.Stack.Contains(dialog))
+            {
+                Assert.True(menu.LeavingStory);
+                Assert.Same(menu, root.Top);
+            }
+        }
+
+        Assert.Contains("end replay", s.Calls);
+        Assert.False(root.Active);
+        Assert.InRange(frames, 40, 60);
+        Assert.False(root.Context.Backdrop.Visible);
+        Assert.DoesNotContain("return to title", s.Calls);
+        Assert.DoesNotContain("auto save", s.Calls);
+    }
+
+    [Fact]
+    public void WhileTheMenuLeavesAfterEndingAReplayItTakesNoInput()
     {
         (UiRoot root, PreviewServices s) = OpenMenu(p =>
         {
@@ -202,10 +246,21 @@ public sealed class FlowchartScreenTests
         ToFlowChart(root);
         var dialog = Assert.IsType<ConfirmDialog>(root.Top);
         Run(root, 20);
-        Assert.True(dialog.CursorOnYes);
         Press(root, PadButtons.Decide);
+        for (int i = 0; i < 60 && root.Stack.Contains(dialog); i++)
+        {
+            Run(root, 1);                                        // the dialog holds its Yes, answers and fades out
+        }
+
+        var menu = Assert.IsType<SystemMenuScreen>(root.Top);   // the menu is fading out alone
+        Assert.True(menu.LeavingStory);
+        int calls = s.Calls.Count;
+        Press(root, PadButtons.Cancel);
+        Press(root, PadButtons.Decide);
+        Assert.Equal(calls, s.Calls.Count);                      // no buzzer, no tab opened
         Run(root, 40);
         Assert.Contains("end replay", s.Calls);
+        Assert.False(root.Active);
     }
 
     [Fact]

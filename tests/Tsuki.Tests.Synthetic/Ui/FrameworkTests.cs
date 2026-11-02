@@ -316,9 +316,13 @@ public sealed class FrameworkTests
     {
         public int Closed;
 
+        /// <summary>What <see cref="UiRoot.Active"/> said inside <see cref="OnClosed"/>.</summary>
+        public bool? ActiveWhenClosed;
+
         public override void OnClosed()
         {
             Closed++;
+            ActiveWhenClosed = Root.Active;
             Root.Clear();
         }
 
@@ -346,5 +350,41 @@ public sealed class FrameworkTests
         Assert.Equal(1, clearing.Closed);
         Assert.False(root.Active);
         UiTestKit.Run(root, 2);                                 // and the root still steps
+    }
+
+    [Fact]
+    public void ClearEmptiesTheStackBeforeItTellsTheScreensTopFirstAndOnceEach()
+    {
+        // package K38: a screen's OnClosed sees the root as it is (no screen open), as it does when the step removes one screen; a Clear from an OnClosed finds
+        // nothing left (the screens were told twice before)
+        var services = new PreviewServices();
+        UiRoot root = UiTestKit.Root(services);
+        var under = new ClearingScreen();
+        var top = new ClearingScreen();
+        root.Push(under);
+        root.Push(top);
+        root.Clear();
+        Assert.False(root.Active);
+        Assert.Equal(1, top.Closed);
+        Assert.Equal(1, under.Closed);
+        Assert.False(top.ActiveWhenClosed);
+        Assert.False(under.ActiveWhenClosed);
+
+        // the system menu takes its backdrop with it in its OnClosed when it is the last screen, and a Clear counts as that: a load or a flowchart jump clears the
+        // menu while its backdrop is still at full alpha and heading in, and the next menu then showed it at once instead of fading it in
+        Assert.True(root.OpenSystemMenu());
+        UiTestKit.Run(root, 30);
+        Assert.Equal(1f, root.Context.Backdrop.A);
+        root.Clear();
+        Assert.False(root.Context.Backdrop.Visible);
+        Assert.True(root.OpenSystemMenu());
+        UiTestKit.Run(root, 1);
+        Assert.InRange(root.Context.Backdrop.A, 0.01f, 0.2f);
+
+        // and when it closes by itself (Cancel)
+        UiTestKit.Run(root, 30);
+        root.Top!.Close();
+        root.Clear();
+        Assert.False(root.Context.Backdrop.Visible);
     }
 }

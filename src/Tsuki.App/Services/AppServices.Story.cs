@@ -115,12 +115,21 @@ public sealed partial class AppServices
     }
 
     private bool _pendingTitle;
+    private bool _pendingGallery;
 
     /// <summary>True once after the story left for the title (the menu's Title button): the runtime then pushes the title screen.</summary>
     public bool TakePendingTitle()
     {
         bool p = _pendingTitle;
         _pendingTitle = false;
+        return p;
+    }
+
+    /// <summary>True once after a gallery replay was ended from the system menu (<see cref="EndReplay"/>): the runtime then reopens the gallery (<see cref="UiRoot.ReturnToGallery"/>).</summary>
+    public bool TakePendingGalleryReturn()
+    {
+        bool p = _pendingGallery;
+        _pendingGallery = false;
         return p;
     }
 
@@ -367,9 +376,13 @@ public sealed partial class AppServices
     /// <inheritdoc/>
     public void EndReplay()
     {
+        // the replay's read marks are kept, as at a story's end; the gallery reopens through the runtime (ReturnToTitle's way), which can only happen once no screen
+        // is open: calling UiRoot.ReturnToGallery here was refused while the system menu was still on the stack, and the story, already gone, left a black screen
+        // (package K38, issue #7)
         StoryActive = false;
+        Commit();
         StopStoryOutputs();
-        Ui?.ReturnToGallery();
+        _pendingGallery = true;
     }
 
     /// <inheritdoc/>

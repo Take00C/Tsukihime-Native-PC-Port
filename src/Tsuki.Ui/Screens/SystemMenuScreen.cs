@@ -33,9 +33,22 @@ public enum MenuTab
 /// </summary>
 public sealed class SystemMenuScreen : UiScreen
 {
+    /// <summary>Where the menu hands the story over once it has faded out (knife <c>leave_to_title</c>, sub_4D7E0).</summary>
+    private enum Leaving
+    {
+        /// <summary>Not leaving.</summary>
+        No,
+
+        /// <summary>The Title tab: the story ends to the title.</summary>
+        Title,
+
+        /// <summary>The FlowChart tab's "return to the flowchart?" during a replay picked in the gallery's chart: the replay ends back in the gallery.</summary>
+        Gallery,
+    }
+
     private readonly UiItemList _items = new();
     private bool _focus;
-    private bool _toTitle;
+    private Leaving _leaving;
     private float _titleWait;
 
     /// <summary>Creates the menu.</summary>
@@ -54,7 +67,10 @@ public sealed class SystemMenuScreen : UiScreen
     public bool SideFocus => Sub?.Side.Active ?? false;
 
     /// <inheritdoc/>
-    public override bool Finished => base.Finished && !_toTitle;
+    public override bool Finished => base.Finished && _leaving == Leaving.No;
+
+    /// <summary>True while the menu fades out on its way to the title or back to the gallery (the hand-off runs once the fade and the banner are done).</summary>
+    public bool LeavingStory => _leaving != Leaving.No;
 
     /// <inheritdoc/>
     protected override float FadeInStep => 1f / 18f;
@@ -80,6 +96,15 @@ public sealed class SystemMenuScreen : UiScreen
 
         _items.Cursor = Ctx.MenuTab;
         Ctx.Sound(UiSound.Open);
+
+        // the menu opens over the story alone (UiRoot.OpenSystemMenu refuses while a screen is open), where no backdrop shows: whatever an earlier screen left
+        // of it goes, so it fades in from nothing every time. The title's load list fades it in and a story loaded there took it along, and the first menu of
+        // that story then showed it at once (package K39; OnClosed covers the menu's own ways out)
+        if (Root.Stack.Count == 1)
+        {
+            Ctx.Backdrop.Reset();
+        }
+
         Ctx.Backdrop.Fade(0.0555f);
     }
 
@@ -101,24 +126,35 @@ public sealed class SystemMenuScreen : UiScreen
     /// <inheritdoc/>
     public override void OnClosed()
     {
+        // the last screen of the story's menus has gone, however it went (its own fade, the hand-off to the title or the gallery, or a load, a flowchart jump that
+        // cleared the screens): nothing of its backdrop is left, so the next system menu fades it in from nothing again. Fade(0) cut it to where it was heading,
+        // which after a load or a jump was full alpha, and the next menu's backdrop then popped up at once (package K38)
         if (!Root.Active)
         {
-            Ctx.Backdrop.Fade(0f);
+            Ctx.Backdrop.Reset();
         }
     }
 
     /// <inheritdoc/>
     public override void Step(in UiInput input)
     {
-        if (_toTitle)
+        if (_leaving != Leaving.No)
         {
-            // the Auto Save banner plays while the menu fades; the title follows once both are gone (sub_4D7E0)
+            // the Auto Save banner plays while the menu fades; the title (or, after a replay, the gallery) follows once both are gone (sub_4D7E0)
             _titleWait++;
             if (Root.Banner is null && Fade <= 0f)
             {
-                _toTitle = false;
-                Ctx.Services.ReturnToTitle();
+                Leaving to = _leaving;
+                _leaving = Leaving.No;
                 Root.Clear();
+                if (to == Leaving.Title)
+                {
+                    Ctx.Services.ReturnToTitle();
+                }
+                else
+                {
+                    Ctx.Services.EndReplay();
+                }
             }
 
             return;
@@ -207,11 +243,17 @@ public sealed class SystemMenuScreen : UiScreen
                     Root.ShowBanner(BannerKind.AutoSave);
                 }
 
-                _toTitle = true;
-                Ctx.Backdrop.Fade(-1f / 30f);
-                base.Close();
+                Leave(Leaving.Title);
                 break;
         }
+    }
+
+    /// <summary>The menu and its backdrop fade out at 1/30 a frame (knife <c>leave_to_title</c>); <see cref="Step"/> hands the story over when they are gone.</summary>
+    private void Leave(Leaving to)
+    {
+        _leaving = to;
+        Ctx.Backdrop.Fade(-1f / 30f);
+        base.Close();
     }
 
     // package K5b: during a replay picked in the gallery's flowchart the tab asks to end the replay (dialog 12); otherwise it opens the chart when it is available
@@ -219,11 +261,15 @@ public sealed class SystemMenuScreen : UiScreen
     {
         if (s.ReplayActive && Ctx.Gallery.Mode == (int)GalleryMode.Flowchart)
         {
+            // knife confirm_yes Confirm::EndReplay -> leave_to_title with F024 kept (sub_4CCA0, byte_B359DC = 1): the menu leaves as for the Title tab (no auto save:
+            // saving is off during a replay, F025) and the replay ends back in the gallery, which reopens on the chart. Until package K38 the services were told at
+            // once, while this menu and the dialog were still on the stack: the gallery could not open over them (UiRoot.ReturnToGallery refuses while a screen is
+            // open), the story was already gone, and the player was left on a black screen that took no key (issue #7)
             Root.Push(new ConfirmDialog(ConfirmKind.EndReplay, yes =>
             {
                 if (yes)
                 {
-                    s.EndReplay();
+                    Leave(Leaving.Gallery);
                 }
             }));
             return;

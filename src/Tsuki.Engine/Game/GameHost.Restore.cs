@@ -189,13 +189,20 @@ public sealed partial class GameHost
         return true;
     }
 
-    /// <summary>Loads save slot <paramref name="slot"/> of <paramref name="store"/> (Slot_Load): the saved page's statement runs again. Throws for an empty or damaged slot.</summary>
-    public void LoadSlot(SaveStore store, int slot)
+    /// <summary>
+    /// Loads save slot <paramref name="slot"/> of <paramref name="store"/> (Slot_Load): the saved page's statement runs again. Throws for an empty or damaged slot.
+    /// A slot holds a story, never a gallery replay (saving is off during one, F025), so the loaded story is not a replay whatever this host ran before (knife's
+    /// archive flag, byte_B34AF0: "cleared by every other start"); <paramref name="replay"/> true is for the page of a running replay that a language change carries
+    /// into a new host (package K39: the replay flag of an earlier replay, which a rewind keeps, survived a load from the title, and the loaded story then asked
+    /// "return to the flowchart?" on FlowChart and ended in the gallery).
+    /// </summary>
+    public void LoadSlot(SaveStore store, int slot, bool replay = false)
     {
         ArgumentNullException.ThrowIfNull(store);
         AdvHistorySink h = HistorySink ?? throw new InvalidOperationException("no history is attached (call AttachHistory first)");
         SceneRestoreResult r = store.Load(slot, h.History, h.Live);
         ApplyRestore(RestoreKind.Load, r.Restore, h.Live, null, 0);
+        ReplayRequested = replay;
         ReplayVoiceOf(r);
     }
 

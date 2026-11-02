@@ -21,6 +21,7 @@
 //   950:screenshot      the screenshot key (F12): the next presented frame goes to --screenshot-dir as a PNG at the window's size, then the toast (package K21)
 //   960:close           the window's close button / Alt+F4, through the event pump: the quit question opens, a second close while it is up quits (package K21)
 //   970:blur / focus    the window loses / regains the keyboard focus (what Mute in Background listens to; a hidden window never has the focus) (package K21)
+//   980:fault           a screen whose step throws opens over whatever is up (package K38): the run ends with the error in the log and crash.log, exit code 1
 using System.Globalization;
 using Tsuki.Engine.Contracts;
 using Tsuki.Platform.Input;
@@ -78,7 +79,8 @@ internal sealed class InputScript
             || action.Equals("holdprompt", StringComparison.OrdinalIgnoreCase) || action.Equals("releaseprompt", StringComparison.OrdinalIgnoreCase)
             || action.Equals("holdchoice", StringComparison.OrdinalIgnoreCase) || action.Equals("releasechoice", StringComparison.OrdinalIgnoreCase)
             || action.Equals("screenshot", StringComparison.OrdinalIgnoreCase) || action.Equals("close", StringComparison.OrdinalIgnoreCase)
-            || action.Equals("blur", StringComparison.OrdinalIgnoreCase) || action.Equals("focus", StringComparison.OrdinalIgnoreCase))
+            || action.Equals("blur", StringComparison.OrdinalIgnoreCase) || action.Equals("focus", StringComparison.OrdinalIgnoreCase)
+            || action.Equals("fault", StringComparison.OrdinalIgnoreCase))
         {
             return new ScriptEntry(frame, null, 0, action.ToLowerInvariant(), null);
         }

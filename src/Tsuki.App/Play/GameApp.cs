@@ -114,6 +114,18 @@ internal sealed class ScriptCache(GameFolderSource source) : IFlowScripts
     }
 }
 
+/// <summary>The verification verb <c>fault</c> (package K38): a screen whose step throws, standing in for a menu with a bug.</summary>
+internal sealed class FaultScreen : UiScreen
+{
+    /// <inheritdoc/>
+    public override void Step(in UiInput input) => throw new InvalidOperationException("the verification script's fault: a screen threw in its step");
+
+    /// <inheritdoc/>
+    public override void Draw(UiPainter painter)
+    {
+    }
+}
+
 /// <summary>The pictures of <c>parts.mrg</c> for the boot notice.</summary>
 internal sealed class DataParts(IGameData data) : IUiPictureSource
 {
@@ -260,6 +272,10 @@ internal sealed class GameApp : IDisposable
             string? crash = CrashLog.Write(dataDir, args.LogFile, e);
             if (!args.Hidden)
             {
+                // the game window goes first: a borderless fullscreen window that has stopped presenting would stand in front of the error box, and the player would
+                // see a black screen that takes no key instead of the message (package K38)
+                app.HideWindowForError();
+
                 // the start-up failures a player can meet are told in a sentence (review R1), in the player's language (package K20); the technical message is in the log and in crash.log
                 Language lang = app._lang;
                 MessageBox.ShowError(AppIdentity.ProductName, PlayerMessage(e, lang) + (crash is null ? string.Empty : Environment.NewLine + Environment.NewLine + PortText.Format(PortString.Details, lang, crash)));
@@ -303,6 +319,19 @@ internal sealed class GameApp : IDisposable
     };
 
     private void Say(string message) => _log.WriteLine($"[{_runtime?.Frame ?? 0,7}] {message}");
+
+    /// <summary>Hides the game window before an error box is shown over a run that failed; a window that cannot be hidden (or none yet) changes nothing.</summary>
+    private void HideWindowForError()
+    {
+        try
+        {
+            _window?.Hide();
+        }
+        catch (Exception e) when (e is PlatformException or ObjectDisposedException)
+        {
+            // the box is shown anyway
+        }
+    }
 
     private int Play()
     {
@@ -1465,6 +1494,14 @@ internal sealed class GameApp : IDisposable
                 _services.Config.Language = e.Argument?.ToLowerInvariant() switch { "ja" => 0, "zc" => 2, "zt" => 3, _ => 1 };
                 _services.ConfigChanged(Tsuki.Ui.ConfigChange.Language);
                 Say($"language set to {e.Argument}");
+            }
+
+            if (_script.VerbsAt(_runtime.Frame, "fault").Any())
+            {
+                // package K38: a screen whose step throws, over whatever is open, as a menu with a bug would; the run must end with the error in the log, crash.log
+                // in the profile and, in a visible window, the error box over a hidden game window, never a black window that takes no key
+                _runtime.Ui.Push(new FaultScreen());
+                Say("fault: a screen that throws in its step was opened");
             }
 
             // package K21: the window's close request (through the real event pump, like the title bar's button) and the focus; the screenshot verb ran before the step

@@ -151,15 +151,19 @@ public sealed class UiRoot
         return true;
     }
 
-    /// <summary>Removes every screen at once (the story takes over).</summary>
+    /// <summary>
+    /// Removes every screen at once (the story takes over). The stack is emptied first and the screens told afterwards, top first, as <see cref="Step"/> does for
+    /// one screen: an <see cref="UiScreen.OnClosed"/> then sees the root as it is (no screen open), so the system menu cuts its backdrop, the gallery does not
+    /// restart a title that is being cleared with it, and a nested <see cref="Clear"/> from an <c>OnClosed</c> finds nothing left to do (package K38).
+    /// </summary>
     public void Clear()
     {
-        for (int i = _stack.Count - 1; i >= 0; i--)
-        {
-            _stack[i].OnClosed();
-        }
-
+        UiScreen[] screens = [.. _stack];
         _stack.Clear();
+        for (int i = screens.Length - 1; i >= 0; i--)
+        {
+            screens[i].OnClosed();
+        }
     }
 
     /// <summary>Shows the mode banner (Skip, quick save, auto save, auto).</summary>
