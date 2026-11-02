@@ -33,6 +33,40 @@
         </StackPanel>
       </Border>
 
+      <!-- package K40 (issue #6): the update check of the launcher's start, Check now, the Releases page; off in a personal build (package K28) -->
+      <Border Style="{StaticResource Card}" Margin="0,18,0,0">
+        <StackPanel>
+          <local:TrackedText Text="UPDATES" Style="{StaticResource SmallCaps}"/>
+          <Rectangle Style="{StaticResource GoldDivider}" Margin="0,11,0,4"/>
+          <HeaderedContentControl Style="{StaticResource SettingRow}" Header="Check for updates when the launcher starts" Tag="{Binding UpdateCheckDescription}" IsEnabled="{Binding UpdatesOn}">
+            <CheckBox Style="{StaticResource Switch}" IsChecked="{Binding CheckForUpdatesOnStart, Mode=TwoWay}" AutomationProperties.Name="Check for updates when the launcher starts"/>
+          </HeaderedContentControl>
+          <Grid Margin="0,14,0,0">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="Auto"/>
+              <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+            <TextBlock Style="{StaticResource IconText}" Text="&#xE895;" FontSize="13" Foreground="{StaticResource MoonPaleBrush}" VerticalAlignment="Top" Margin="0,2,10,0"/>
+            <TextBlock Grid.Column="1" Text="{Binding UpdateStatus}" Style="{StaticResource Muted}" FontSize="13" Foreground="#B9C3E3"/>
+          </Grid>
+          <StackPanel Orientation="Horizontal" Margin="0,14,0,0">
+            <Button Content="Check now" Style="{StaticResource GhostButton}" Command="{Binding CheckUpdatesNowCommand}" Margin="0,0,8,0"/>
+            <Button Content="Open the Releases page" Style="{StaticResource GhostButton}" Command="{Binding OpenReleasesPageCommand}"/>
+          </StackPanel>
+        </StackPanel>
+      </Border>
+
+      <!-- package K43: Arcueid's face on Tsukihime.exe and TsukihimeLauncher.exe, written by the launcher from the player's own files (off: the port's crescent); fixed in a personal build (package K28) -->
+      <Border Style="{StaticResource Card}" Margin="0,18,0,0">
+        <StackPanel>
+          <local:TrackedText Text="PROGRAM ICONS" Style="{StaticResource SmallCaps}"/>
+          <Rectangle Style="{StaticResource GoldDivider}" Margin="0,11,0,4"/>
+          <HeaderedContentControl Style="{StaticResource SettingRow}" Header="Show Arcueid on the program icons" Tag="{Binding ProgramIconDescription}" IsEnabled="{Binding ProgramIconSwitchEnabled}">
+            <CheckBox Style="{StaticResource Switch}" IsChecked="{Binding ShowArcueidOnPrograms, Mode=TwoWay}" AutomationProperties.Name="Show Arcueid on the program icons"/>
+          </HeaderedContentControl>
+        </StackPanel>
+      </Border>
+
       <Border Style="{StaticResource Card}" Margin="0,18,0,0">
         <StackPanel>
           <local:TrackedText Text="SETUP GUIDE" Style="{StaticResource SmallCaps}"/>

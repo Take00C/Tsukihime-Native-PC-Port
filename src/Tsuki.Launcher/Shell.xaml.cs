@@ -14,6 +14,7 @@ public partial class Shell : UserControl
 {
     private readonly Dictionary<LauncherPage, FrameworkElement> _pages = [];
     private LauncherModel? _model;
+    private bool _refocusUpdateButton;
 
     /// <summary>Creates the shell.</summary>
     public Shell()
@@ -31,8 +32,10 @@ public partial class Shell : UserControl
             {
                 _model.PropertyChanged += OnModelChanged;
                 ShowPage(_model.Page, animate: false);
+                ApplyUpdateButtonStyle();
             }
         };
+        UpdateButton.IsEnabledChanged += OnUpdateButtonEnabledChanged;
     }
 
     /// <summary>Slide the page in when it changes (off for the offscreen render, where no clock runs).</summary>
@@ -49,6 +52,73 @@ public partial class Shell : UserControl
         {
             // the question takes the keyboard: Cancel is focused (Enter still answers yes through IsDefault, Esc no through IsCancel), and the content behind is disabled by its style
             _ = Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Input, () => ConfirmCancelButton.Focus());
+        }
+
+        if (e.PropertyName is nameof(LauncherModel.UpdateStage) && _model is { UpdateOverlayVisible: true })
+        {
+            // the update overlay takes the keyboard the same way: Later while it asks, Cancel while it downloads (package K40)
+            _refocusUpdateButton = false;
+            _ = Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Input, () =>
+            {
+                if (UpdateCancelButton.IsVisible)
+                {
+                    UpdateCancelButton.Focus();
+                }
+                else if (UpdateLaterButton.IsVisible)
+                {
+                    UpdateLaterButton.Focus();
+                }
+            });
+        }
+        else if (e.PropertyName is nameof(LauncherModel.UpdateStage) && _model is { OverlayVisible: false })
+        {
+            // package K42: Later / Close gives the keyboard back to the footer button, unless something of the page has it already
+            _ = Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Input, () =>
+            {
+                if (_model is { OverlayVisible: false } && !ContentArea.IsKeyboardFocusWithin)
+                {
+                    UpdateButton.Focus();
+                }
+            });
+        }
+
+        if (e.PropertyName is null or nameof(LauncherModel.UpdateButtonAccent))
+        {
+            ApplyUpdateButtonStyle();
+        }
+    }
+
+    /// <summary>The footer button's look (package K42): K40's gold UpdateButton once a newer release is known, else the quiet CheckUpdatesButton.</summary>
+    private void ApplyUpdateButtonStyle()
+    {
+        if (_model is not null && FindResource(_model.UpdateButton.StyleKey) is Style style && !ReferenceEquals(UpdateButton.Style, style))
+        {
+            UpdateButton.Style = style;
+        }
+    }
+
+    /// <summary>
+    /// The footer button is disabled while its check runs, and a disabled button loses the keyboard: when it had it, it takes it back once it can be pressed again
+    /// (package K42), unless the overlay opened in between (the overlay then has the keyboard, and gives it back when it closes).
+    /// </summary>
+    private void OnUpdateButtonEnabledChanged(object sender, DependencyPropertyChangedEventArgs e)
+    {
+        if (e.NewValue is false)
+        {
+            _refocusUpdateButton |= UpdateButton.IsKeyboardFocused;
+            return;
+        }
+
+        if (_refocusUpdateButton)
+        {
+            _refocusUpdateButton = false;
+            _ = Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Input, () =>
+            {
+                if (_model is { OverlayVisible: false } && UpdateButton.IsEnabled && !ContentArea.IsKeyboardFocusWithin)
+                {
+                    UpdateButton.Focus();
+                }
+            });
         }
     }
 

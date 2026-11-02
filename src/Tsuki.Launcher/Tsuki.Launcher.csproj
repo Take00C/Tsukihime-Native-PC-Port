@@ -16,7 +16,7 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>..\..\assets\icon\tsukihime.ico</ApplicationIcon>
     <AllowUnsafeBlocks>false</AllowUnsafeBlocks>
-    <Version>0.1.2</Version>
+    <Version>0.1.3</Version>
     <Product>Tsukihime PC port</Product>
     <AssemblyTitle>Tsukihime Launcher</AssemblyTitle>
   </PropertyGroup>

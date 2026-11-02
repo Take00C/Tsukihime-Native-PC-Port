@@ -47,6 +47,57 @@ public static class GameLauncher
     }
 
     /// <summary>
+    /// True while a Tsukihime.exe started from <paramref name="folder"/> runs (package K40: an update replaces that folder's files, so the game there must be closed
+    /// first; a game started from another copy of the port does not hold them). A process whose program cannot be read counts as running from the folder.
+    /// </summary>
+    public static bool IsGameRunningFrom(string folder)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(folder);
+        string wanted = Path.GetFullPath(Path.Combine(folder, AppFileName));
+        Process[] running;
+        try
+        {
+            running = Process.GetProcessesByName(Path.GetFileNameWithoutExtension(AppFileName));
+        }
+        catch (InvalidOperationException)
+        {
+            return false;
+        }
+
+        bool found = false;
+        foreach (Process p in running)
+        {
+            using (p)
+            {
+                try
+                {
+                    string? path = p.MainModule?.FileName;
+                    found |= path is null || string.Equals(Path.GetFullPath(path), wanted, StringComparison.OrdinalIgnoreCase);
+                }
+                catch (Exception e) when (e is System.ComponentModel.Win32Exception or InvalidOperationException or NotSupportedException)
+                {
+                    // gone, or not ours to read (another session, elevated): be careful
+                    found |= !Exited(p);
+                }
+            }
+        }
+
+        return found;
+    }
+
+    private static bool Exited(Process p)
+    {
+        try
+        {
+            return p.HasExited;
+        }
+        catch (Exception e) when (e is System.ComponentModel.Win32Exception or InvalidOperationException or NotSupportedException)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
     /// The game program: next to the launcher, else (a development build, where each project has its own output folder) the same place in the Tsuki.App output.
     /// Null when neither exists.
     /// </summary>

@@ -38,7 +38,7 @@ public sealed class SettingsTests : IDisposable
         TextWebSocket: true,
         TextWebSocketPort: 6700,
         ScreenshotNotice: false,
-        TextWebSocketOrigin: "https://reader.example");
+        UpdateCheck: false);
 
     [Fact]
     public void EveryKeyRoundTripsThroughTheFile()
@@ -55,7 +55,7 @@ public sealed class SettingsTests : IDisposable
     {
         string text = AppSettings.Format(new AppSettingsData());
         Assert.Contains("prompts=auto", text, StringComparison.Ordinal);
-        foreach (string key in new[] { "fullscreen=", "window=", "monitor=", "vsync=", "language=", "mute_in_background=", "copy_text=", "text_hooker=", "text_websocket=", "text_websocket_port=", "text_websocket_origin=", "screenshot_notice=" })
+        foreach (string key in new[] { "fullscreen=", "window=", "monitor=", "vsync=", "language=", "mute_in_background=", "copy_text=", "text_hooker=", "text_websocket=", "text_websocket_port=", "screenshot_notice=", "update_check=" })
         {
             Assert.DoesNotContain(key, text, StringComparison.Ordinal);
         }
@@ -82,37 +82,6 @@ public sealed class SettingsTests : IDisposable
     }
 
     [Theory]
-    [InlineData("https://reader.example/", "https://reader.example")]
-    [InlineData("HTTPS://READER.EXAMPLE:443", "https://reader.example")]
-    [InlineData("http://127.0.0.1:8000", "http://127.0.0.1:8000")]
-    [InlineData("null", null)]
-    [InlineData("*", null)]
-    [InlineData("file:///reader.html", null)]
-    [InlineData("https://reader.example/page", null)]
-    [InlineData("https://reader.example?query", null)]
-    [InlineData("https://reader.example#fragment", null)]
-    [InlineData("https://user@reader.example", null)]
-    [InlineData("https://reader.example\\page", null)]
-    public void BrowserAuthorizationUsesOneExplicitOrigin(string text, string? expected)
-    {
-        AppSettingsData data = AppSettings.Parse("text_websocket_origin=" + text);
-        Assert.Equal(expected, data.TextWebSocketOrigin);
-        Assert.Equal(expected, AppSettings.Parse(AppSettings.Format(data)).TextWebSocketOrigin);
-        Assert.Equal(expected, new PortSettings(null, data).TextWebSocketOrigin);
-    }
-
-    [Fact]
-    public void UpdatingOtherSettingsPreservesTheTrustedBrowserOrigin()
-    {
-        Assert.True(AppSettings.Save(SettingsPath, Everything()));
-        Assert.True(AppSettings.Update(SettingsPath, data => data with { TextWebSocket = false }));
-        AppSettingsData loaded = AppSettings.Load(SettingsPath);
-        Assert.Equal("https://reader.example", loaded.TextWebSocketOrigin);
-        Assert.False(loaded.TextWebSocket);
-        Assert.False(AppSettings.TryParseWebSocketOrigin("https://reader.example\r\nOrigin: https://untrusted.example", out _));
-    }
-
-    [Theory]
     [InlineData("screenshot_notice=off", false)]
     [InlineData("SCREENSHOT_NOTICE = 0", false)]
     [InlineData("screenshot_notice=on", true)]
@@ -128,6 +97,27 @@ public sealed class SettingsTests : IDisposable
         Assert.Contains("screenshot_notice=off\n", text, StringComparison.Ordinal);
         Assert.Equal(false, AppSettings.Parse(text).ScreenshotNotice);
         Assert.Contains("screenshot_notice=on\n", AppSettings.Format(new AppSettingsData(ScreenshotNotice: true)), StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("update_check=off", false)]
+    [InlineData("UPDATE_CHECK = no", false)]
+    [InlineData("update_check=on", true)]
+    [InlineData("update_check=maybe", null)]
+    [InlineData("prompts=auto", null)]
+    public void TheUpdateCheckKeyReadsOnAndOffAndTheGameKeepsIt(string line, bool? expected)
+    {
+        // package K40: Help & about > Check for updates when the launcher starts; absent means on (the launcher decides that)
+        Assert.Equal(expected, AppSettings.Parse(line).UpdateCheck);
+        string text = AppSettings.Format(new AppSettingsData(UpdateCheck: false));
+        Assert.Contains("# update_check:", text, StringComparison.Ordinal);
+        Assert.Contains("update_check=off\n", text, StringComparison.Ordinal);
+
+        // the game rewrites settings.ini when its prompt row changes: the launcher's key survives
+        string path = Path.Combine(_dir, "update_check.ini");
+        Assert.True(AppSettings.Save(path, new AppSettingsData(UpdateCheck: false)));
+        Assert.True(AppSettings.Update(path, s => s with { Prompts = PromptSetting.PlayStation }));
+        Assert.Equal(false, AppSettings.Load(path).UpdateCheck);
     }
 
     [Theory]

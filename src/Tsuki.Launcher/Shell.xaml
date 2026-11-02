@@ -23,7 +23,7 @@
       <Grid.Style>
         <Style TargetType="Grid">
           <Style.Triggers>
-            <DataTrigger Binding="{Binding ConfirmVisible}" Value="True">
+            <DataTrigger Binding="{Binding OverlayVisible}" Value="True">
               <Setter Property="IsEnabled" Value="False"/>
             </DataTrigger>
           </Style.Triggers>
@@ -86,24 +86,29 @@
           </ContentControl.RenderTransform>
         </ContentControl>
 
-        <!-- ===== footer: status line, Log, PLAY ===== -->
+        <!-- ===== footer: status line, the update button (package K40, issue #6; always shown since package K42), Log, PLAY ===== -->
         <Border Grid.Row="2" Height="88" Background="#990A0F24" BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,1,0,0">
           <Grid Margin="32,0,32,0">
             <Grid.ColumnDefinitions>
               <ColumnDefinition Width="*"/>
               <ColumnDefinition Width="Auto"/>
               <ColumnDefinition Width="Auto"/>
+              <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
-            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-              <Ellipse Width="7" Height="7" Fill="{StaticResource MoonPaleBrush}" Margin="0,1,12,0">
+            <!-- a DockPanel, not a StackPanel, so the line gets only the room the buttons leave and trims there (package K42) -->
+            <DockPanel VerticalAlignment="Center" Margin="0,0,18,0">
+              <Ellipse DockPanel.Dock="Left" Width="7" Height="7" Fill="{StaticResource MoonPaleBrush}" Margin="0,1,12,0">
                 <Ellipse.Effect>
                   <DropShadowEffect Color="#9CD2FF" BlurRadius="8" ShadowDepth="0" Opacity="0.9"/>
                 </Ellipse.Effect>
               </Ellipse>
-              <TextBlock Text="{Binding StatusLine}" Foreground="{StaticResource MutedBrush}" FontSize="12.5" TextTrimming="CharacterEllipsis"/>
-            </StackPanel>
-            <Button Grid.Column="1" Content="Log" Style="{StaticResource GhostButton}" Command="{Binding OpenLogCommand}" Height="42" Padding="22,0" Margin="0,0,14,0" VerticalAlignment="Center"/>
-            <Button Grid.Column="2" Content="{Binding PlayLabel}" Style="{StaticResource PlayButton}" Command="{Binding PlayCommand}" VerticalAlignment="Center"/>
+              <TextBlock Text="{Binding StatusLine}" Foreground="{StaticResource MutedBrush}" FontSize="12.5" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+            </DockPanel>
+            <!-- "Check for updates" (CheckUpdatesButton) or "Update to vX.Y.Z" (UpdateButton): Shell.xaml.cs sets the style from UpdateButtonAccent -->
+            <Button Grid.Column="1" x:Name="UpdateButton" Content="{Binding UpdateButtonLabel}" Style="{StaticResource CheckUpdatesButton}" Command="{Binding UpdateButtonCommand}" Margin="0,0,14,0" VerticalAlignment="Center"
+                    AutomationProperties.Name="{Binding UpdateButtonLabel}" AutomationProperties.HelpText="{Binding UpdateButtonToolTip}" ToolTip="{Binding UpdateButtonToolTip}" ToolTipService.ShowOnDisabled="True"/>
+            <Button Grid.Column="2" Content="Log" Style="{StaticResource GhostButton}" Command="{Binding OpenLogCommand}" Height="42" Padding="22,0" Margin="0,0,14,0" VerticalAlignment="Center"/>
+            <Button Grid.Column="3" Content="{Binding PlayLabel}" Style="{StaticResource PlayButton}" Command="{Binding PlayCommand}" VerticalAlignment="Center"/>
           </Grid>
         </Border>
 
@@ -116,6 +121,57 @@
           <TextBlock Text="{Binding Toast}" TextWrapping="Wrap" FontSize="13"/>
         </Border>
       </Grid>
+    </Grid>
+
+    <!-- ===== the update (package K40): the release's notes, Update now / Later, the progress, what went wrong ===== -->
+    <Grid x:Name="UpdateOverlay" Visibility="{Binding UpdateOverlayVisible, Converter={StaticResource B2V}}" Background="#B3060A1A" KeyboardNavigation.TabNavigation="Cycle" FocusManager.IsFocusScope="False">
+      <Border Width="640" HorizontalAlignment="Center" VerticalAlignment="Center" Style="{StaticResource Card}" Background="#FF121A3A" Padding="28,22,28,22">
+        <Border.Effect>
+          <DropShadowEffect Color="#5E8BFF" BlurRadius="40" ShadowDepth="0" Opacity="0.25"/>
+        </Border.Effect>
+        <StackPanel>
+          <StackPanel Orientation="Horizontal">
+            <TextBlock Style="{StaticResource IconText}" Text="&#xE896;" FontSize="13" Foreground="{StaticResource GoldBrush}" VerticalAlignment="Center" Margin="0,0,8,0"/>
+            <local:TrackedText Text="UPDATE" Style="{StaticResource SmallCaps}" VerticalAlignment="Center"/>
+          </StackPanel>
+          <TextBlock Text="{Binding UpdateOverlayTitle}" Style="{StaticResource Heading}" FontSize="25" Margin="0,8,0,0"/>
+          <TextBlock Text="{Binding UpdateVersionLine}" Style="{StaticResource Muted}" Margin="0,4,0,0"/>
+          <Rectangle Style="{StaticResource GoldDivider}" Margin="0,14,0,14"/>
+          <TextBlock Text="{Binding UpdateReleaseTitle}" Style="{StaticResource RowTitle}" FontSize="14.5" TextTrimming="CharacterEllipsis"/>
+          <Border Background="#66090E22" BorderBrush="{StaticResource PanelBorderBrush}" BorderThickness="1" CornerRadius="8" Margin="0,10,0,0" Padding="14,10,4,10">
+            <ScrollViewer x:Name="UpdateNotesScroll" MaxHeight="230" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Focusable="False">
+              <TextBlock Text="{Binding UpdateNotes}" TextWrapping="Wrap" FontSize="12.5" LineHeight="19" Foreground="#B9C3E3" Margin="0,0,10,0"/>
+            </ScrollViewer>
+          </Border>
+          <StackPanel Margin="0,16,0,0" Visibility="{Binding UpdateWorking, Converter={StaticResource B2V}}">
+            <ProgressBar Style="{StaticResource MoonProgress}" Value="{Binding UpdatePercent, Mode=OneWay}" IsIndeterminate="{Binding UpdateIndeterminate, Mode=OneWay}" Minimum="0" Maximum="100"/>
+            <TextBlock Text="{Binding UpdateProgressText}" Style="{StaticResource Muted}" Margin="0,8,0,0"/>
+          </StackPanel>
+          <Border Margin="0,14,0,0" Padding="12,9" CornerRadius="8" Background="#1FE8C877" BorderBrush="#66E8C877" BorderThickness="1" Visibility="{Binding UpdateMessageVisible, Converter={StaticResource B2V}}">
+            <Grid>
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+              </Grid.ColumnDefinitions>
+              <TextBlock Style="{StaticResource IconText}" Text="&#xE7BA;" FontSize="13" Foreground="{StaticResource WarningBrush}" VerticalAlignment="Top" Margin="0,2,10,0"/>
+              <TextBlock Grid.Column="1" Text="{Binding UpdateMessage}" TextWrapping="Wrap" FontSize="12.5" LineHeight="18" Foreground="#F2E3B8"/>
+            </Grid>
+          </Border>
+          <TextBlock Style="{StaticResource Muted}" Margin="0,14,0,0" FontSize="12"
+                     Text="The launcher downloads the release zip and its SHA256SUMS.txt from GitHub, checks the zip against it, replaces its own files and restarts. Your saves, your settings and your game folder are not touched."/>
+          <Grid Margin="0,18,0,0">
+            <Button Content="Open the release page" Style="{StaticResource LinkButton}" Command="{Binding OpenReleasePageCommand}" HorizontalAlignment="Left" VerticalAlignment="Center"/>
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+              <Button x:Name="UpdateLaterButton" Content="{Binding UpdateSecondaryLabel}" Style="{StaticResource GhostButton}" Command="{Binding UpdateLaterCommand}" Height="38" Padding="22,0" Margin="0,0,10,0" IsCancel="True"
+                      Visibility="{Binding UpdateChoiceVisible, Converter={StaticResource B2V}}"/>
+              <Button x:Name="UpdateCancelButton" Content="Cancel" Style="{StaticResource GhostButton}" Command="{Binding CancelUpdateCommand}" Height="38" Padding="22,0"
+                      Visibility="{Binding UpdateCancelVisible, Converter={StaticResource B2V}}"/>
+              <Button x:Name="UpdateNowButton" Content="{Binding UpdatePrimaryLabel}" Style="{StaticResource AccentButton}" Command="{Binding UpdateNowCommand}" Height="38" Padding="24,0" IsDefault="True"
+                      Visibility="{Binding UpdateChoiceVisible, Converter={StaticResource B2V}}"/>
+            </StackPanel>
+          </Grid>
+        </StackPanel>
+      </Border>
     </Grid>
 
     <!-- ===== a yes / no question ===== -->

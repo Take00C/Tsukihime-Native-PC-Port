@@ -15,7 +15,7 @@ public sealed record ReleaseCheckResult(IReadOnlyList<string> Problems, IReadOnl
 /// The rules that keep a PERSONAL build (package K28: a build whose programs carry the Arcueid icon cut from the owner's copy of the game, TYPE-MOON's art) out of a
 /// release: the folder to be zipped must hold no <c>PERSONAL_BUILD.txt</c>, its programs' icon groups must be the port's crescent (<c>assets/icon/tsukihime.ico</c>),
 /// and its assemblies must carry neither the <c>TsukiPersonalBuild</c> metadata nor a <c>-personal</c> version. The folder must look like a publish of the port
-/// (<c>Tsukihime.exe</c> on Windows, <c>Tsukihime</c> on Linux) so that a wrong path fails.
+/// (<c>Tsukihime.exe</c> present) so that a wrong path is a failure, not a pass.
 /// </summary>
 public static class ReleaseCheck
 {
@@ -41,8 +41,7 @@ public static class ReleaseCheck
             return new ReleaseCheckResult(problems, notes);
         }
 
-        bool linux = !File.Exists(Path.Combine(folder, Programs[0] + ".exe")) && File.Exists(Path.Combine(folder, Programs[0]));
-        if (!linux && !File.Exists(Path.Combine(folder, Programs[0] + ".exe")))
+        if (!File.Exists(Path.Combine(folder, Programs[0] + ".exe")))
         {
             problems.Add($"{Programs[0]}.exe is not in {folder}: not a published folder of the port");
         }
@@ -60,31 +59,25 @@ public static class ReleaseCheck
 
         foreach (string program in Programs)
         {
-            string iconName = program + (linux ? ".dll" : ".exe");
-            string iconPath = Path.Combine(folder, iconName);
-            if (linux && program == Programs[0] && !File.Exists(iconPath))
+            string exe = Path.Combine(folder, program + ".exe");
+            if (File.Exists(exe))
             {
-                problems.Add($"{iconName} is not in {folder}: the Linux player assembly is missing");
-            }
-
-            if (File.Exists(iconPath))
-            {
-                byte[]? group = PeIcons.IconGroup(iconPath);
+                byte[]? group = PeIcons.IconGroup(exe);
                 if (group is null)
                 {
-                    problems.Add($"{iconName} carries no application icon group (id {PeIcons.ApplicationIconGroup})");
+                    problems.Add($"{program}.exe carries no application icon group (id {PeIcons.ApplicationIconGroup})");
                 }
                 else
                 {
                     IReadOnlyList<IconFrame> frames = FaceIcon.DecodeIco(group);
                     dump?.Invoke(program, frames);
-                    if (crescent.Count > 0 && SameFrames(crescent, frames))
+                    if (crescent.Count > 0 && IconProblem(exe, crescent) is { } notCrescent)
                     {
-                        notes.Add($"{iconName}: the icon group is the crescent ({frames.Count} frames)");
+                        problems.Add($"{program}.exe {notCrescent}");
                     }
                     else if (crescent.Count > 0)
                     {
-                        problems.Add($"{iconName} carries an icon that is not the port's crescent ({frames.Count} frames, {string.Join(", ", frames.Select(f => f.Size))} px): a personal build");
+                        notes.Add($"{program}.exe: the icon group is the crescent ({frames.Count} frames)");
                     }
                 }
             }
@@ -116,6 +109,30 @@ public static class ReleaseCheck
         }
 
         return new ReleaseCheckResult(problems, notes);
+    }
+
+    /// <summary>
+    /// Null when the program <paramref name="exe"/> carries the port's crescent (<paramref name="crescent"/>, the frames of <c>assets/icon/tsukihime.ico</c>),
+    /// else what it carries instead, for a REFUSED line (release-sums checks the programs inside the zip with it: package K43, review).
+    /// </summary>
+    public static string? IconProblem(string exe, IReadOnlyList<IconFrame> crescent)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(exe);
+        ArgumentNullException.ThrowIfNull(crescent);
+        if (crescent.Count == 0)
+        {
+            return "cannot be compared: the crescent icon file could not be read";
+        }
+
+        if (PeIcons.IconGroup(exe) is not { } group)
+        {
+            return $"carries no application icon group (id {PeIcons.ApplicationIconGroup})";
+        }
+
+        IReadOnlyList<IconFrame> frames = FaceIcon.DecodeIco(group);
+        return SameFrames(crescent, frames)
+            ? null
+            : $"carries an icon that is not the port's crescent ({frames.Count} frames, {string.Join(", ", frames.Select(f => f.Size))} px): a personal build, or a folder whose launcher wrote Arcueid into its programs (package K43)";
     }
 
     private static bool SameFrames(IReadOnlyList<IconFrame> a, IReadOnlyList<IconFrame> b)
@@ -184,7 +201,7 @@ public sealed class ReleaseCheckCommand : ICliCommand
             return ExitCode.Usage;
         }
 
-        icon ??= FindRoot() is { } root ? Path.Combine(root, "assets", "icon", "tsukihime.ico") : null;
+        icon ??= DefaultIcon();
         if (icon is null || !File.Exists(icon))
         {
             error.WriteLine("release-check: the crescent icon file was not found; pass --icon <assets/icon/tsukihime.ico>");
@@ -220,6 +237,9 @@ public sealed class ReleaseCheckCommand : ICliCommand
         output.WriteLine(result.Ok ? $"RESULT: {folder} may be released" : $"RESULT: {folder} must NOT be released ({result.Problems.Count} problem(s))");
         return result.Ok ? ExitCode.Ok : ExitCode.Failed;
     }
+
+    /// <summary><c>assets/icon/tsukihime.ico</c> of the repository the tool runs from (release-check's and release-sums' default <c>--icon</c>), or null.</summary>
+    internal static string? DefaultIcon() => FindRoot() is { } root ? Path.Combine(root, "assets", "icon", "tsukihime.ico") : null;
 
     private static string? FindRoot()
     {

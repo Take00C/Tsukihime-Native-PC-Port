@@ -43,6 +43,7 @@ public static class CliApp
         new EffectShotCommand(),
         new FaceIconCommand(),
         new ReleaseCheckCommand(),
+        new ReleaseSumsCommand(),
     ];
 
     /// <summary>Runs <c>Tsuki.Cli &lt;command&gt; [options]</c>.</summary>

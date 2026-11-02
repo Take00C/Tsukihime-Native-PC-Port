@@ -15,6 +15,9 @@ internal static class OffscreenRender
 {
     public const int Width = 1200;
 
+    /// <summary>The window's smallest width (MainWindow.xaml MinWidth), for the check that the footer still fits there (package K42).</summary>
+    private const int MainWindowMinWidth = 960;
+
     /// <summary>The height of the picture (780 is the window; a taller value shows a whole page, for the check of the lower cards).</summary>
     public static int Height { get; set; } = 780;
 
@@ -64,17 +67,152 @@ internal static class OffscreenRender
             model.Page = LauncherPage.Play;
             model.ShowToast("The game could not be started: example message for the render check.");
             await DrawAsync(shell, Path.Combine(outDirectory, "toast.png"));
+            model.ShowToast(string.Empty);
+
+            await DrawUpdateAsync(model, shell, outDirectory);
         }
+    }
+
+    /// <summary>
+    /// Package K40: the update button and its overlay, drawn from a made-up release (no network): the footer with "Update to vX.Y.Z", the overlay with the notes,
+    /// the download in progress, the two refusals (the game is running, a folder that cannot be written), a failure, the Help page's Updates card in a normal and in
+    /// a personal build. Package K42: before that the always-shown button as "Check for updates", "Checking…" and the toasts of a manual check (newest, offline),
+    /// the gold button at the window's smallest width (the status line trims, PLAY keeps its size), and a personal build's button with its toast.
+    /// </summary>
+    private static async Task DrawUpdateAsync(LauncherModel model, Shell shell, string outDirectory)
+    {
+        model.Page = LauncherPage.Play;
+        model.PreviewUpdate(null);
+        await DrawAsync(shell, Path.Combine(outDirectory, "update_footer_idle.png"));
+        model.PreviewChecking(true);
+        await DrawAsync(shell, Path.Combine(outDirectory, "update_footer_checking.png"));
+        model.PreviewChecking(false);
+        model.PreviewManualCheck(new UpdateCheckResult(null, [], null));
+        await DrawAsync(shell, Path.Combine(outDirectory, "update_toast_newest.png"));
+        model.PreviewManualCheck(new UpdateCheckResult(null, [], "no connection (No such host is known. (api.github.com:443))"));
+        await DrawAsync(shell, Path.Combine(outDirectory, "update_toast_offline.png"));
+        model.ShowToast(string.Empty);
+
+        ReleaseVersion next = new(model.CurrentVersion.Major, model.CurrentVersion.Minor, model.CurrentVersion.Patch + 1);
+        string zip = UpdateSource.ZipAssetName(next);
+        var sample = new ReleaseInfo(
+            next,
+            next.Tag,
+            $"Tsukihime PC port {next.Tag}",
+            UpdateFeed.PlainText(
+                "## Fixed\n\n- **Sample notes for the render check.** A release's notes appear here as plain text, scrollable when they are long.\n" +
+                "- Headings, **bold** and `code` marks of GitHub's Markdown are taken out; [links](https://example.invalid) keep their words.\n\n" +
+                "## How to update\n\nPress **Update now**: the launcher downloads the zip and SHA256SUMS.txt, checks the checksum, replaces its files and restarts.\n\n" +
+                "> Fan-made and unofficial. This contains no game data; you must own the game."),
+            "https://github.com/" + UpdateSource.DefaultRepository + "/releases/tag/" + next.Tag,
+            true,
+            new ReleaseAsset(zip, new Uri("https://github.com/" + UpdateSource.DefaultRepository + "/releases/download/" + next.Tag + "/" + zip), 110_268_124),
+            new ReleaseAsset(UpdateSource.SumsAssetName, new Uri("https://github.com/" + UpdateSource.DefaultRepository + "/releases/download/" + next.Tag + "/" + UpdateSource.SumsAssetName), 98));
+        model.PreviewUpdate(sample);
+        await DrawAsync(shell, Path.Combine(outDirectory, "update_footer.png"));
+        shell.Width = MainWindowMinWidth;
+        await DrawAsync(shell, Path.Combine(outDirectory, "update_footer_narrow.png"), MainWindowMinWidth);
+        shell.Width = Width;
+        model.PreviewUpdateState(UpdateStage.Offer, null, string.Empty);   // the overlay a manual check opens (a press of the gold button would start an update)
+        await DrawAsync(shell, Path.Combine(outDirectory, "update_offer.png"));
+        model.PreviewUpdateState(UpdateStage.Working, new UpdateProgress(UpdateStep.Downloading, new DownloadProgress(46_137_344, 110_268_124)), string.Empty);
+        await DrawAsync(shell, Path.Combine(outDirectory, "update_progress.png"));
+        model.PreviewUpdateState(UpdateStage.Offer, null, "Close the game first: Tsukihime.exe of this folder is running, and its files are the ones the update replaces. Quit the game (your progress is in your saves), then press Update now again.");
+        await DrawAsync(shell, Path.Combine(outDirectory, "update_game_running.png"));
+        model.PreviewUpdateState(UpdateStage.Failed, null, UpdateInstaller.NotWritableMessage(@"C:\Program Files\Tsukihime", next));
+        await DrawAsync(shell, Path.Combine(outDirectory, "update_not_writable.png"));
+        model.PreviewUpdateState(UpdateStage.Failed, null, $"The update did not work: the downloaded {zip} does not match its checksum in {UpdateSource.SumsAssetName} (SHA-256 3f7a09c2d1e4...), so it was not installed. Nothing was changed; the launcher you have keeps working.");
+        await DrawAsync(shell, Path.Combine(outDirectory, "update_failed.png"));
+        model.PreviewUpdateState(UpdateStage.Hidden, null, string.Empty);
+        model.Page = LauncherPage.Help;
+        await DrawAsync(shell, Path.Combine(outDirectory, "help_update.png"));
+        model.PreviewPersonal(true);
+        await DrawAsync(shell, Path.Combine(outDirectory, "help_personal.png"));
+        model.Page = LauncherPage.Play;
+        model.ShowToast(UpdateButtonState.PersonalToast);          // what the button says in a personal build (PressUpdateButtonAsync, without its log line)
+        await DrawAsync(shell, Path.Combine(outDirectory, "update_toast_personal.png"));
+        model.ShowToast(string.Empty);
+        model.PreviewPersonal(false);
+        model.PreviewUpdate(null);
+    }
+
+    /// <summary>
+    /// Package K40, verification mode: checks the loopback stand-in of GitHub the model was given, opens the overlay and installs the update over the launcher's own
+    /// folder (the folder of this process), as "Update now" does. The caller then starts the new launcher. Returns the report (a FAIL line per check that did not hold).
+    /// Package K42: the check is a press of the footer button, whose states before, during and after it (and its toast) are reported too; a run without a newer
+    /// release (up to date, offline, a personal build) ends after those lines with the FAIL of "the check found an update".
+    /// </summary>
+    public static async Task<string> UpdateSelfTestAsync(LauncherModel model)
+    {
+        var report = new System.Text.StringBuilder();
+        void Check(string what, bool ok) => report.AppendLine((ok ? "ok    " : "FAIL  ") + what);
+        string app = AppContext.BaseDirectory;
+        report.AppendLine($"ok    launcher {model.Build.InformationalVersion} runs from {app}; the check compares with {model.CurrentVersion.Tag}; source {model.UpdateSource.ReleasesUri}");
+        Check("the source is the loopback address", model.UpdateSource.Policy.IsLoopback);
+
+        // package K42: the check is the footer button's, pressed the way a click does; the button is there before it, reads "Checking…" while it runs, and says the outcome
+        Check($"before the check the footer button reads \"{model.UpdateButtonLabel}\" in the quiet look and can be pressed", model.UpdateButtonLabel == UpdateButtonState.CheckLabel && !model.UpdateButtonAccent && model.UpdateButtonEnabled);
+        Task press = model.PressUpdateButtonAsync();
+        if (!model.UpdatesOff)
+        {
+            Check($"while it checks the footer button reads \"{model.UpdateButtonLabel}\" and is disabled", press.IsCompleted || (model.UpdateButtonLabel == UpdateButtonState.CheckingLabel && !model.UpdateButtonEnabled));
+        }
+
+        await press;
+        ReleaseInfo? found = model.AvailableUpdate;
+        string expectedToast = model.UpdatesOff ? UpdateButtonState.PersonalToast : model.LastCheckOutcome switch
+        {
+            UpdateCheckOutcome.Failed => UpdateButtonState.FailedToast,
+            UpdateCheckOutcome.Newest => $"You have the newest version ({model.CurrentVersion.Tag}).",
+            _ => string.Empty,
+        };
+        Check($"after the press the footer button reads \"{model.UpdateButtonLabel}\" ({(model.UpdateButtonAccent ? "gold" : "quiet")}, {(model.UpdateButtonEnabled ? "enabled" : "disabled")}); outcome {model.LastCheckOutcome?.ToString() ?? "no check"}; toast \"{model.Toast}\"",
+            model.Toast == expectedToast && model.UpdateButtonAccent == (found is not null) && (model.LastCheckOutcome is not null) != model.UpdatesOff);
+        Check($"the check found an update ({found?.Tag ?? "none"}; {model.UpdateStatus})", found is not null);
+        if (found is null)
+        {
+            return report.ToString();
+        }
+
+        Check($"the footer offers \"{model.UpdateButtonLabel}\" in the gold look", model.UpdateButtonAccent && model.UpdateButtonLabel == $"Update to {found.Tag}");
+        Check("the manual check opened the overlay at once", model.UpdateStage == UpdateStage.Offer);
+        Check($"the overlay shows the release's title and notes ({found.Title}; {found.Notes.Length} characters)", model.UpdateOverlayVisible && model.UpdateStage == UpdateStage.Offer && model.UpdateNotes.Length > 0 && model.UpdateReleaseTitle == found.Title);
+        // one click: Later closes the overlay, the gold button stays, and one press of it installs the update
+        model.UpdateLaterCommand.Execute(null);
+        Check("Later closed the overlay and the gold button still offers the update; one press of it installs", model.UpdateStage == UpdateStage.Hidden && model.UpdateButtonAccent && model.UpdateButtonEnabled);
+        await model.PressUpdateButtonAsync();
+        Check($"the update was installed and the restart was asked for (stage {model.UpdateStage}{(model.UpdateMessage.Length > 0 ? "; " + model.UpdateMessage : string.Empty)})", model.UpdateStage == UpdateStage.Restarting);
+        string exe = Path.Combine(app, GameLauncher.LauncherFileName);
+        Check("the running TsukihimeLauncher.exe was renamed to .old and the new one moved in", File.Exists(exe + UpdateInstaller.OldSuffix) && File.Exists(exe));
+        string journal = new UpdateStaging(app).Journal;
+        Check("the journal of the update ends with done", File.Exists(journal) && File.ReadAllLines(journal).Contains("done"));
+        Tsuki.Data.Icons.AssemblyMarks? marks = Tsuki.Data.Icons.PeIcons.Marks(Path.Combine(app, "TsukihimeLauncher.dll"));
+        Check($"the launcher now in the folder is {found.Tag} ({marks?.InformationalVersion})", ReleaseVersion.TryParseInformational(marks?.InformationalVersion, out ReleaseVersion installed) && installed == found.Version);
+        return report.ToString();
     }
 
     /// <summary>
     /// Drives the view model the way the pages do (every setter, the folder choice) over a temporary profile and checks what lands in settings.ini and game_dir.txt. Returns the
     /// report; it contains a line that starts with FAIL for every check that did not hold.
     /// </summary>
-    public static async Task<string> SelfTestAsync(LauncherModel model, LauncherPaths paths, string? gameFolder)
+    /// <param name="model">The view model.</param>
+    /// <param name="paths">The temporary profile.</param>
+    /// <param name="gameFolder">The game folder of <c>--game</c>, or null.</param>
+    /// <param name="afterUpdate">Package K40: the version an update came from and the .old files its cleanup left, when an update restarted into this launcher.</param>
+    public static async Task<string> SelfTestAsync(LauncherModel model, LauncherPaths paths, string? gameFolder, (ReleaseVersion From, int Left)? afterUpdate = null)
     {
         var report = new System.Text.StringBuilder();
         void Check(string what, bool ok) => report.AppendLine((ok ? "ok    " : "FAIL  ") + what);
+        string app = AppContext.BaseDirectory;
+        report.AppendLine($"ok    launcher {model.Build.InformationalVersion} runs from {app} (personal build: {model.Build.IsPersonal})");
+        if (afterUpdate is { } after)
+        {
+            string[] old = Directory.GetFiles(app, "*" + UpdateInstaller.OldSuffix, SearchOption.AllDirectories);
+            Check($"after the update from {after.From.Tag}: {after.Left} file(s) left by the cleanup, {old.Length} .old file(s) in the folder, staging folder {(Directory.Exists(new UpdateStaging(app).Root) ? "still there" : "gone")}",
+                after.Left == 0 && old.Length == 0 && !Directory.Exists(new UpdateStaging(app).Root));
+            Check($"this launcher ({model.Build.Version.Tag}) is newer than the one it replaced ({after.From.Tag})", model.Build.Version > after.From);
+        }
+
         await model.RefreshAsync();
         Check("fresh profile: English, windowed, vsync on, 1600 x 900, auto prompts", model.LanguageIndex == 1 && !model.Fullscreen && model.VSync && model.SelectedWindowSize is { Width: 1600, Height: 900 } && model.PromptsIndex == 0);
         Check("the window sizes offered fit the chosen monitor", model.WindowSizes.Count > 0 && model.WindowSizes.All(c => model.SelectedMonitor is not { } sm || Tsuki.Platform.WindowFit.Fits(c.Width, c.Height, sm.WorkArea.Width, sm.WorkArea.Height)));
@@ -150,15 +288,15 @@ internal static class OffscreenRender
         return report.ToString();
     }
 
-    private static async Task DrawAsync(FrameworkElement root, string path)
+    private static async Task DrawAsync(FrameworkElement root, string path, int width = Width)
     {
         // let the loaded events, the bindings and the layout passes that wait for idle run
         await root.Dispatcher.InvokeAsync(() => { }, DispatcherPriority.ApplicationIdle);
-        root.Measure(new Size(Width, Height));
-        root.Arrange(new Rect(0, 0, Width, Height));
+        root.Measure(new Size(width, Height));
+        root.Arrange(new Rect(0, 0, width, Height));
         root.UpdateLayout();
         await root.Dispatcher.InvokeAsync(() => { }, DispatcherPriority.ApplicationIdle);
-        var bitmap = new RenderTargetBitmap(Width, Height, 96, 96, PixelFormats.Pbgra32);
+        var bitmap = new RenderTargetBitmap(width, Height, 96, 96, PixelFormats.Pbgra32);
         bitmap.Render(root);
         var encoder = new PngBitmapEncoder();
         encoder.Frames.Add(BitmapFrame.Create(bitmap));

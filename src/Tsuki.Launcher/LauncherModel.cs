@@ -61,7 +61,7 @@ public sealed class RelayCommand(Action<object?> execute, Func<object?, bool>? c
 }
 
 /// <summary>The launcher's view model.</summary>
-public sealed class LauncherModel : INotifyPropertyChanged
+public sealed partial class LauncherModel : INotifyPropertyChanged
 {
     private static readonly Language[] LanguageOrder = [Language.Ja, Language.En, Language.Zc, Language.Zt];
 
@@ -78,6 +78,7 @@ public sealed class LauncherModel : INotifyPropertyChanged
     private IReadOnlyList<MonitorEntry> _monitors = [];
     private LauncherPage _page;
     private string _toast = string.Empty;
+    private int _toastShown;
     private ConfirmRequest? _confirm;
     private Process? _process;
     private string? _shadImage;
@@ -109,7 +110,7 @@ public sealed class LauncherModel : INotifyPropertyChanged
             new(LauncherPage.Help, "Help & about", ""),
         ];
         FixCommand = new RelayCommand(p => { if (p is LauncherPage page) { Page = page; } });
-        PlayCommand = new RelayCommand(_ => Play(), _ => !GameRunning);
+        PlayCommand = new RelayCommand(_ => Play(), _ => !GameRunning && !UpdateBusy);
         BrowseCommand = new RelayCommand(_ => BrowseRequested?.Invoke());
         OpenGameFolderCommand = new RelayCommand(_ => OpenPath(Folder.Path), _ => Folder.State is not (FolderState.NotSet or FolderState.Missing));
         RecheckCommand = new RelayCommand(async _ => await RefreshAsync());
@@ -127,6 +128,7 @@ public sealed class LauncherModel : INotifyPropertyChanged
         DesktopShortcutCommand = new RelayCommand(_ => AskShortcut(ShortcutKind.DesktopGame));
         DesktopLauncherShortcutCommand = new RelayCommand(_ => AskShortcut(ShortcutKind.DesktopLauncher));
         StartMenuShortcutsCommand = new RelayCommand(_ => AskShortcut(ShortcutKind.StartMenu));
+        _log = LauncherLog.For(paths);
     }
 
     /// <inheritdoc/>
@@ -470,12 +472,16 @@ public sealed class LauncherModel : INotifyPropertyChanged
             if (Set(ref _confirm, value))
             {
                 Raise(nameof(ConfirmVisible));
+                Raise(nameof(OverlayVisible));
             }
         }
     }
 
     /// <summary>True while a question is shown.</summary>
     public bool ConfirmVisible => _confirm is not null;
+
+    /// <summary>True while the question or the update overlay is up: the content behind takes no keys (package K40 added the second overlay).</summary>
+    public bool OverlayVisible => ConfirmVisible || UpdateOverlayVisible;
 
     /// <summary>True while the game process runs.</summary>
     public bool GameRunning => _process is { HasExited: false };
@@ -601,18 +607,27 @@ public sealed class LauncherModel : INotifyPropertyChanged
         private set => Set(ref _gameIconPath, value);
     }
 
-    /// <summary>Builds or finds the cached Arcueid icon for the current folder (see <see cref="GameIconPath"/>).</summary>
+    /// <summary>
+    /// Builds or finds the cached Arcueid icon for the current folder (see <see cref="GameIconPath"/>); then, in the window, the program icons follow it (package
+    /// K43: <see cref="StampIconsAsync"/>, started and not waited for, so the window and PLAY never wait on it).
+    /// </summary>
     public async Task LoadGameIconAsync()
     {
         if (!_folder.IsReady || _folder.Path is null)
         {
             GameIconPath = null;
-            return;
+        }
+        else
+        {
+            string folder = _folder.Path;
+            string data = _paths.DataDirectory;
+            GameIconPath = await Task.Run(() => Tsuki.Data.Icons.FaceIconCache.Ensure(data, folder, () => Tsuki.Data.GameFolderSource.Open(folder)));
         }
 
-        string folder = _folder.Path;
-        string data = _paths.DataDirectory;
-        GameIconPath = await Task.Run(() => Tsuki.Data.Icons.FaceIconCache.Ensure(data, folder, () => Tsuki.Data.GameFolderSource.Open(folder)));
+        if (StampProgramIcons)
+        {
+            _ = StampIconsAsync("the game folder was read");
+        }
     }
 
     /// <summary>Reads the banner art of a ready game folder (once per folder) on a worker thread.</summary>
@@ -721,7 +736,11 @@ public sealed class LauncherModel : INotifyPropertyChanged
         try
         {
             LaunchPlan plan = GameLauncher.Plan(_appExe!, _folder.Path!, _paths, Fullscreen);
-            _process = GameLauncher.Start(plan, _paths);
+            lock (ExeIconStamp.SwapGate)
+            {
+                // package K43: never in the moment a stamp of the program icons has renamed Tsukihime.exe and not yet moved the new one in (microseconds)
+                _process = GameLauncher.Start(plan, _paths);
+            }
         }
         catch (Exception e) when (e is System.ComponentModel.Win32Exception or InvalidOperationException or IOException)
         {
@@ -941,15 +960,19 @@ public sealed class LauncherModel : INotifyPropertyChanged
         }
     }
 
-    /// <summary>Shows a message for a few seconds.</summary>
+    /// <summary>
+    /// Shows a message for a few seconds, counted from the last call: a timer of an earlier message never takes away a later one, also when both say the same
+    /// (package K42, review: a second press of Check for updates within the six seconds kept its message for only the rest of the first one's).
+    /// </summary>
     public void ShowToast(string text)
     {
         Toast = text;
+        int shown = ++_toastShown;
         var timer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(6) };
         timer.Tick += (_, _) =>
         {
             timer.Stop();
-            if (_toast == text)
+            if (shown == _toastShown)
             {
                 Toast = string.Empty;
             }

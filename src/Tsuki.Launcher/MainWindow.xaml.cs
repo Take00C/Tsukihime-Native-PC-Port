@@ -43,6 +43,8 @@ public partial class MainWindow : Window
         };
         model.BrowseRequested += OnBrowse;
         model.ImportRequested += OnImport;
+        // package K40: closing the window during an update's download cancels it (the staging folder goes with it; nothing of the launcher's folder was changed yet)
+        Closing += (_, _) => model.CancelUpdate();
         // the launcher comes back the way it was (a maximised one stays maximised) and takes the foreground only when the game failed and the toast needs eyes
         WindowState before = WindowState.Normal;
         model.GameStarted += () =>

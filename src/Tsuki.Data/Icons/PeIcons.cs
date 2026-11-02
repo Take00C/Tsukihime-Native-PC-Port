@@ -3,6 +3,7 @@
 // managed assembly that mark a PERSONAL build (AssemblyMetadata "TsukiPersonalBuild", the informational version). No Win32 call and no reflection load: the PE headers
 // come from System.Reflection.PortableExecutable, the resource tree is walked here (IMAGE_RESOURCE_DIRECTORY: type, id, language, data entry) and the attributes are
 // decoded with System.Reflection.Metadata. The release check of Tsuki.Cli and the tests use it to tell a release build (the crescent, no mark) from a personal one.
+// Package K43 added the list of every resource with its language and the data of one language, which the launcher's stamp of the program icons reads back.
 using System.Buffers.Binary;
 using System.Collections.Immutable;
 using System.Reflection.Metadata;
@@ -19,9 +20,28 @@ public sealed record AssemblyMarks(IReadOnlyDictionary<string, string> Metadata,
     public bool IsPersonalBuild => Metadata.TryGetValue(PeIcons.PersonalBuildKey, out string? value) && string.Equals(value, "true", StringComparison.OrdinalIgnoreCase);
 }
 
+/// <summary>One resource of a PE image (package K43): its type, integer id and language, and the size of its data.</summary>
+/// <param name="Type">The resource type (<see cref="PeIcons.IconType"/>, <see cref="PeIcons.GroupIconType"/>, ...).</param>
+/// <param name="Id">The resource's integer id.</param>
+/// <param name="Language">The language id of this copy of the resource (0 is LANG_NEUTRAL, what the C# compiler writes).</param>
+/// <param name="Size">The size of its data in bytes.</param>
+public readonly record struct PeResource(int Type, int Id, int Language, int Size);
+
 /// <summary>Reads icon groups and build marks out of executables and assemblies on disk.</summary>
 public static class PeIcons
 {
+    /// <summary>RT_ICON: one image of an icon group.</summary>
+    public const int IconType = 3;
+
+    /// <summary>RT_GROUP_ICON: the directory of an icon (its images by RT_ICON id).</summary>
+    public const int GroupIconType = 14;
+
+    /// <summary>RT_VERSION: the version block Explorer shows in the file's properties.</summary>
+    public const int VersionType = 16;
+
+    /// <summary>RT_MANIFEST: the application manifest.</summary>
+    public const int ManifestType = 24;
+
     /// <summary>
     /// The resource id of the icon group that the C# compiler writes for <c>ApplicationIcon</c> (Roslyn's <c>/win32icon</c>: RT_GROUP_ICON 32512, IDI_APPLICATION) and
     /// that the .NET apphost copies into the executable; the game window's class takes it (<c>GameWindow.ApplicationIconResource</c>).
@@ -115,6 +135,86 @@ public static class PeIcons
         }
 
         return ms.ToArray();
+    }
+
+    /// <summary>
+    /// Every resource of <paramref name="path"/> whose type and name are integer ids, in the order of the resource tree, each language on its own (package K43: the
+    /// stamp of the program icons finds the language the icon group really has, and which RT_ICON ids are taken); null when the file is not a PE image.
+    /// </summary>
+    public static IReadOnlyList<PeResource>? ResourceList(string path)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(path);
+        using FileStream stream = File.OpenRead(path);
+        using var pe = OpenPe(stream);
+        if (pe is null)
+        {
+            return null;
+        }
+
+        var list = new List<PeResource>();
+        if (Resources(pe) is not { } res)
+        {
+            return list;
+        }
+
+        ReadOnlySpan<byte> span = res.AsSpan();
+        foreach ((uint type, int typeDir, bool typeIsDir) in Entries(res, 0))
+        {
+            if (!typeIsDir || (type & SubdirectoryBit) != 0)
+            {
+                continue;                                                                   // a named type (the bit set) has no id
+            }
+
+            foreach ((uint id, int nameDir, bool nameIsDir) in Entries(res, typeDir))
+            {
+                if (!nameIsDir || (id & SubdirectoryBit) != 0)
+                {
+                    continue;
+                }
+
+                foreach ((uint language, int data, bool isDir) in Entries(res, nameDir))
+                {
+                    if (isDir || data + 8 > span.Length || (language & SubdirectoryBit) != 0)
+                    {
+                        continue;
+                    }
+
+                    int size = BinaryPrimitives.ReadInt32LittleEndian(span[(data + 4)..]);
+                    list.Add(new PeResource((int)type, (int)id, (int)language, size));
+                }
+            }
+        }
+
+        return list;
+    }
+
+    /// <summary>The data of resource <paramref name="id"/> of <paramref name="type"/> in <paramref name="language"/>; null when the file is not a PE image or has no such resource.</summary>
+    public static byte[]? ResourceData(string path, int type, int id, int language)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(path);
+        using FileStream stream = File.OpenRead(path);
+        using var pe = OpenPe(stream);
+        if (pe is null || Resources(pe) is not { } res)
+        {
+            return null;
+        }
+
+        int? typeDir = FindEntry(res, 0, (uint)type);
+        int? nameDir = typeDir is { } t ? FindEntry(res, t, (uint)id) : null;
+        if (nameDir is not { } n)
+        {
+            return null;
+        }
+
+        foreach ((uint entryLanguage, int offset, bool isDir) in Entries(res, n))
+        {
+            if (!isDir && entryLanguage == (uint)language && Data(pe, res, offset) is { } data)
+            {
+                return data.ToArray();
+            }
+        }
+
+        return null;
     }
 
     /// <summary>The assembly-level marks of the managed assembly <paramref name="path"/>; null when the file is not a PE image or carries no managed metadata (an apphost).</summary>
@@ -239,29 +339,33 @@ public static class PeIcons
 
         foreach ((_, int offset, bool isDir) in Entries(res, n))
         {
-            if (isDir || offset + 8 > res.Length)
+            if (!isDir && Data(pe, res, offset) is { } data)
             {
-                continue;
+                return data.AsSpan();
             }
-
-            ReadOnlySpan<byte> span = res.AsSpan();
-            int rva = BinaryPrimitives.ReadInt32LittleEndian(span[offset..]);
-            int size = BinaryPrimitives.ReadInt32LittleEndian(span[(offset + 4)..]);
-            if (rva <= 0 || size <= 0)
-            {
-                continue;
-            }
-
-            PEMemoryBlock block = pe.GetSectionData(rva);
-            if (block.Length < size)
-            {
-                continue;
-            }
-
-            return block.GetContent(0, size).AsSpan();
         }
 
         return default;
+    }
+
+    /// <summary>The bytes an IMAGE_RESOURCE_DATA_ENTRY at <paramref name="offset"/> points at; null when it points nowhere or past its section.</summary>
+    private static ImmutableArray<byte>? Data(PEReader pe, ImmutableArray<byte> res, int offset)
+    {
+        if (offset < 0 || offset + 8 > res.Length)
+        {
+            return null;
+        }
+
+        ReadOnlySpan<byte> span = res.AsSpan();
+        int rva = BinaryPrimitives.ReadInt32LittleEndian(span[offset..]);
+        int size = BinaryPrimitives.ReadInt32LittleEndian(span[(offset + 4)..]);
+        if (rva <= 0 || size <= 0)
+        {
+            return null;
+        }
+
+        PEMemoryBlock block = pe.GetSectionData(rva);
+        return block.Length < size ? null : block.GetContent(0, size);
     }
 
     private static string AttributeTypeName(MetadataReader md, CustomAttribute attribute)

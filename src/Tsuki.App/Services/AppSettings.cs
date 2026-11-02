@@ -31,7 +31,8 @@ public readonly record struct MonitorOrigin(int X, int Y)
 /// <param name="TextWebSocket"><c>text_websocket=</c> (package K23): a WebSocket on 127.0.0.1 broadcasts each new line (off when the key is absent).</param>
 /// <param name="TextWebSocketPort"><c>text_websocket_port=</c> (package K23): the WebSocket's port, 1..65535 (6677 when the key is absent).</param>
 /// <param name="ScreenshotNotice"><c>screenshot_notice=</c> (package K24): the short "Screenshot saved" notice after F12 (on when the key is absent).</param>
-/// <param name="TextWebSocketOrigin">The trusted browser page's ASCII HTTP or HTTPS origin. Absent means native clients only.</param>
+/// <param name="UpdateCheck"><c>update_check=</c> (package K40): the launcher looks for a newer release on GitHub when it starts (on when the key is absent). The game itself never reads it; it only keeps it when it writes the file.</param>
+/// <param name="ArcueidIcon"><c>arcueid_icon=</c> (package K43): the launcher writes Arcueid's face, cut from the player's own game files, into Tsukihime.exe and TsukihimeLauncher.exe (on when the key is absent); off puts the port's crescent back. The game never reads it; it only keeps it when it writes the file.</param>
 public readonly record struct AppSettingsData(
     PromptSetting Prompts = PromptSetting.Auto,
     bool? Fullscreen = null,
@@ -46,7 +47,8 @@ public readonly record struct AppSettingsData(
     bool? TextWebSocket = null,
     int? TextWebSocketPort = null,
     bool? ScreenshotNotice = null,
-    string? TextWebSocketOrigin = null)
+    bool? UpdateCheck = null,
+    bool? ArcueidIcon = null)
 {
     /// <summary>The WebSocket port when the file names none (texthooker-ui's default).</summary>
     public const int DefaultTextWebSocketPort = 6677;
@@ -152,35 +154,6 @@ public static class AppSettings
         return false;
     }
 
-    /// <summary>Reads one ASCII browser origin without credentials, a path, a query or a fragment. Use punycode for internationalized hosts.</summary>
-    public static bool TryParseWebSocketOrigin(string? text, out string? origin)
-    {
-        origin = null;
-        if (string.IsNullOrWhiteSpace(text) || text.Any(c => c > 127 || char.IsWhiteSpace(c) || char.IsControl(c) || c == '\\')
-            || !Uri.TryCreate(text, UriKind.Absolute, out Uri? uri)
-            || uri.Scheme is not ("http" or "https") || uri.Host.Length == 0
-            || uri.UserInfo.Length != 0 || uri.AbsolutePath != "/" || uri.Query.Length != 0 || uri.Fragment.Length != 0)
-        {
-            return false;
-        }
-
-        try
-        {
-            string host = uri.IdnHost;
-            if (host.Any(c => c > 127))
-            {
-                return false;
-            }
-
-            origin = new UriBuilder(uri) { Host = host }.Uri.GetLeftPart(UriPartial.Authority);
-            return true;
-        }
-        catch (UriFormatException)
-        {
-            return false;
-        }
-    }
-
     /// <summary>Reads settings from text: lines of <c>key=value</c>, <c>#</c> comments, unknown keys and bad values left at their defaults.</summary>
     public static AppSettingsData Parse(string? text)
     {
@@ -231,11 +204,14 @@ public static class AppSettings
                 case "text_websocket_port" when int.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out int port) && port is >= 1 and <= ushort.MaxValue:
                     data = data with { TextWebSocketPort = port };
                     break;
-                case "text_websocket_origin" when TryParseWebSocketOrigin(value, out string? origin):
-                    data = data with { TextWebSocketOrigin = origin };
-                    break;
                 case "screenshot_notice" when TryParseSwitch(value, out bool notice):
                     data = data with { ScreenshotNotice = notice };
+                    break;
+                case "update_check" when TryParseSwitch(value, out bool check):
+                    data = data with { UpdateCheck = check };
+                    break;
+                case "arcueid_icon" when TryParseSwitch(value, out bool face):
+                    data = data with { ArcueidIcon = face };
                     break;
             }
         }
@@ -310,16 +286,22 @@ public static class AppSettings
             text.Append(CultureInfo.InvariantCulture, $"text_websocket_port={port}\n");
         }
 
-        if (TryParseWebSocketOrigin(data.TextWebSocketOrigin, out string? origin))
-        {
-            text.Append("# text_websocket_origin: the trusted page's HTTP or HTTPS origin, with no path. Use an ASCII or punycode host. Restart the program after changing it\n");
-            text.Append(CultureInfo.InvariantCulture, $"text_websocket_origin={origin}\n");
-        }
-
         if (data.ScreenshotNotice is { } notice)
         {
             text.Append("# screenshot_notice: on (the default) shows the short \"Screenshot saved\" notice after F12; off saves the picture silently (Config > System > Screenshot Notice)\n");
             text.Append(CultureInfo.InvariantCulture, $"screenshot_notice={(notice ? "on" : "off")}\n");
+        }
+
+        if (data.UpdateCheck is { } check)
+        {
+            text.Append("# update_check: on (the default) lets the launcher look for a newer release on GitHub when it starts; off checks only when you press Check now (Help & about)\n");
+            text.Append(CultureInfo.InvariantCulture, $"update_check={(check ? "on" : "off")}\n");
+        }
+
+        if (data.ArcueidIcon is { } face)
+        {
+            text.Append("# arcueid_icon: on (the default) gives Tsukihime.exe and TsukihimeLauncher.exe Arcueid's face, made from your game files; off gives them the port's moon icon (Help & about)\n");
+            text.Append(CultureInfo.InvariantCulture, $"arcueid_icon={(face ? "on" : "off")}\n");
         }
 
         return text.ToString();
