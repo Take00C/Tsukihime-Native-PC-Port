@@ -1103,8 +1103,9 @@ Every byte listed (`eboot.savedata.SLOT_FIELDS`, tested to tile 0..0x7108):
 
 `Slot_Store(n)` (0x737D0) copies `slot_staging` (0x12031E0) to slot n and stamps the date; the
 staging record is filled by `Staging_SetSnapshot` (0x73980) with the current history record.
-The save/load menu (0x70340) shows 4 slots per page and accepts slot ids 0..138 (0x8A); slot
-139 is not reachable from the menu [E][H: quick/auto save]. `QuickSave_Store` (0x73A70) keeps a
+The save/load menu (0x70340) shows 4 slots per page and its draw accepts slot ids 0..138 (0x8A),
+but its list (0x711F0) holds slots 0..99 only: auto saves and the quick save are never listed
+(adv_state.md 7.8) [E, V-emu]. `QuickSave_Store` (0x73A70) keeps a
 separate dated record at 0x11FA558 [E].
 
 ### 7.5 What a port should do

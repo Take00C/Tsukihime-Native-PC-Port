@@ -245,4 +245,17 @@ public sealed class SkipRestoreStateTests
         RunTo(rig, host, "beta line");
         Assert.Equal(["scene", "auto", "scene"], events);
     }
+
+    [Fact]
+    public void Atsv8MakesNoAutoSaveWhileSavingIsOff()
+    {
+        // 0x98B89: 0x67460 (F025 != 0) skips AutoSave 0x73B70. A gallery replay sets F025 (script 528), and scene 368's _ATSV(8) used to auto-save it
+        (GameRig rig, GameHost host, SaveStore store) = Start("_WKST(F025,eq,1);_WKST(F822,eq,1);_ATSV(8);" + Page(1, 2) + "_END_();");
+        int pushes = 0;
+        host.HistorySink!.SceneStackPushed += () => pushes++;
+        RunTo(rig, host, "alpha line");
+        Assert.Equal(1, pushes);                                                // the scene start itself still happens
+        Assert.Empty(store.StoredSlots());
+        Assert.Equal(0, store.SystemData.Block.LatestSlot);
+    }
 }

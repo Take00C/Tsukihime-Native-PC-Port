@@ -68,6 +68,8 @@ public sealed partial class AppServices : IGameServices
             VoiceMarksRebuilt = (credited, watch.Elapsed);
         }
 
+        FlowMarksRepaired = RepairFlowMarks(parts.Data, vars);
+
         var profile = new GameProfile(Store.SystemData.Block, vars);
         IReadOnlyList<Language> available = AvailableLanguagesOf(parts.Data);
         if (profile.System.Config.Language is < 0 or > 3 || (available.Count > 0 && !available.Contains((Language)profile.System.Config.Language)))
@@ -80,7 +82,7 @@ public sealed partial class AppServices : IGameServices
         Host = parts.HostFactory(HostLanguage, profile);
         AttachHost(Host);
         Store.UpdateLatestSlot();
-        if (VoiceMarksRebuilt is { Credited: > 0 })
+        if (VoiceMarksRebuilt is { Credited: > 0 } || FlowMarksRepaired is { Bits: > 0 })
         {
             // the rebuilt marks go into the system block and the save file now, not only with the next save
             Store.SystemData.CaptureGlobalsFrom(vars);

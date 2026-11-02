@@ -485,11 +485,19 @@ public sealed class FlowchartChart
         }
 
         /// <summary>
-        /// sub_13FD4: the node picture. Returns whether the cursor may select it. The PS4 draws the mosaic cell of the node (field +0x14) into the frame's
-        /// inner 102 x 62 area where the Switch has a thumbnail atlas cell.
+        /// sub_13FD4 (PS4 0x25950): the node picture. Returns whether the cursor may select it; <paramref name="drawn"/> is the PS4 function's own result, the
+        /// node's 0x80000000 state bit that the grey connector of the node reads next (0x25F9E): a scene node done (gallery) or done or reached in this
+        /// playthrough (in game). The PS4 draws the mosaic cell of the node (field +0x14) into the frame's inner 102 x 62 area where the Switch has a thumbnail
+        /// atlas cell.
         /// </summary>
-        public bool Node(int k, int j, bool gallery, float x, float y)
+        /// <remarks>
+        /// The rules of 0x25950 (package K44): a scene node shows once it is done or its link edge was seen; its picture shows only when it is done (an
+        /// unfinished node is a black frame, also while its scene is the current one); in the gallery only a done node can be selected, in game a node
+        /// reached in this playthrough can, outside the first column group (the prologue).
+        /// </remarks>
+        public bool Node(int k, int j, bool gallery, float x, float y, out bool drawn)
         {
+            drawn = false;
             int phase = _rows[k].Phase;
             Rec rec = _rows[k].Recs[j];
             int n = rec.N.Scene;
@@ -537,6 +545,7 @@ public sealed class FlowchartChart
                 select = phase > 0 && rt;
             }
 
+            drawn = n >= 1 && (Completed(n) || (!gallery && Route(n)));
             int t = rec.N.Mosaic;
             if (thumb && t >= 0)
             {
@@ -638,10 +647,15 @@ public sealed class FlowchartChart
                 }
 
                 float x = (j * 96f) + 438f;
-                if (b.Node(k, j, gallery, x, nodeY))
+                if (b.Node(k, j, gallery, x, nodeY, out bool drawn))
                 {
                     cellNodes[k][j] = nodes.Count;
                     nodes.Add(new ChartNode(f.Scene, x, nodeY, f.Preview, f.TitleUi, f.SynopsisUi));
+                }
+
+                if (drawn)
+                {
+                    rows[k].Recs[j].Flags |= Drawn;
                 }
 
                 if (b.Grey(k, j, first, x, nodeY - 5f))

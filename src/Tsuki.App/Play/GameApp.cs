@@ -783,6 +783,11 @@ internal sealed class GameApp : IDisposable
             _log.WriteLine($"voice rows: the profile predates the character marks (package K36); {rebuilt.Credited} voice statements credited from the read text in {rebuilt.Elapsed.TotalMilliseconds:F0} ms, G73 {_services.Global(VoiceMarks.HeardWord):X4}");
         }
 
+        if (_services.FlowMarksRepaired is { } flow)
+        {
+            _log.WriteLine($"flowchart: the profile predates the PS4's jump and choice marks (package K44); {flow.Choices} choice points, prologue {(flow.Prologue ? "yes" : "no")}, {flow.Scenes} scenes of a shared ending, {flow.Bits} bits added");
+        }
+
         // the window title follows the game's language: now, and at once when the config screen changes it (the host is rebuilt then; package K20)
         SetWindowTitle(_services.Language);
         _services.HostReplaced += _ => SetWindowTitle(_services.Language);

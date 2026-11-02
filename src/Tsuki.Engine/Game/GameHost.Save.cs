@@ -204,7 +204,12 @@ public sealed partial class GameHost
             Sink.SetMessageText(ReadOnlySpan<byte>.Empty);
             Sink.UpdateStaging();
             Sink.SceneStackPush();
-            Sink.AutoSave();
+            if (F(25) == 0)
+            {
+                // 0x98B89: 0x67460 (F025 != 0, saving off: a gallery replay) skips the auto save; nothing tests the just-loaded word on this path
+                Sink.AutoSave();
+            }
+
             return StepResult.Continue;
         }
 

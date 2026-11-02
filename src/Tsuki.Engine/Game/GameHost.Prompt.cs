@@ -238,6 +238,7 @@ public sealed partial class GameHost
         if (kind == ChoiceKind.TwoButtons)
         {
             VarCommands.ChoiceStore(VarState, cursor);
+            _lastPick = cursor;
         }
 
         Sound.SystemSePlay(0);

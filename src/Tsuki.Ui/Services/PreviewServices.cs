@@ -320,10 +320,18 @@ public sealed class PreviewServices : IGameServices
         return _slots[slot].Used;
     }
 
+    /// <summary>When set, <see cref="Delete"/> answers false (a file that could not be written) and keeps the slot.</summary>
+    public bool DeleteFails { get; set; }
+
     /// <inheritdoc/>
     public bool Delete(int slot)
     {
         Calls.Add($"delete {slot}");
+        if (DeleteFails || slot >= 139 || !_slots[slot].Used)
+        {
+            return false;
+        }
+
         _slots[slot] = new UiSlot(slot, false, default, 0, 0, string.Empty);
         _thumbnails.Remove(slot);
         return true;

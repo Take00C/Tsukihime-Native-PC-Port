@@ -1,3 +1,5 @@
+using Tsuki.Engine.Contracts;
+
 namespace Tsuki.Engine.Save;
 
 /// <summary>An image the app attaches to a slot (the thumbnail of the save list). The engine stores the bytes as given.</summary>
@@ -146,15 +148,23 @@ public sealed class SaveStore
         return true;
     }
 
-    /// <summary>Deletes a save (not a PS4 feature; the slot is emptied).</summary>
-    public void Delete(int slot)
+    /// <summary>
+    /// The save list's delete (save/load screen 0x71C90 state 23, VA 0x726E3): the slot is emptied with its thumbnail, and the latest slot is recomputed
+    /// (SaveImage_Commit mode 2). The console zeroes only the slot's used word and date and keeps the rest of the record; no reader looks past the used word.
+    /// An emptied auto slot stays in the FIFO: the next auto saves move it down like any other slot (0x73B70).
+    /// </summary>
+    /// <returns>False when the slot held no save.</returns>
+    public bool Delete(int slot)
     {
-        _slots[Check(slot)] = null;
-        _thumbnails[slot] = null;
-        if (slot < QuickSlot)
+        if (!HasSave(slot))
         {
-            UpdateLatestSlot();
+            return false;
         }
+
+        _slots[slot] = null;
+        _thumbnails[slot] = null;
+        UpdateLatestSlot();
+        return true;
     }
 
     /// <summary>
@@ -162,12 +172,12 @@ public sealed class SaveStore
     /// </summary>
     /// <exception cref="InvalidOperationException">The slot is empty.</exception>
     /// <exception cref="InvalidDataException">The slot is not a complete PS4-layout save.</exception>
-    public SceneRestoreResult Load(int slot, AdvHistory history, AdvLiveState live)
+    public SceneRestoreResult Load(int slot, AdvHistory history, AdvLiveState live, Func<HistoryRecord, bool>? repair = null)
     {
         ArgumentNullException.ThrowIfNull(history);
         ArgumentNullException.ThrowIfNull(live);
         SlotImage image = GetSlot(slot) ?? throw new InvalidOperationException($"slot {slot} holds no save");
-        return history.LoadSlot(image, live);
+        return history.LoadSlot(image, live, repair);
     }
 
     /// <summary>

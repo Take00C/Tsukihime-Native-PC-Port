@@ -22,6 +22,30 @@ public sealed partial class AppServices
     /// <summary>The scene the title asked for; set by <see cref="StartScene"/>, read once by the runtime to know a story began.</summary>
     public int LastStartedScene { get; private set; } = -1;
 
+    /// <summary>
+    /// Set when this start added the flowchart marks of a profile written before package K44 (<see cref="FlowRepair"/>: choice edges, the prologue, the
+    /// jumps the old marks prove, scenes finished through a shared ending, read from the system data and the slots' playthroughs); null when the profile
+    /// needed nothing.
+    /// </summary>
+    public FlowRepairResult? FlowMarksRepaired { get; }
+
+    private FlowRepairResult? RepairFlowMarks(IGameData data, Vars vars)
+    {
+        if (!FlowRepair.Needed(vars))
+        {
+            return null;
+        }
+
+        try
+        {
+            return FlowRepair.Repair(data, Store.SystemData, vars, [.. Store.StoredSlots().Select(s => Store.GetSlot(s)!.StateA)]);
+        }
+        catch (NotSupportedException)
+        {
+            return null;                                    // a test rig without the flowchart tables
+        }
+    }
+
     /// <inheritdoc/>
     public int Phase => Host.F(23);
 

@@ -74,7 +74,7 @@ public sealed class AppServicesTests
         Assert.True(rig.Services.Delete(0));
         Assert.False(rig.Services.Slots[0].Used);
         Assert.False(rig.Services.Delete(0));                                   // already empty
-        Assert.False(rig.Services.Delete(120));                                 // auto slots cannot be deleted from the list
+        Assert.False(rig.Services.Delete(120));                                 // an empty auto slot (package K45: used ones are deleted)
         Assert.False(rig.Services.Copy(7));                                     // nothing to copy
     }
 

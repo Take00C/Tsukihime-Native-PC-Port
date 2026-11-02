@@ -98,6 +98,8 @@ public sealed partial class GameEbootTables
 
         public IReadOnlyList<FlowEdgeRow> Edges => _edges.Value;
 
+        public IReadOnlyList<(int A, int B, int C)> ChoiceEdges => _tables.Flowchart.ChoiceFlags;
+
         public IReadOnlyList<FlowNodeRow> Nodes => _nodes.Value;
 
         public IReadOnlyList<int> JumpKeepWords => _tables.FlowKeep.Words;

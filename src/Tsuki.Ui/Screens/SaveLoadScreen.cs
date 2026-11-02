@@ -10,8 +10,9 @@ namespace Tsuki.Ui.Screens;
 /// <summary>
 /// The save and load list (docs/formats/adv_state.md 7; knife <c>Screen::SaveLoad</c>, sub_4F240 / sub_50FC0): four slot frames at a time with thumbnail, date,
 /// chapter title and scene title, the route card and notes of the slot under the cursor, a scroll bar, the button guide. Save offers a blank slot first, then the
-/// used ones newest first; Load lists every used slot newest first (the auto saves carry the AUTO SAVE tag). Used slots ask before overwriting and before
-/// loading; X deletes a save. It is opened from the system menu (and keeps it drawn underneath) or from the title.
+/// used ones newest first; Load lists every used slot newest first (the auto saves carry the AUTO SAVE tag; the PS4's list builder 0x711F0 takes manual slots
+/// only, package K45). Used slots ask before overwriting and before loading; TRIANGLE (Delete) deletes a save. It is opened from the system menu (and keeps it
+/// drawn underneath) or from the title.
 /// </summary>
 public sealed class SaveLoadScreen : UiScreen, ISubMenu
 {
@@ -28,6 +29,8 @@ public sealed class SaveLoadScreen : UiScreen, ISubMenu
     private float _flash;
     private MessagePopup? _popup;
     private float _saveWait = -1f;
+    private int _deleteSlot = -1;
+    private float _deleteFill;
     private float _deleteWait = -1f;
     private int _savedSlot = -1;
     private int _loadSlot = -1;
@@ -130,7 +133,10 @@ public sealed class SaveLoadScreen : UiScreen, ISubMenu
         _items.Cursor = Math.Min(_row, Math.Max(0, Math.Min(_list.Count - _scroll, Visible) - 1));
     }
 
-    private bool Busy => _popup is not null || _saveWait >= 0f || _deleteWait >= 0f || _loadSlot >= 0 || Closing || Root.Top is ConfirmDialog || Root.Top is MessagePopup;
+    private bool Busy => _popup is not null || _saveWait >= 0f || _deleteSlot >= 0 || _deleteWait >= 0f || _loadSlot >= 0 || Closing || Root.Top is ConfirmDialog || Root.Top is MessagePopup;
+
+    /// <summary>The fill over the frame under the cursor while a delete runs, 0..1 (0x120A6CC).</summary>
+    public float DeleteFill => _deleteFill;
 
     /// <inheritdoc/>
     public override void StepBackground()
@@ -369,12 +375,16 @@ public sealed class SaveLoadScreen : UiScreen, ISubMenu
             }
             else
             {
+                // a copy whose file could not be written is still in memory: the list shows what memory holds
                 Ctx.Sound(UiSound.Buzzer);
                 Popup(Ctx.Sysmes(189), 480f);
+                Rebuild(resetCursor: false);
             }
         }));
     }
 
+    // Delete Data (0x71C90 state 2, TRIANGLE at 0x73107): any used entry of either list asks dialog 21 (PS4 23); a blank one gets "No save data found." and SE 1
+    // (0x73454, 0x735AE)
     private void DeleteKey()
     {
         if (!Save && _list.Count == 0)
@@ -390,6 +400,7 @@ public sealed class SaveLoadScreen : UiScreen, ISubMenu
 
         if (!Slot(slot).Used)
         {
+            Ctx.Sound(UiSound.Done);
             Popup(Ctx.Sysmes(193), 480f);
             return;
         }
@@ -398,9 +409,10 @@ public sealed class SaveLoadScreen : UiScreen, ISubMenu
         {
             if (yes)
             {
+                // state 23: "Deleting..." (188) held while the frame fills in
                 _popup = Root.Push(new MessagePopup(Ctx.Sysmes(188), held: true));
-                Ctx.Services.Delete(slot);
-                _deleteWait = 0f;
+                _deleteSlot = slot;
+                _deleteFill = 0f;
             }
         }));
     }
@@ -432,24 +444,39 @@ public sealed class SaveLoadScreen : UiScreen, ISubMenu
             }
         }
 
-        if (_deleteWait >= 0f)
+        if (_deleteSlot >= 0)
         {
-            float n = _deleteWait + 1f;
-            if (_deleteWait < 1f && n >= 1f)
+            // state 23 (0x72696): the fill rises 0.05 a frame; at 1 the slot is deleted and the file written (0x726E3..0x7274F), and the fill goes
+            _deleteFill = MathF.Min(1f, _deleteFill + 0.05f);
+            if (_deleteFill >= 1f)
             {
-                Ctx.Sound(UiSound.Done);
+                int slot = _deleteSlot;
+                _deleteSlot = -1;
+                _deleteFill = 0f;
+                if (Ctx.Services.Delete(slot))
+                {
+                    _deleteWait = 0f;
+                }
+                else
+                {
+                    // state 24 on a failed write (0x7276A): the popup goes, "Unable to save data." (189)
+                    _popup?.Release();
+                    Popup(Ctx.Sysmes(189), 480f);
+                    Rebuild(resetCursor: false);
+                }
             }
-
-            if (n >= 17f)
+        }
+        else if (_deleteWait >= 0f)
+        {
+            // state 24 one frame (its SE 13 is an empty entry), state 25 41 frames (counter 40 at 0x72E23); then the popup goes, the list is rebuilt (0x717F0)
+            // and "Deleted." (217) shows for 480 frames (0x727B0)
+            _deleteWait++;
+            if (_deleteWait >= 42f)
             {
                 _deleteWait = -1f;
                 _popup?.Release();
                 Rebuild(resetCursor: false);
-                Popup(Ctx.Message(217), 300f);
-            }
-            else
-            {
-                _deleteWait = n;
+                Popup(Ctx.Message(217), 480f);
             }
         }
 
@@ -531,6 +558,13 @@ public sealed class SaveLoadScreen : UiScreen, ISubMenu
             }
 
             DrawEntry(p, d, fx, fy);
+        }
+
+        if (_deleteFill > 0f && _scroll + cursorRow < _list.Count)
+        {
+            // 0x70AEE: the inside of the blue frame (63, 368)-(959, 576) over the frame under the cursor, 32 px in, alpha = the fill
+            (float fx, float fy) = FramePosition(cursorRow);
+            p.Sprite(UiSheets.SaveFrame, new RectF(63, 368, 896, 208), new RectF(fx + 32f, fy + 32f, 896, 208), _deleteFill);
         }
 
         if (selected is { } sel)

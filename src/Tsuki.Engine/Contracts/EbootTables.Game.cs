@@ -54,6 +54,9 @@ public interface IGameFlowTables
     /// <summary>The 630 edges of the flowchart.</summary>
     IReadOnlyList<FlowEdgeRow> Edges { get; }
 
+    /// <summary>The three edge ids a <c>_SELD</c> choice point marks when its list opens (text 0x2214E0, index = choice point 0..82; -1 none).</summary>
+    IReadOnlyList<(int A, int B, int C)> ChoiceEdges { get; }
+
     /// <summary>The flowchart nodes (1,286).</summary>
     IReadOnlyList<FlowNodeRow> Nodes { get; }
 

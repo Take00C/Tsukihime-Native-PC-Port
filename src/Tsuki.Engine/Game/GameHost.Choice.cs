@@ -262,6 +262,8 @@ public sealed partial class GameHost
         // scan mode (the re-execution after a load) opens nothing and changes no choice state (vm_variables.md 4.5)
         if (!VarState.ScanMode)
         {
+            // VA 0x9B60D: the choice point's edges go into the flowchart when the list opens, so the options not taken show (gallery.md 5.3)
+            FlowMarks.Choice(Vars, _flow.ChoiceEdges, VarState.ChoiceId);
             OpenChoice(st);
         }
 
@@ -318,6 +320,7 @@ public sealed partial class GameHost
 
         Sound.SystemSePlay(3);
         _decided = cursor;
+        _lastPick = cursor;
         _choicePhase = 3;
         _choiceFlash = 1f;
         ChoiceDecided?.Invoke(kind, n, value, cursor);

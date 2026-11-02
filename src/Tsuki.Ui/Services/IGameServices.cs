@@ -11,7 +11,7 @@ public enum UiSound
     /// <summary>Decide: confirm a choice, open a screen (id 0, moon_se00002).</summary>
     Decide = 0,
 
-    /// <summary>Done: a save or a delete finished, a dialog answered (id 1, moon_se00003).</summary>
+    /// <summary>Done: a save finished, a dialog answered, the save list's "No save data found." (id 1, moon_se00003).</summary>
     Done = 1,
 
     /// <summary>Cursor move (id 2, moon_se00001; docs/formats/system_flow.md 4.4 "a change plays SE 2").</summary>
@@ -246,10 +246,13 @@ public interface IUiSaveServices
     /// <summary>Loads <paramref name="slot"/> in game (or from the title); false when it cannot be read.</summary>
     bool Load(int slot);
 
-    /// <summary>Deletes a manual slot.</summary>
+    /// <summary>
+    /// Deletes a used slot of the lists (manual 0..99 or auto 100..138) and writes the file; false when the slot holds no save, is the quick save, or the
+    /// file could not be written (the slot is then gone from memory only).
+    /// </summary>
     bool Delete(int slot);
 
-    /// <summary>Copies a used slot into the first free manual slot (the PS4 save list's Copy Data); false when none is free.</summary>
+    /// <summary>Copies a used slot into the first free manual slot (knife's Copy Data; the PS4 list has none, adv_state.md 7.8); false when none is free.</summary>
     bool Copy(int slot);
 
     /// <summary>Quick save (OPTIONS / the panel); false while the cooldown runs or saving is disabled.</summary>

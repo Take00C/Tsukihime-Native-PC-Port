@@ -106,7 +106,9 @@ Counts [V-all]:
   (replay); `_RDED(n)` sets scene_done(n) only if `n == F[110]` and the per-save bit n is set,
   then runs the trophy check 0xB7CC0. In normal play F[110] is written by the `_JUMP` edge code
   (0xBA67F: `F[110] = to`), so a scene entered by `_JUMP` can be completed by its `_RDED` [E].
-  Scripts never write F110 [V-all].
+  Scripts never write F110 [V-all]. Exception: the pairs 0xB9460 handles (5.3); a pair that
+  returns at once leaves F[110] on the scene being left, whose `_RDED` sits at the end of the
+  target's shared tail (e.g. 68 -> 67: `01_00_ARC01_2_1` ends `_RDED(67); _RDED(68); _RDED(311)`).
 - `_RDAS(n)` (0x98118): ignored during a gallery replay (0x13610: [0x66AD00] == 2); otherwise
   0xB8020 calls 0x61F80(1) when the scene is already done, fast-forward is off and config +0xA0
   is set [E; meaning H: "offer to skip a completed scene", adv_system_state].
@@ -364,7 +366,7 @@ The extractor decodes this table from the code (`_decode_category_flags`).
 | 0x08 | i32 | link: edge id 565..1194 (edge_seen) or -1 | the 630 link ids are exactly the 630 edge-table ids |
 | 0x0C | i32 | script scene started by a replay (`_JUMP` target through ARCHIVE) | 240..790, and 2000..2007 for 8 scenes that start inside a script |
 | 0x10 | i32 | chapter label: rect index into 0x1A3EE0 (ja/zc/zt, 200x32) or 0x1A3FD0 (en, 440x30), texture slot 0x4F4 = GALLERY_PARTS_FC child 6 ("0/A Glass Moon" .. "15/Cloudless Blue", index 28 "Prologue") | 0..27 |
-| 0x14 | i32 | unknown, never read by the flowchart code | 0..519 |
+| 0x14 | i32 | mosaic cell of the node picture (GALLERY_PARTS_FC child 7, 20 columns of 81 x 45; 0x25D2C); < 0: no picture, not a cursor target (0x25B87) | 0..519 |
 | 0x18 | i32 | GALLERY_PARTS_FC_TH child | **= scene - 1 for all 495 scene nodes; all 495 children used** |
 | 0x1C | i32 | title, ui_text id | 397..887; = 396 + the script's F022 for 491 of 495 |
 | 0x20 | i32 | synopsis, ui_text id | 914..1408 |
@@ -398,11 +400,37 @@ Two writers set edge_seen:
   0x30 bytes `{i32 from, i32 to, i32 g[5], i32 f[5]}` (loop `rax = -0x7620 .. 0`, first match
   wins), ORs `g` into edge_seen and `f` into the per-save F[600..] set (ids <= 0 end the list;
   only record 455 uses the fifth slot, special-cased at 0xBA4F0 / 0xBA638), and stores F[110] =
-  to. `g == f` in every record [V-all].
-- `_SELD` (0x9B5F3..0x9B60D): after a choice, 0xB8620(choice id 1..82) ORs the three ids of
-  text 0x2214E0 + 12*id (-1 = none) into edge_seen; choice ids 57, 67, 72, 73 also mark scenes
-  512, 513, 523, 517 seen, read and done and set extra edge bits (0xB86FC..0xB87F6) [H: bad-end
-  branches shown as markers -512, -513, -523, -517 in columns 165, 184, 211, 221].
+  to, also when no record matches. `g == f` in every record [V-all]. 0xB8870 gives the same node
+  as "script of the id, then 0x228EF0" for every id -2..10010 [EMU-10013].
+- `_SELD` (0x9B5F3..0x9B60D): **when the list opens** (not in scan mode, before the pick),
+  0xB8620(choice id 1..82) marks the ids of text 0x2214E0 + 12*id in edge_seen: the first always,
+  the second and third only when the second is > 0 (ids outside 564..1267 skipped). So every
+  option of a list shows in the chart once the list was seen. Choice ids 57, 67, 72, 73 also mark
+  the hidden nodes 512, 513, 523, 517 seen, reached (F bits), F[110] = n while F[24] != 0 (no
+  533..557 rule) and done, plus edge bits: 57: 865, 866; 67: 977, 978, 886..888; 72: 1167, and
+  1168 when node 270 was not reached in this playthrough; 73: 1119, and 1120 when node 446 was
+  not reached [E, EMU]. They are the bad-end markers -512, -513, -523, -517 (columns 165, 184,
+  211, 221).
+
+**0xB9460** (69 cases on `from`, port `FlowMarks.Special`) [E, EMU]. Three kinds:
+
+- pairs that return 1 at once (no edge, F[110] kept): 24->371, 57->55, 68->67, 311->67,
+  105->104/204, 108->322, 127->126, 152->149, 202->98, 205->105, 250->257, 258->256, 371->24,
+  270/483/905->523, 275/276->521, 279/280->1196, 446/447->517, 518->279/280; and 66->52 when
+  F[50] != 0, 324->329 when node 272 was reached in this playthrough;
+- pairs through hidden nodes: 0xB85A0(n) (seen, reached, F[110] = n for 533..557 or while
+  F[24] != 0, done, trophy check), then the edges from -> n -> to. Which hidden node can depend on
+  route bits or on **the cursor of the last decided list or SELS prompt** (word 0x17506A6, written
+  at 0xA6690 / 0xA7C05, never saved): 101->102 (501/502/503), 166->342 (504/505), 221->222
+  (509/510/511), 369->29 (498/499/500), 410->220 (507/508). Every jump into node 486 from a node
+  outside the switch (START_SCRIPT -> 00_00) goes through 485 and 528;
+- pairs that set one edge bit and go on with the plain edge (136->137, 213->215, 261->262,
+  312->493, 331->330 (also node 522 seen and done), 355->20, 439->327, 478->331).
+
+The whole of 0xBA690 after its lookups, 0xB8620 and 0xB8870 were run under unicorn
+(`tools/tsuki/flow_marks_emu.py`) and compared with the C# port word for word: 56,532 jump cases
+(every node pair the switch compares and every edge, six F/G states, four cursors where it
+matters), 552 choice cases, 0 differences (`FlowMarksOracleTests`, package K44).
 
 In 380 of the 494 scene nodes that have a link, the first edge record carrying the link id has
 `to == scene` [D]: the link is the edge drawn into the node.
@@ -459,6 +487,16 @@ and sets node state bits via 0x25950 / 0x25F60 / 0x260D0 [E; layout constants on
   UI table 0x66BA80) uses the same scene class; its "rewind to this scene" (ui 1498) goes
   through 0x2A080, which stores F[26], F[110] and a snapshot of selected F values (lists text
   0x1A4250, 0x1A42A0, 0x1A4500) [E; rewind semantics: adv_system_state].
+- The node itself (0x25950, called per record by the build at 0x21D6B; mode = the scene's flag
+  bit, set in the gallery) [E]: a scene node is shown once `scene_done(n) or edge_seen(link)`, as a
+  frame; its mosaic picture is drawn only when `scene_done(n)` (otherwise the sprite's visible bit
+  is cleared at 0x25E2A: a black frame). Gallery: only a done node becomes a cursor target.
+  In game: a node reached in this playthrough (F bit n) in a column of group > 0 is a cursor target
+  whether done or not, and gets the lit state 0x40000000. So the current scene, entered but not
+  finished, is a black frame the in-game cursor can take and the gallery cannot, which is what the
+  card's "Current Scene" panel shows over it. The function returns 1 (record state 0x80000000) for
+  a done node, and in game also for a reached one; the grey connector 0x25F60 that follows reads
+  that bit (0x25F9E) and skips its own edge test.
 
 ---
 
@@ -624,14 +662,14 @@ cg_contact_sheet.png, flowchart_contact_sheet.png.
 
 ## 13. Open questions
 
-1. Node +0x14 (0..519) and the connector codes +0x04: not read by the flowchart code found;
-   the line drawing (0x25950 / 0x25F60 / 0x260D0) is not decoded.
+1. Node +0x14 is the mosaic cell of the node picture (0x25D2C); the connector shapes of 0x25F60
+   / 0x260D0 are ported from knife, not decoded from the PS4 (the node function 0x25950 is, 5.5).
 2. Column group +0x04 meaning beyond "look-ahead boundary" [H: chapter band].
 3. CG entry x/y and the +0x1C flag: exact viewer behaviour (0x1C730 class) [H].
 4. `_RDAS` / 0x61F80 (skip offer for completed scenes) and config +0xA0: adv_system_state.
-5. Which scripts reach which `_JUMP` special case in 0xB9460 (500-case switch) and the id maps
-   0x228EF0 / 0x21F084: needed only to reproduce pseudo scenes 498..530 exactly; the generic edge
-   table is decoded.
+5. Settled (package K44): 0xB9460 and 0xB8620 are ported and verified under emulation (5.3);
+   with them a headless play of every route lights all 495 scene nodes, all 630 node links and
+   all 33 hidden nodes (`Tsuki.Cli play --flowchart-sweep`, docs/status/knife/K44.md).
 6. Title state 0x19 (gallery from the title without action 7) and menu mode 16 (0x673D0): who
    enters them [H: unused].
 7. Card order of the movie gallery (which card is item 0).

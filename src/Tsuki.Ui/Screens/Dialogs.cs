@@ -397,6 +397,24 @@ public sealed class MessagePopup : UiScreen
         }
     }
 
+    /// <summary>
+    /// A released popup goes on fading out under the popup that replaced it ("Deleting..." under "Deleted."; the PS4 has one popup window, 0x69F80) and leaves
+    /// the stack once invisible (package K45: it stayed under "Deleted." for its 480 frames and showed again after).
+    /// </summary>
+    public override void StepBackground()
+    {
+        _age++;
+        if (_closing || (_held && _released && _age >= _minimum))
+        {
+            _closing = true;
+            _a -= 0.07f;
+            if (_a <= 0f)
+            {
+                Close();
+            }
+        }
+    }
+
     /// <inheritdoc/>
     public override void Draw(UiPainter p)
     {

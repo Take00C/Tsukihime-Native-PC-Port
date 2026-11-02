@@ -255,8 +255,10 @@ END: 0x174DE08 = 0
 
 The AutoSave block also contains `and ax, [config + 0x40]` (0x98BB8), but control only reaches it
 when r13w == 8 and at the same time argc == 0 or n == 2, which cannot both hold. So config
-+0x40 has no effect, and `_ATSV(8)` auto-saves unless it runs right after a load (ld != 0) or
-0x67460() != 0 [E].
++0x40 has no effect. `_ATSV(8)` jumps straight to AUTOSAVE (0x978A5 `jmp 0x98B89`, past the ld
+test at 0x98B84), so it auto-saves unless 0xD1CD0(1) != 0 (PlayGo) or 0x67460() != 0 (F[25] !=
+0, saving off: a gallery replay sets it) [E]. A load onto an `_ATSV(8)` runs it again and pushes
+one more auto save; the ld test only applies to the other forms.
 
 Forms in the 549 scripts (`atsv_forms.py`, test `test_atsv_forms_in_scripts`) [V]:
 
@@ -772,6 +774,35 @@ real save to scratch first) and `test_real_save_if_present` run these checks:
   784 blocks, highest block 3784 and highest line 255 (`marker_max_lines`, the engine's marker
   decoding, 1.3 s).
 
+### 7.8 The save / load list and Delete Data (screen 0x71C90) [E; V-emu for the list]
+
+One function serves the in-game Save and Load lists and the title's LOAD GAME (callers
+0x6DA9A, 0xB0C11, ...; mode 0x1202F10: 1 = save, 0 = load). State in 0x120A2E8 (jump table
+0x20B088, 32 states). Package K45, `tsuki.save_list_emu`, `tools/tests/test_save_deletion.py`.
+
+- **List** (0x711F0): the used slots among **0..99 only** (loop 0x71300..0x71358, 100 records
+  from slot 0), newest first; the save list puts the first free slot first. Auto saves and the
+  quick save are in neither list [V-emu: slots 3, 50, 99, 100, 120, 138, 139 stored give load
+  [50, 99, 3], save [0, 50, 99, 3]]. The draw's AUTO SAVE tag for entries >= 100 (0x70AB8,
+  sprite 0x153) is never reached. An auto save is reached only through Continue.
+- **TRIANGLE** in state 2 (0x73107 -> 0x732E6), either list: entry under the cursor ->
+  0x120A6C0; used word > 0 -> dialog 23 ("Do you want to delete this data?"), state 22; else
+  ui_text 193 "No save data found." (480 frames) and SE 1 (0x735AE). No slot-number test.
+  SQUARE (0x80) only ends the frame (0x730F4): v01.01 has no Copy Data.
+- **State 23** (0x72696): fill 0x120A6CC += 0.05 a frame (20 frames); the first frame shows
+  188 "Deleting..." (1200 frames). The draw (0x70AEE) puts save_win (63, 368)-(959, 576) over
+  the cursor frame, 32 px in, alpha = fill. At 1.0 (0x726E3): SaveImage_LoadSystem(1), slot
+  dword +0 = 0 and date +0x70C0..+0x70C6 = 0 (the records and the end marker stay; the commit
+  stamps the magic back), SaveImage_Commit(2) (latest slot = newest of 0..138), write
+  0xEA9D0(slot), fill 0, state 24.
+- **State 24** (0x72754): write done -> SE 13 (an empty entry: silent), counter 40, state 25;
+  failed -> ui_text 189 "Unable to save data.", state 21. **State 25** (0x72784): 41 frames,
+  then the popup closes, 0x717F0 rebuilds the list (scroll kept in range, cursor on the last
+  entry when the list got shorter), 0x70E90 drops the slot's thumbnail, ui_text 217 "Deleted."
+  for 480 frames; state 26 waits for it, then state 2.
+- The auto-save FIFO (0x73B70) moves records 100..137 down whether used or not, so an emptied
+  auto slot is just a hole that moves down. There is no ring index.
+
 ---
 
 ## 8. ADV input flow (0x60710, per frame) [E]
@@ -895,7 +926,7 @@ load [H]).
 | fixed vs change colour of read text | +0x2A (constant 0); +0xA4 Seen Text Display Animations |
 | language | +0x24 |
 | skip all text vs read only | +0x30 |
-| auto quick save at choices / scene start | +0x40 (constant 3) is never tested on a reachable path: `_ATSV(8)` always auto-saves (2.5), and the other AutoSave callers do not read it |
+| auto quick save at choices / scene start | +0x40 (constant 3) is never tested on a reachable path: `_ATSV(8)` auto-saves whenever saving is on (F[25] == 0, 2.5), and the other AutoSave callers do not read it |
 | show controls | Controls tab (pictures only) |
 | PS4-only: Display End of Page Instantly, Auto Skip Cleared Scenes, Show Confirmation Message, Text Display Animations | +0x9C / +0x9D, +0xA0, +0xA2, +0xA3, +0xA4 |
 

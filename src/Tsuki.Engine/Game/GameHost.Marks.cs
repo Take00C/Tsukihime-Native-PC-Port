@@ -124,43 +124,13 @@ public sealed partial class GameHost
     public event Action<int>? AutoSkipOffered;
 
     /// <summary>
-    /// The edge marks of a <c>_JUMP</c> from script <paramref name="fromScript"/> to scene id <paramref name="toSceneId"/> (gallery.md 2.1: the PS4
-    /// code at VA 0xBA3C0 sets the edge flags of the node pair and F110 = the target node).
+    /// The marks of a <c>_JUMP</c> from script <paramref name="fromScript"/> to scene id <paramref name="toSceneId"/> (VA 0xBA690, <see cref="FlowMarks.Jump"/>):
+    /// the edge flags of the node pair and F110 = the target node, or one of the PS4's special pairs (hidden nodes, pairs that keep F110).
     /// </summary>
-    private void MarkSceneJump(int fromScript, int toSceneId)
-    {
-        int from = _flow.NodeOfScript(fromScript);
-        int toScript = _flow.ScriptOfSceneId(toSceneId);
-        int to = toScript < 0 ? -1 : _flow.NodeOfScript(toScript);
-        if (to >= 1 && from is >= 1 and <= 530)
-        {
-            foreach (FlowEdgeRow e in _flow.Edges)
-            {
-                if (e.From == from && e.To == to)
-                {
-                    foreach (int id in e.GlobalIds)
-                    {
-                        if (id >= FirstEdgeId && id - FirstEdgeId < EdgeBits)
-                        {
-                            SetBit(EdgeSeenWord, id - FirstEdgeId);
-                        }
-                    }
+    private void MarkSceneJump(int fromScript, int toSceneId) => FlowMarks.Jump(Vars, _flow, fromScript, toSceneId, _lastPick);
 
-                    foreach (int id in e.PlaythroughIds)
-                    {
-                        if (id >= FirstEdgeId && id - FirstEdgeId < EdgeBits)
-                        {
-                            SetPlayBit(RouteEdgeWord, id - FirstEdgeId);
-                        }
-                    }
-
-                    break;
-                }
-            }
-
-            SetF(110, to);
-        }
-    }
+    /// <summary>The cursor of the last decided choice list or two-button prompt (word 0x17506A6; written at 0xA6690 / 0xA7C05, never saved or cleared).</summary>
+    private int _lastPick;
 
     // -- the staff roll task ------------------------------------------------------------------------------------------------------
 

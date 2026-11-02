@@ -194,13 +194,14 @@ public sealed partial class GameHost
     /// A slot holds a story, never a gallery replay (saving is off during one, F025), so the loaded story is not a replay whatever this host ran before (knife's
     /// archive flag, byte_B34AF0: "cleared by every other start"); <paramref name="replay"/> true is for the page of a running replay that a language change carries
     /// into a new host (package K39: the replay flag of an earlier replay, which a rewind keeps, survived a load from the title, and the loaded story then asked
-    /// "return to the flowchart?" on FlowChart and ended in the gallery).
+    /// "return to the flowchart?" on FlowChart and ended in the gallery). A slot an older build saved inside a shared tail gets the PS4's F110 back
+    /// (<see cref="FlowRepair.RepairLoadedRecord"/>, package K44).
     /// </summary>
     public void LoadSlot(SaveStore store, int slot, bool replay = false)
     {
         ArgumentNullException.ThrowIfNull(store);
         AdvHistorySink h = HistorySink ?? throw new InvalidOperationException("no history is attached (call AttachHistory first)");
-        SceneRestoreResult r = store.Load(slot, h.History, h.Live);
+        SceneRestoreResult r = store.Load(slot, h.History, h.Live, rec => FlowRepair.RepairLoadedRecord(_data, rec));
         ApplyRestore(RestoreKind.Load, r.Restore, h.Live, null, 0);
         ReplayRequested = replay;
         ReplayVoiceOf(r);

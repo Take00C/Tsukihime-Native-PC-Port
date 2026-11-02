@@ -10,7 +10,7 @@ namespace Tsuki.App.Services;
 public sealed partial class AppServices
 {
     private const int QuickSaveCooldownFrames = 300;
-    private readonly Dictionary<int, (UiThumbnail? Thumbnail, SlotThumbnail Source)> _thumbnails = [];
+    private readonly Dictionary<int, (UiThumbnail Thumbnail, SlotThumbnail Source)> _thumbnails = [];
     private int _slotsVersion;
     private int _cachedVersion = -1;
     private List<UiSlot> _slotList = [];
@@ -103,7 +103,6 @@ public sealed partial class AppServices
         SlotThumbnail? stored = Store.GetThumbnail(slot);
         if (stored is null)
         {
-            _thumbnails.Remove(slot);
             return null;
         }
 
@@ -112,12 +111,12 @@ public sealed partial class AppServices
             return cached.Thumbnail;
         }
 
-        UiThumbnail? ui = null;
-        if (ThumbnailCodec.Decode(stored) is { } t)
+        if (ThumbnailCodec.Decode(stored) is not { } t)
         {
-            ui = new UiThumbnail(t.Width, t.Height, ++_thumbVersion, t.Rgba);
+            return null;
         }
 
+        var ui = new UiThumbnail(t.Width, t.Height, ++_thumbVersion, t.Rgba);
         _thumbnails[slot] = (ui, stored);
         return ui;
     }
@@ -170,12 +169,13 @@ public sealed partial class AppServices
     /// <inheritdoc/>
     public bool Delete(int slot)
     {
-        if ((uint)slot >= SaveStore.AutoSaveFirst || !Store.HasSave(slot))
+        // the lists hold manual and auto slots; the quick save is in none
+        if ((uint)slot > SaveStore.AutoSaveLast || !Store.Delete(slot))
         {
             return false;
         }
 
-        Store.Delete(slot);
+        // the slot is gone from memory either way; a write that failed is reported as a failed delete
         _thumbnails.Remove(slot);
         SlotsChanged();
         return Commit();

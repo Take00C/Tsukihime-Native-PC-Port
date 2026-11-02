@@ -15,7 +15,7 @@ namespace Tsuki.Cli.Commands;
 /// then the replay of the choice lists a logic-only explorer found for every scene a playthrough can reach, then flowchart jumps, then the special entries;
 /// it reports the scenes reached (and how), the unknown commands and the exceptions. <c>--explore</c> runs the explorer and its replays alone.
 /// </summary>
-public sealed class PlayCommand : ICliCommand
+public sealed partial class PlayCommand : ICliCommand
 {
     private sealed class Options
     {
@@ -47,6 +47,10 @@ public sealed class PlayCommand : ICliCommand
         public List<(int Index, int Value)> Globals = [];
         public int MaxRounds = 12;
         public int MaxAimRuns = 3000;
+        public bool FlowchartSweep;
+        public string? Chains;
+        public string? Sessions;
+        public bool RepairCheck;
     }
 
     /// <inheritdoc />
@@ -54,7 +58,7 @@ public sealed class PlayCommand : ICliCommand
 
     /// <inheritdoc />
     public string Summary =>
-        "play the game headless: --policy first|last|random[:seed]|list:i,j  --mode click|skip|auto  --until-first-choice  --games N  --trace FILE  --coverage [--no-aim] [--no-jump] [--explore-budget N]  --explore  (see docs/status/knife/K3.md)";
+        "play the game headless: --policy first|last|random[:seed]|list:i,j  --mode click|skip|auto  --until-first-choice  --games N  --trace FILE  --coverage [--no-aim] [--no-jump] [--explore-budget N]  --explore  --flowchart-sweep [--chains FILE] [--sessions DIR | --repair-check DIR]  (see docs/status/knife/K3.md, K44.md)";
 
     /// <inheritdoc />
     public int Run(string[] args, TextWriter output, TextWriter error)
@@ -92,6 +96,11 @@ public sealed class PlayCommand : ICliCommand
         }
 
         using StreamWriter? trace = o.TracePath is null ? null : new StreamWriter(o.TracePath, append: false, new UTF8Encoding(false)) { AutoFlush = false };
+        if (o.FlowchartSweep)
+        {
+            return RunFlowchartSweep(rig, o, output);
+        }
+
         if (o.Explore)
         {
             var reached = new SortedSet<int>();
@@ -198,6 +207,19 @@ public sealed class PlayCommand : ICliCommand
                     break;
                 case "--strict":
                     o.Strict = true;
+                    break;
+                case "--flowchart-sweep":
+                    o.FlowchartSweep = true;
+                    break;
+                case "--chains":
+                    o.Chains = Next();
+                    break;
+                case "--sessions":
+                    o.Sessions = Next();
+                    break;
+                case "--repair-check":
+                    o.Sessions = Next();
+                    o.RepairCheck = true;
                     break;
                 default:
                     error.WriteLine($"play: unexpected argument '{a}'");
@@ -660,10 +682,27 @@ public sealed class PlayCommand : ICliCommand
             return;
         }
 
-        var order = found.First.Keys.OrderBy(k => found.ChainOf(k).Sum(r => r.Length)).ThenBy(k => k).ToList();
+        var chains = found.First.Keys.ToDictionary(k => k, found.ChainOf);
+        List<int> mismatches = ReplayChains(rig, o, output, chains, reached, null, out int sessions);
+        output.WriteLine($"replayed {sessions} choice lists in the full engine: {reached.Count} scenes reached from the title; the explorer's list failed for {mismatches.Count}: {string.Join(" ", mismatches.Select(k => rig.Source.Scripts.Names[k]))}");
+        var unreachable = Enumerable.Range(0, rig.Source.ScriptCount).Where(k => !found.First.ContainsKey(k) && k != 2).Select(k => $"{k}:{rig.Source.Scripts.Names[k]}").ToList();
+        output.WriteLine($"  not reachable from the title by any playthrough the explorer could build ({unreachable.Count}): {string.Join(" ", unreachable)}");
+    }
+
+    /// <summary>
+    /// Replays, on fresh profiles and in the full engine, the choice lists that reach each scene of <paramref name="chains"/> (fewest choices first, skipping scenes
+    /// an earlier replay passed through): the prologue, then every playthrough of the chain with its list. <paramref name="reached"/> receives the scenes the
+    /// engine really reached, <paramref name="onSession"/> each finished host; <paramref name="wrap"/> (chain, playthrough, policy) may wrap the policy of each
+    /// playthrough (package K44: the flowchart sweep records the choices). Returns the scenes whose own list did not reach them.
+    /// </summary>
+    private static List<int> ReplayChains(
+        HeadlessRig rig, Options o, TextWriter output, IReadOnlyDictionary<int, List<int[]>> chains, ISet<int> reached, Action<GameHost>? onSession, out int sessions,
+        Func<int, int, ChoicePolicy, ChoicePolicy>? wrap = null)
+    {
+        var order = chains.Keys.OrderBy(k => chains[k].Sum(r => r.Length)).ThenBy(k => k).ToList();
         var done = new HashSet<int>();
         var mismatches = new List<int>();
-        int sessions = 0;
+        sessions = 0;
         foreach (int k in order)
         {
             if (done.Contains(k))
@@ -671,7 +710,7 @@ public sealed class PlayCommand : ICliCommand
                 continue;
             }
 
-            List<int[]> chain = found.ChainOf(k);
+            List<int[]> chain = chains[k];
             GameHost host = CreateHost(rig, o, null);
             var holder = new ChoicePolicyHolder();
             var player = new AutoPlayer(holder, o.Mode == PlayMode.Click ? PlayMode.Skip : o.Mode);
@@ -680,9 +719,10 @@ public sealed class PlayCommand : ICliCommand
             holder.Current = new FirstPolicy();
             long fs = host.Frame;
             Play(host, player, o, report, null, ref fs);
-            foreach (int[] picks in chain)
+            for (int p = 0; p < chain.Count; p++)
             {
-                holder.Current = new ListPolicy(picks);
+                var list = new ListPolicy(chain[p]);
+                holder.Current = wrap is null ? list : wrap(k, p, list);
                 host.NewGame(host.NewGameSceneId());
                 try
                 {
@@ -706,11 +746,11 @@ public sealed class PlayCommand : ICliCommand
             {
                 mismatches.Add(k);
             }
+
+            onSession?.Invoke(host);
         }
 
-        output.WriteLine($"replayed {sessions} choice lists in the full engine: {reached.Count} scenes reached from the title; the explorer's list failed for {mismatches.Count}: {string.Join(" ", mismatches.Select(k => rig.Source.Scripts.Names[k]))}");
-        var unreachable = Enumerable.Range(0, rig.Source.ScriptCount).Where(k => !found.First.ContainsKey(k) && k != 2).Select(k => $"{k}:{rig.Source.Scripts.Names[k]}").ToList();
-        output.WriteLine($"  not reachable from the title by any playthrough the explorer could build ({unreachable.Count}): {string.Join(" ", unreachable)}");
+        return mismatches;
     }
 
     private static void PrintMissing(HeadlessRig rig, GameHost host, TextWriter output, HashSet<int> staticReach, SceneGraph graph)

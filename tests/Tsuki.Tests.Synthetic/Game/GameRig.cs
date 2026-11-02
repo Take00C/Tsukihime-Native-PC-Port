@@ -60,6 +60,10 @@ public sealed class RigFlow : IGameFlowTables
 
     public IReadOnlyList<FlowEdgeRow> Edges => EdgeRows;
 
+    public List<(int A, int B, int C)> ChoiceEdgeRows { get; } = [];
+
+    public IReadOnlyList<(int A, int B, int C)> ChoiceEdges => ChoiceEdgeRows;
+
     IReadOnlyList<FlowNodeRow> IGameFlowTables.Nodes => NodeList;
 
     public List<int> KeepWords { get; } = [];

@@ -381,6 +381,23 @@ public sealed class AppRuntimeTests(ITestOutputHelper output)
         output.WriteLine($"replay of scene 240 ended in the gallery at frame {rig.Runtime.Frame}");
     }
 
+    [GameDataFact]
+    public void AGalleryReplayOfASceneWithAnAutoSavePointMakesNoAutoSave()
+    {
+        // review of K45: scene 368 (node 357, the end of chapter 3) runs _ATSV(8) before its _RDED. The replay has F025 on, and 0x67460 skips the auto save then
+        // (0x98B89); it used to land in slot 100 and turn CONTINUE into the replay
+        var rig = new Rig();
+        rig.Services.SetGlobal(110 + (485 >> 4), (ushort)(1 << (485 & 15)));
+        rig.Run(5);
+        rig.Ui.Clear();
+        rig.Auto.HoldChoice = false;
+        rig.Services.ReplayScene(368, node: 357);
+        Assert.True(rig.Services.ReplayActive);
+        Assert.True(rig.RunUntil(() => rig.Ui.Find<GalleryScreen>() is not null, 30000), "the replay never ended in the gallery");
+        Assert.Empty(rig.Store.StoredSlots());
+        Assert.Equal(0, rig.Store.SystemData.Block.LatestSlot);
+    }
+
     // ---- issue #7 (package K38): a scene entered from a flowchart, then Esc and the flowchart again ------------------------------------------------------------
 
     private static IUiGalleryTables GalleryTables => Source.Eboot.Gallery ?? throw new InvalidOperationException("the game has no gallery tables");

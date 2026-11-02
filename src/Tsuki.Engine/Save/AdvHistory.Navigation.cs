@@ -498,8 +498,9 @@ public sealed partial class AdvHistory
     /// </summary>
     /// <param name="slot">The slot to load (copied into the staging).</param>
     /// <param name="live">The live variables.</param>
+    /// <param name="repair">Runs on the scene-stack records the slot became, before record n is restored (<see cref="Game.FlowRepair.RepairLoadedRecord"/>: the F110 of an older build's slot); null none.</param>
     /// <exception cref="InvalidDataException">The slot lacks its end marker (the PS4 would scan-load an older save) or its state-B flag is out of range.</exception>
-    public SceneRestoreResult LoadSlot(SlotImage slot, AdvLiveState live)
+    public SceneRestoreResult LoadSlot(SlotImage slot, AdvLiveState live, Func<HistoryRecord, bool>? repair = null)
     {
         ArgumentNullException.ThrowIfNull(slot);
         ArgumentNullException.ThrowIfNull(live);
@@ -534,8 +535,10 @@ public sealed partial class AdvHistory
             HistoryRecord below = StackRecord(n - 1);
             slot.StateB.CopyTo(below.Bytes);
             below.MessageText[0] = 0;
+            repair?.Invoke(below);
         }
 
+        repair?.Invoke(stackN);
         SceneRestoreResult result = RestoreSceneRecord(n, live);
         Cur = 0;
         Next = 0;

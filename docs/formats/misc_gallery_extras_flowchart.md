@@ -9,5 +9,7 @@ system block +0x52C, choice_taken in +0x16F4), the gallery replay through script
 (scene 3000), and the dead extra_parts / legacy tables.
 
 Python: `tools/tsuki/misc_gallery_extras_flowchart.py` (+ `_emu.py`, `_sheets.py`).
+The story's flowchart marks (the special jump pairs of 0xB9460, the `_SELD` choice edges of 0xB8620) are gallery.md 5.3; their
+emulation is `tools/tsuki/flow_marks_emu.py` (package K44).
 Tests: `tools/tests/test_misc_gallery_extras_flowchart.py`.
 Samples: `samples/misc_gallery_extras_flowchart/`.
