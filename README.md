@@ -4,35 +4,46 @@
 
 A native Windows and Linux port of *TSUKIHIME -A piece of blue glass moon-*. It plays your own extracted PS4 game files directly, without converting them.
 
-Start with the **[setup guide](docs/SETUP_GUIDE.md)**. Windows downloads include it as `SETUP_GUIDE.txt`, also available from the launcher's Help & about page.
+The **[setup guide](docs/SETUP_GUIDE.md)** covers everything in detail. Windows downloads include it as `SETUP_GUIDE.txt`, also on the launcher's Help & about page.
 
 ## Download and play
 
+First get your game files: dump your own copy from your PS4, or extract your own `.pkg` backup, into a folder containing `eboot.bin`, `image/`, `data/` and `sce_sys/`. If you have the update, keep its folder next to the game folder.
+
 ### Windows
 
-1. Download the Windows ZIP from [Releases](https://github.com/Take00C/Tsukihime-Native-PC-Port/releases).
-2. Extract it and start `TsukihimeLauncher.exe`.
-3. Choose your extracted game folder and press **PLAY**.
+1. Download `Tsukihime-vX.Y.Z-win-x64.zip` from [Releases](https://github.com/Take00C/Tsukihime-Native-PC-Port/releases) and unzip it anywhere.
+2. Start `TsukihimeLauncher.exe`.
+3. On **Game files**, click **Browse…** and pick your game folder. The Ready check should turn all green.
+4. Optional: choose your language, windowed or fullscreen, and create a desktop shortcut.
+5. Press **PLAY**. Next time you can start `Tsukihime.exe` or the shortcut directly.
 
-You can also start `Tsukihime.exe` directly. It asks for the game folder on first launch and remembers your choice. The Windows download includes the .NET runtime and native libraries. You do not need Python, a separate .NET installation or an emulator to play.
+Everything it needs is included: no .NET, Python or emulator to install.
 
 ### Linux
 
-1. Download `Tsukihime-vX.Y.Z-linux-x64.tar.gz` from [Releases](https://github.com/Take00C/Tsukihime-Native-PC-Port/releases), if the release lists one; otherwise build it with the [Linux guide](docs/LINUX.md).
+1. Download `Tsukihime-vX.Y.Z-linux-x64.tar.gz` from [Releases](https://github.com/Take00C/Tsukihime-Native-PC-Port/releases) (v0.1.6 and newer).
 2. Extract it and run `./Tsukihime` in the extracted folder.
-3. Choose your extracted game folder when it asks. Without a desktop file chooser (xdg-desktop-portal or zenity), run `./Tsukihime --game /path/to/CUSA47999` instead.
+3. Pick your game folder when it asks. If no folder window opens (no xdg-desktop-portal or zenity), run `./Tsukihime --game /path/to/CUSA47999` instead.
 
-The Linux download includes .NET, SDL and FFmpeg. The player has its own game folder picker and settings in the pause menu; the separate WPF launcher is Windows only. The **[Linux guide](docs/LINUX.md)** covers requirements and building from source.
+.NET, SDL and FFmpeg are included. There is no launcher on Linux; settings are in the pause menu. The **[Linux guide](docs/LINUX.md)** covers requirements and building from source.
+
+### Updating
+
+- **Windows:** press **Update to vX.Y.Z** at the bottom of the launcher (v0.1.3 and newer). From older versions, extract the new ZIP over your old folder.
+- **Linux:** close the game, extract the new archive and run `./Tsukihime` in its new folder. Then delete the old folder.
+
+Saves, settings and your game folder are kept: `%APPDATA%\Tsuki` on Windows, `~/.config/Tsuki` on Linux.
 
 ## Requirements
 
 - Windows 10 or 11, 64-bit, or Linux x86-64.
 - A graphics driver supporting OpenGL 3.3. Integrated graphics are supported.
-- Your own extracted PS4 game folder, `CUSA47999`, containing `eboot.bin`, `image/`, `data/` and `sce_sys/`. The game files take about 44 GB.
+- Your own extracted PS4 game files (`CUSA47999`, about 44 GB).
 - About 260 MB for the Windows port, separate from the game files.
 - On Linux, glibc 2.34 or newer. A source build also needs FFmpeg 9 shared libraries; the Linux guide lists them.
 
-The setup guide explains supported folder layouts, including separate base-game and update folders. The program reads the game files without modifying them. Saves and settings are stored separately, and existing profiles keep their `Tsuki` folder name.
+The game files are only read, never changed. The setup guide explains the supported folder layouts, including separate base-game and update folders.
 
 ## Features
 
@@ -71,7 +82,7 @@ Report problems through Issues with reproduction steps and the relevant log. Inc
 
 ## Credits and licence
 
-Menu code and effects include translations from [knife](https://github.com/AuroraWright/knife) by AuroraWright. The program uses FFmpeg, SDL3, .NET, Silk.NET, SDL3-CS and FFmpeg.AutoGen. Their credits, licences and translated-file notices are in [THIRD_PARTY.md](docs/THIRD_PARTY.md).
+Linux support and the shorter guides are by **CateDesu**. Menu code and effects include translations from [knife](https://github.com/AuroraWright/knife) by AuroraWright. The program uses FFmpeg, SDL3, .NET, Silk.NET, SDL3-CS and FFmpeg.AutoGen. Their credits, licences and translated-file notices are in [THIRD_PARTY.md](docs/THIRD_PARTY.md).
 
 Source code is licensed under **MPL-2.0**. See [LICENSE](LICENSE).
 
