@@ -102,6 +102,9 @@ public enum PortString
 
     /// <summary>The Linux FFmpeg 9 shared libraries are missing.</summary>
     LinuxFfmpegMissing,
+
+    /// <summary>K46: the system could not open the folder dialog (on Linux: no xdg-desktop-portal and no zenity); {0} SDL's words, {1} the command line that names the folder.</summary>
+    FolderDialogUnavailable,
 }
 
 /// <summary>The port's own strings in ja, en, zc and zt.</summary>
@@ -276,6 +279,13 @@ public static class PortText
             "FFmpeg 9 shared libraries are missing ({0}). Install the FFmpeg 9 shared libraries or place them next to Tsukihime.",
             "缺少 FFmpeg 9 共享库 ({0})。请安装 FFmpeg 9 共享库，或将其放在 Tsukihime 旁边。",
             "缺少 FFmpeg 9 共用程式庫 ({0})。請安裝 FFmpeg 9 共用程式庫，或將其放在 Tsukihime 旁邊。",
+        ],
+        // FolderDialogUnavailable
+        [
+            "フォルダを選ぶウィンドウを開けませんでした ({0})。\n\nCUSA47999 フォルダのパスを指定してゲームを起動してください。例:\n{1}\n\nまたは環境変数 TSUKI_GAME_DIR にそのフォルダを設定してください。Linux でフォルダを選ぶウィンドウを使うには xdg-desktop-portal または zenity が必要です。",
+            "The folder window could not be opened ({0}).\n\nStart the game with the path of your CUSA47999 folder instead, for example:\n{1}\n\nor set the environment variable TSUKI_GAME_DIR to that folder. On Linux the folder window needs xdg-desktop-portal or zenity.",
+            "无法打开选择文件夹的窗口 ({0})。\n\n请在启动游戏时指定 CUSA47999 文件夹的路径，例如:\n{1}\n\n或将环境变量 TSUKI_GAME_DIR 设置为该文件夹。在 Linux 上，选择文件夹的窗口需要 xdg-desktop-portal 或 zenity。",
+            "無法開啟選擇資料夾的視窗 ({0})。\n\n請在啟動遊戲時指定 CUSA47999 資料夾的路徑，例如:\n{1}\n\n或將環境變數 TSUKI_GAME_DIR 設定為該資料夾。在 Linux 上，選擇資料夾的視窗需要 xdg-desktop-portal 或 zenity。",
         ],
     ];
 

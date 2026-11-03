@@ -1,4 +1,8 @@
 <Project>
+  <!--
+    The documents that travel with a published folder (GitHub PR #2): the README and the pages it links to, with the README's logo
+    (assets/branding/tsukihime-logo.png; the owner's decision, K46). release-check refuses any other picture in a folder to be released.
+  -->
   <ItemGroup>
     <None Include="$(TsukiRepoRoot)README.md" Link="README.md" CopyToPublishDirectory="PreserveNewest" Visible="false" />
     <None Include="$(TsukiRepoRoot)CONTRIBUTING.md" Link="CONTRIBUTING.md" CopyToPublishDirectory="PreserveNewest" Visible="false" />
@@ -6,6 +10,25 @@
     <None Include="$(TsukiRepoRoot)assets/branding/tsukihime-logo.png" Link="assets/branding/tsukihime-logo.png" CopyToPublishDirectory="PreserveNewest" Visible="false" />
     <None Include="$(TsukiRepoRoot)docs/SETUP_GUIDE.md;$(TsukiRepoRoot)docs/LINUX.md;$(TsukiRepoRoot)docs/THIRD_PARTY.md"
           Link="docs/%(Filename)%(Extension)" CopyToPublishDirectory="PreserveNewest" Visible="false" />
+  </ItemGroup>
+
+  <!--
+    A Linux publish of the player (K46; tools/setup/publish_linux.sh, docs/PUBLISHING.md): the licence texts the Windows launcher's publish carries (src/Tsuki.Launcher/Licenses,
+    the same names under licenses/) and docs/LINUX.md beside the program. The FFmpeg libraries and their source notice come from Directory.Build.props.
+  -->
+  <PropertyGroup Condition="$([System.String]::Copy('$(RuntimeIdentifier)').StartsWith('linux-'))">
+    <!-- the XML doc files are for the compiler, not the player (package R1; the Windows launcher's publish deletes them) -->
+    <PublishDocumentationFile>false</PublishDocumentationFile>
+    <PublishReferencesDocumentationFiles>false</PublishReferencesDocumentationFiles>
+  </PropertyGroup>
+  <ItemGroup Condition="$([System.String]::Copy('$(RuntimeIdentifier)').StartsWith('linux-'))">
+    <None Include="$(TsukiRepoRoot)src/Tsuki.Launcher/Licenses/LGPL-3.0.txt" Link="licenses/FFmpeg-LGPL.txt" CopyToPublishDirectory="PreserveNewest" Visible="false" />
+    <None Include="$(TsukiRepoRoot)src/Tsuki.Launcher/Licenses/GPL-3.0.txt" Link="licenses/FFmpeg-GPL-3.0.txt" CopyToPublishDirectory="PreserveNewest" Visible="false" />
+    <None Include="$(TsukiRepoRoot)src/Tsuki.Launcher/Licenses/MPL-2.0.txt" Link="licenses/knife-MPL-2.0.txt" CopyToPublishDirectory="PreserveNewest" Visible="false" />
+    <None Include="$(TsukiRepoRoot)src/Tsuki.Launcher/Licenses/SDL3-zlib.txt" Link="licenses/SDL3-zlib.txt" CopyToPublishDirectory="PreserveNewest" Visible="false" />
+    <None Include="$(TsukiRepoRoot)LICENSE" Link="licenses/LICENSE.txt" CopyToPublishDirectory="PreserveNewest" Visible="false" />
+    <None Include="$(TsukiRepoRoot)docs/THIRD_PARTY.md" Link="licenses/THIRD_PARTY.md" CopyToPublishDirectory="PreserveNewest" Visible="false" />
+    <None Include="$(TsukiRepoRoot)docs/LINUX.md" Link="LINUX.md" CopyToPublishDirectory="PreserveNewest" Visible="false" />
   </ItemGroup>
 
   <Target Name="TsukiIncludeRuntimeNotices" BeforeTargets="ComputeFilesToPublish" DependsOnTargets="ResolveFrameworkReferences"

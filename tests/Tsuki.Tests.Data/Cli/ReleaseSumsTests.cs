@@ -1,3 +1,4 @@
+using System.Formats.Tar;
 using System.IO.Compression;
 using Tsuki.Cli;
 using Tsuki.Cli.Commands;
@@ -35,7 +36,7 @@ public sealed class ReleaseSumsTests : IDisposable
     }
 
     /// <summary>A publish-like folder: both programs and TsukihimeLauncher.dll (a copy of Tsukihime.dll, so it carries this build's version), zipped by contents.</summary>
-    private string ReleaseZip(string name, Action<string>? change = null)
+    private string ReleaseZip(string name, Action<string>? change = null, bool wrapped = false)
     {
         string folder = Path.Combine(_root, Path.GetFileNameWithoutExtension(name) + "-" + Guid.NewGuid().ToString("N")[..6]);
         Directory.CreateDirectory(Path.Combine(folder, "licenses"));
@@ -46,7 +47,7 @@ public sealed class ReleaseSumsTests : IDisposable
         change?.Invoke(folder);
         string zip = Path.Combine(_root, "z-" + Guid.NewGuid().ToString("N")[..8], name);
         Directory.CreateDirectory(Path.GetDirectoryName(zip)!);
-        ZipFile.CreateFromDirectory(folder, zip, CompressionLevel.Fastest, includeBaseDirectory: false);
+        ZipFile.CreateFromDirectory(folder, zip, CompressionLevel.Fastest, includeBaseDirectory: wrapped);
         return zip;
     }
 
@@ -99,6 +100,148 @@ public sealed class ReleaseSumsTests : IDisposable
         Directory.CreateDirectory(Path.GetDirectoryName(other)!);
         Assert.Equal(ExitCode.Ok, Run(extra, "--out", other).Exit);
         Assert.StartsWith(ReleaseSums.Sha256Hex(extra), File.ReadAllText(other), StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void TheReadmesLogoPassesInAZipWithOrWithoutItsOneFolder(bool wrapped)
+    {
+        // K46: the release steps zip the publish folder itself (Compress-Archive -Path folder), so the logo is Tsukihime-vX.Y.Z-win-x64/assets/branding/...
+        string zip = ReleaseZip($"Tsukihime-v{_version}-win-x64.zip", f =>
+        {
+            Directory.CreateDirectory(Path.Combine(f, "assets", "branding"));
+            File.WriteAllBytes(Path.Combine(f, "assets", "branding", "tsukihime-logo.png"), [0x89, 0x50, 0x4E, 0x47]);
+        }, wrapped);
+        Assert.Empty(ReleaseSumsCommand.CheckReleaseZip(zip, Crescent));
+    }
+
+    [Fact]
+    public void TheChecksumFileListsTheWindowsZipAndTheLinuxArchiveAndTheLauncherReadsOnlyItsZipsLine()
+    {
+        // package K46: one SHA256SUMS.txt for both assets; the Windows launcher's update looks up its zip by name and never takes the archive's line for it
+        string zip = ReleaseZip($"Tsukihime-v{_version}-win-x64.zip");
+        string tar = LinuxRelease.Tar(LinuxRelease.Folder(_root, "linux-" + Guid.NewGuid().ToString("N")[..6]), Path.Combine(Path.GetDirectoryName(zip)!, $"Tsukihime-v{_version}-linux-x64.tar.gz"));
+        Assert.Empty(ReleaseSumsCommand.CheckReleaseTar(tar, Crescent));
+        (int exit, string output, string error) = Run(zip, tar);
+        Assert.True(exit == ExitCode.Ok, output + error);
+        string text = File.ReadAllText(Path.Combine(Path.GetDirectoryName(zip)!, ReleaseSumsCommand.SumsFileName));
+        string zipHex = ReleaseSums.Sha256Hex(zip);
+        string tarHex = ReleaseSums.Sha256Hex(tar);
+        Assert.Equal($"{zipHex}  {Path.GetFileName(zip)}\n{tarHex}  {Path.GetFileName(tar)}\n", text);
+        Assert.DoesNotContain("no Tsukihime-vX.Y.Z-win-x64.zip", output, StringComparison.Ordinal);
+
+        IReadOnlyDictionary<string, string> map = ReleaseSums.Parse(text);
+        Assert.Equal(2, map.Count);
+        Assert.True(ReleaseVersion.TryParse(_version, out ReleaseVersion parsed));
+        Assert.Equal(SumCheck.Match, ReleaseSums.Check(text, UpdateSource.ZipAssetName(parsed), zipHex));          // the name the launcher looks up
+        Assert.Equal(SumCheck.Mismatch, ReleaseSums.Check(text, Path.GetFileName(zip), tarHex));        // the archive's checksum never passes for the zip
+        Assert.Equal(SumCheck.Match, ReleaseSums.Check(text, Path.GetFileName(tar), tarHex));
+
+        // the list in the other order reads the same
+        string reversed = $"{tarHex}  {Path.GetFileName(tar)}\n{zipHex}  {Path.GetFileName(zip)}\n";
+        Assert.Equal(SumCheck.Match, ReleaseSums.Check(reversed, Path.GetFileName(zip), zipHex));
+    }
+
+    [Theory]
+    [InlineData("name")]
+    [InlineData("mode")]
+    [InlineData("two folders")]
+    [InlineData("link")]
+    [InlineData("picture")]
+    [InlineData("gpl")]
+    [InlineData("no library")]
+    [InlineData("framework-dependent")]
+    [InlineData("version")]
+    [InlineData("personal")]
+    public void ALinuxArchiveThatIsNotARightReleaseGetsNoChecksumFile(string what)
+    {
+        string folder = LinuxRelease.Folder(_root, "linux-" + Guid.NewGuid().ToString("N")[..6]);
+        string dir = Path.Combine(_root, "t-" + Guid.NewGuid().ToString("N")[..8]);
+        string name = $"Tsukihime-v{_version}-linux-x64.tar.gz";
+        string tar;
+        string expected;
+        switch (what)
+        {
+            case "name":
+                tar = LinuxRelease.Tar(folder, Path.Combine(dir, $"Tsukihime-v{_version}-linux.tar.gz"));
+                expected = "a Linux release archive must be named Tsukihime-vX.Y.Z-linux-x64.tar.gz";
+                break;
+            case "mode":
+                tar = LinuxRelease.Tar(folder, Path.Combine(dir, name), (rel, m) => rel == "libavcodec.so.63" ? UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.GroupRead | UnixFileMode.OtherRead : m);
+                expected = "libavcodec.so.63 has the mode 644, not 755";
+                break;
+            case "two folders":
+                tar = LinuxRelease.Tar(folder, Path.Combine(dir, name), extra: (w, _) => w.WriteEntry(new PaxTarEntry(TarEntryType.RegularFile, "elsewhere/README.md") { DataStream = new MemoryStream([1]) }));
+                expected = "the entry elsewhere/README.md is not inside the one folder";
+                break;
+            case "link":
+                tar = LinuxRelease.Tar(folder, Path.Combine(dir, name), extra: (w, root) => w.WriteEntry(new PaxTarEntry(TarEntryType.SymbolicLink, root + "/libavcodec.so") { LinkName = "libavcodec.so.63" }));
+                expected = "Tsukihime-v";
+                break;
+            case "picture":
+                Directory.CreateDirectory(Path.Combine(folder, "assets", "branding"));
+                File.WriteAllBytes(Path.Combine(folder, "assets", "branding", "tsukihime-cg.png"), [0x89, 0x50, 0x4E, 0x47]);
+                tar = LinuxRelease.Tar(folder, Path.Combine(dir, name));
+                expected = "assets/branding/tsukihime-cg.png is a picture";
+                break;
+            case "gpl":
+                File.WriteAllBytes(Path.Combine(folder, "libavcodec.so.63"), LinuxRelease.Ffmpeg("libavcodec.so.63", LinuxRelease.LgplConfiguration + " --enable-gpl"));
+                tar = LinuxRelease.Tar(folder, Path.Combine(dir, name));
+                expected = "libavcodec.so.63 was built with --enable-gpl or --enable-nonfree";
+                break;
+            case "no library":
+                File.Delete(Path.Combine(folder, "libswresample.so.7"));
+                tar = LinuxRelease.Tar(folder, Path.Combine(dir, name));
+                expected = "no libswresample.so.7 in";
+                break;
+            case "framework-dependent":
+                File.Delete(Path.Combine(folder, "libhostfxr.so"));
+                tar = LinuxRelease.Tar(folder, Path.Combine(dir, name));
+                expected = "no libhostfxr.so in";
+                break;
+            case "version":
+                tar = LinuxRelease.Tar(folder, Path.Combine(dir, "Tsukihime-v9.9.9-linux-x64.tar.gz"));
+                expected = $"Tsukihime.dll says version {_version}";
+                break;
+            default:
+                File.WriteAllText(Path.Combine(folder, ReleaseCheck.PersonalNote), "PERSONAL");
+                tar = LinuxRelease.Tar(folder, Path.Combine(dir, name));
+                expected = "holds PERSONAL_BUILD.txt";
+                break;
+        }
+
+        IReadOnlyList<string> problems = ReleaseSumsCommand.CheckReleaseTar(tar, Crescent);
+        Assert.Contains(problems, p => p.Contains(expected, StringComparison.Ordinal));
+        if (what == "link")
+        {
+            Assert.Contains(problems, p => p.Contains("is a SymbolicLink entry", StringComparison.Ordinal));
+        }
+
+        (int exit, string output, _) = Run(tar);
+        Assert.Equal(ExitCode.Failed, exit);
+        Assert.Contains("RESULT: SHA256SUMS.txt was NOT written", output, StringComparison.Ordinal);
+        Assert.False(File.Exists(Path.Combine(dir, ReleaseSumsCommand.SumsFileName)));
+    }
+
+    [Fact]
+    public void AZipAndAnArchiveOfDifferentVersionsOrAZipWithAPictureGetNoChecksumFile()
+    {
+        string zip = ReleaseZip($"Tsukihime-v{_version}-win-x64.zip");
+        string linux = LinuxRelease.Folder(_root, "linux-" + Guid.NewGuid().ToString("N")[..6]);
+        string tar = LinuxRelease.Tar(linux, Path.Combine(_root, "other", "Tsukihime-v0.0.1-linux-x64.tar.gz"));
+        (int exit, string output, _) = Run(zip, tar);
+        Assert.Equal(ExitCode.Failed, exit);
+        Assert.Contains($"the release files name different versions (0.0.1, {_version})", output, StringComparison.Ordinal);
+
+        string picture = ReleaseZip($"Tsukihime-v{_version}-win-x64.zip", f =>
+        {
+            Directory.CreateDirectory(Path.Combine(f, "assets", "branding"));
+            File.WriteAllBytes(Path.Combine(f, "assets", "branding", "tsukihime-cg.png"), [0x89, 0x50, 0x4E, 0x47]);
+        });
+        (exit, output, _) = Run(picture);
+        Assert.Equal(ExitCode.Failed, exit);
+        Assert.Contains("assets/branding/tsukihime-cg.png is a picture", output, StringComparison.Ordinal);
     }
 
     [Fact]

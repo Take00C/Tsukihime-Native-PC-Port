@@ -205,14 +205,14 @@ public sealed class GameLayoutTests : IDisposable
     }
 
     [Theory]
-    [InlineData("01.01", "01.00", "01.01", false)]
+    [InlineData("01.01", "01.00", "01.01", true)]   // the owner's merged dump: the base's param.sfo still says 01.00, its eboot is the update's
     [InlineData("01.01", "01.01", "01.01", true)]
     [InlineData("01.01", "01.01", "01.00", true)]
     [InlineData("01.01", "01.00", "01.00", true)]
     [InlineData("01.01", "01.00", "01.02", false)]
     [InlineData("01.01", "01.02", "01.02", false)]
-    [InlineData("01.10", "01.09", "01.10", false)]
-    [InlineData("10.00", "09.99", "10.00", false)]
+    [InlineData("01.10", "01.09", "01.10", true)]
+    [InlineData("10.00", "09.99", "10.00", true)]
     [InlineData("01.01", null, "01.01", true)]
     [InlineData("01.01", null, "01.02", false)]
     [InlineData("01.01", "01.00", null, true)]
@@ -225,7 +225,7 @@ public sealed class GameLayoutTests : IDisposable
     [InlineData("01.01", "garbage", "01.01", true)]
     [InlineData("01.01", "01.00", "", true)]
     [InlineData("01.01", "01.00", "garbage", false)]
-    public void KnownExecutableDoesNotOverrideExplicitlyNewerPatchMetadata(string knownVersion, string? baseVersion, string? patchVersion, bool ignored)
+    public void AKnownBaseExecutableSetsAsideAnUpdateThatIsNotNewerThanItWhateverTheBaseMetadataSays(string knownVersion, string? baseVersion, string? patchVersion, bool ignored)
     {
         string game = Game("CUSA47999");
         string patch = Patch("CUSA47999-patch");
@@ -236,9 +236,9 @@ public sealed class GameLayoutTests : IDisposable
 
         // Supply the known identity without embedding a retail executable or changing the registry.
         var decide = typeof(GameLayoutResolver).GetMethod("CurrentBaseVersion", BindingFlags.NonPublic | BindingFlags.Static)!
-            .CreateDelegate<Func<string, string, KnownBuild, string?>>();
+            .CreateDelegate<Func<string, KnownBuild, string?>>();
         KnownBuild known = KnownBuilds.Verified with { AppVersion = knownVersion };
-        Assert.Equal(ignored ? knownVersion : null, decide(game, patch, known));
+        Assert.Equal(ignored ? knownVersion : null, decide(patch, known));
     }
 
     private static void WriteVersion(string folder, string? version, string category)

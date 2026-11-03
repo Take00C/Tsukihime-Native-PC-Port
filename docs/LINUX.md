@@ -12,34 +12,35 @@ The player has its own game folder picker on first launch and settings in the pa
 - OpenGL 3.3 and a working graphics driver.
 - FFmpeg 9 shared libraries with the `atrac9`, `h264` and `aac` decoders:
   `libavutil.so.61`, `libswresample.so.7`, `libavcodec.so.63`, `libavformat.so.63`.
-  Install a compatible shared build through your distribution. An older FFmpeg major version
-  cannot be substituted by renaming its libraries. The player uses the system library path,
-  or a complete set of those libraries beside `Tsukihime`.
+  The release archive includes them (BtbN's LGPL build). A source build uses a complete set beside
+  `Tsukihime`, else the system library path. An older FFmpeg major version cannot be substituted
+  by renaming its libraries.
 - Your own extracted PS4 game folder. The tested source edition is `CUSA47999`, update 1.01.
   No game data is included with this program.
 
-SDL and the .NET runtime are included in a self-contained publish. The system's FFmpeg
-libraries, OpenSSL, C++ runtime and graphics driver remain external dependencies.
+The release archive includes .NET, SDL and FFmpeg. OpenSSL, the C++ runtime and the graphics
+driver remain external dependencies.
 These ABI requirements do not establish compatibility with distributions we have not tested.
 
-These instructions cover a custom Linux build. Check a release’s actual assets before assuming a Linux
-archive is available. In the extracted program folder, `docs/SETUP_GUIDE.md` covers game/update layouts,
+In the extracted program folder, `docs/SETUP_GUIDE.md` covers game/update layouts,
 controls, saves and dictionary outputs. Its Windows launcher pages and Windows paths do not apply here.
 Native Windows text hooks are unavailable; clipboard and loopback WebSocket output use the player settings.
 
 ## Run a release archive
 
+Check a release's actual assets before assuming a Linux archive is available.
 Extract the Linux archive into a folder you can write to, then open a terminal in that folder:
 
 ```sh
-tar -xzf /path/to/Tsukihime-linux-x64.tar.gz
-cd linux-x64
+tar -xzf /path/to/Tsukihime-vX.Y.Z-linux-x64.tar.gz
+cd Tsukihime-vX.Y.Z-linux-x64
 ./Tsukihime
 ```
 
 Keep the entire extracted folder together, including its libraries and `licenses/`.
-The game folder is separate and can be selected on first launch. No .NET SDK is needed
-to run a self-contained release.
+The game folder is separate and can be selected on first launch. Without a desktop file chooser
+(xdg-desktop-portal or zenity), start it with `./Tsukihime --game /path/to/CUSA47999` or set `TSUKI_GAME_DIR`.
+No .NET SDK is needed to run a self-contained release.
 
 ## Build and run
 
@@ -52,7 +53,9 @@ bash tools/setup/publish_linux.sh
 ```
 
 The script accepts an optional output folder, followed by additional `dotnet publish` options.
-It can also be run from another directory.
+It can also be run from another directory. It bundles FFmpeg from `third_party/ffmpeg/linux`
+(see [PUBLISHING.md](https://github.com/Take00C/Tsukihime-Native-PC-Port/blob/main/docs/PUBLISHING.md) 3.3); to use your system's FFmpeg 9 instead, add
+`-p:TsukiBundleFFmpeg=false`: `bash tools/setup/publish_linux.sh artifacts/linux-x64 -p:TsukiBundleFFmpeg=false`.
 To choose the game folder explicitly:
 
 ```sh

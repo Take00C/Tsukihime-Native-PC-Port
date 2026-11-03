@@ -299,8 +299,10 @@ public static class GameLayoutResolver
     }
 
     /// <summary>
-    /// The update takes precedence when its metadata is explicitly newer than the base's. Otherwise a known base eboot at least as new as the update keeps a
-    /// merged dump's stale sibling update from being layered again.
+    /// A base game and the update beside it: the update's files take precedence, unless the game folder already holds an eboot the port knows whose version is at least
+    /// the update's (a merged dump with a stale update folder beside it, as a PKG extractor's install step leaves behind): then the game folder is used as it is and the
+    /// update folder is only noted, so that a verified configuration stays what it was. The base's own param.sfo is not compared: a merged dump keeps the base's
+    /// APP_VER 01.00 there while its eboot is already the update's (K46 kept this rule of K27 when it took GitHub PR #3).
     /// </summary>
     private static GameLayout Pair(string chosen, string baseFolder, string patchFolder)
     {
@@ -310,7 +312,7 @@ public static class GameLayoutResolver
             : new GameLayout(chosen, GameLayoutKind.Game, baseFolder, IgnoredPatchFolder: patchFolder);
     }
 
-    /// <summary>The known base eboot's version when the sibling update is unnecessary and metadata does not show a newer update; null otherwise.</summary>
+    /// <summary>The known build's version when the base folder's own eboot is a known build at least as new as the update's APP_VER; null otherwise.</summary>
     private static string? BaseIsCurrent(string baseFolder, string patchFolder)
     {
         try
@@ -328,7 +330,7 @@ public static class GameLayoutResolver
                 return null;
             }
 
-            return CurrentBaseVersion(baseFolder, patchFolder, known);
+            return CurrentBaseVersion(patchFolder, known);
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
@@ -336,22 +338,12 @@ public static class GameLayoutResolver
         }
     }
 
-    private static string? CurrentBaseVersion(string baseFolder, string patchFolder, Verification.KnownBuild known)
+    /// <summary>The known build's version when the update's APP_VER is absent or not newer than it; null when the update must be layered.</summary>
+    private static string? CurrentBaseVersion(string patchFolder, Verification.KnownBuild known)
     {
-        string? baseVersion = ReadParamSfo(baseFolder)?["APP_VER"];
         string? patchVersion = ReadParamSfo(patchFolder)?["APP_VER"];
-        if (IsAppVersion(baseVersion) && IsAppVersion(patchVersion) && string.CompareOrdinal(patchVersion, baseVersion) > 0)
-        {
-            return null;
-        }
-
         return patchVersion is null || string.CompareOrdinal(patchVersion, known.AppVersion) <= 0 ? known.AppVersion : null;
     }
-
-    // Fixed-width NN.NN versions sort numerically. Other metadata keeps the existing fallback.
-    private static bool IsAppVersion(string? version) => version is { Length: 5 } && version[2] == '.'
-        && char.IsAsciiDigit(version[0]) && char.IsAsciiDigit(version[1])
-        && char.IsAsciiDigit(version[3]) && char.IsAsciiDigit(version[4]);
 
     /// <summary>The update folder beside a base folder: <c>&lt;name&gt;-patch</c>, <c>&lt;name&gt;-UPDATE</c>, ... or the same with the base's <c>-app</c> suffix removed.</summary>
     public static string? FindPatchBeside(string baseFolder)

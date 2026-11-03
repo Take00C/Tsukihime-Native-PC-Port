@@ -33,6 +33,10 @@ public readonly record struct MonitorOrigin(int X, int Y)
 /// <param name="ScreenshotNotice"><c>screenshot_notice=</c> (package K24): the short "Screenshot saved" notice after F12 (on when the key is absent).</param>
 /// <param name="UpdateCheck"><c>update_check=</c> (package K40): the launcher looks for a newer release on GitHub when it starts (on when the key is absent). The game itself never reads it; it only keeps it when it writes the file.</param>
 /// <param name="ArcueidIcon"><c>arcueid_icon=</c> (package K43): the launcher writes Arcueid's face, cut from the player's own game files, into Tsukihime.exe and TsukihimeLauncher.exe (on when the key is absent); off puts the port's crescent back. The game never reads it; it only keeps it when it writes the file.</param>
+/// <param name="TextWebSocketOrigin"><c>text_websocket_origin=</c> (GitHub PR #4): the one browser page's ASCII HTTP or HTTPS origin the WebSocket trusts. Absent means
+/// <see cref="DefaultTextWebSocketOrigin"/>, texthooker-ui's page (v0.1.5 and earlier let every page in). Clients with no Origin, or with the server's own
+/// (<c>http://127.0.0.1:port</c>, <c>http://localhost:port</c>, which native libraries such as Python's websocket-client send), always connect; every other page,
+/// <c>file://</c> pages (Origin null) and browser extensions included, is refused, and the game log names it once (K46).</param>
 public readonly record struct AppSettingsData(
     PromptSetting Prompts = PromptSetting.Auto,
     bool? Fullscreen = null,
@@ -48,10 +52,14 @@ public readonly record struct AppSettingsData(
     int? TextWebSocketPort = null,
     bool? ScreenshotNotice = null,
     bool? UpdateCheck = null,
-    bool? ArcueidIcon = null)
+    bool? ArcueidIcon = null,
+    string? TextWebSocketOrigin = null)
 {
     /// <summary>The WebSocket port when the file names none (texthooker-ui's default).</summary>
     public const int DefaultTextWebSocketPort = 6677;
+
+    /// <summary>The browser origin trusted when the file names none: texthooker-ui (https://renji-xd.github.io/texthooker-ui/), the page the guide names (K46).</summary>
+    public const string DefaultTextWebSocketOrigin = "https://renji-xd.github.io";
 
     /// <summary>The smallest window the game accepts from the file.</summary>
     public const int MinWindowWidth = 640;
@@ -154,6 +162,35 @@ public static class AppSettings
         return false;
     }
 
+    /// <summary>Reads one ASCII browser origin without credentials, a path, a query or a fragment. Use punycode for internationalized hosts.</summary>
+    public static bool TryParseWebSocketOrigin(string? text, out string? origin)
+    {
+        origin = null;
+        if (string.IsNullOrWhiteSpace(text) || text.Any(c => c > 127 || char.IsWhiteSpace(c) || char.IsControl(c) || c == '\\')
+            || !Uri.TryCreate(text, UriKind.Absolute, out Uri? uri)
+            || uri.Scheme is not ("http" or "https") || uri.Host.Length == 0
+            || uri.UserInfo.Length != 0 || uri.AbsolutePath != "/" || uri.Query.Length != 0 || uri.Fragment.Length != 0)
+        {
+            return false;
+        }
+
+        try
+        {
+            string host = uri.IdnHost;
+            if (host.Any(c => c > 127))
+            {
+                return false;
+            }
+
+            origin = new UriBuilder(uri) { Host = host }.Uri.GetLeftPart(UriPartial.Authority);
+            return true;
+        }
+        catch (UriFormatException)
+        {
+            return false;
+        }
+    }
+
     /// <summary>Reads settings from text: lines of <c>key=value</c>, <c>#</c> comments, unknown keys and bad values left at their defaults.</summary>
     public static AppSettingsData Parse(string? text)
     {
@@ -203,6 +240,9 @@ public static class AppSettings
                     break;
                 case "text_websocket_port" when int.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out int port) && port is >= 1 and <= ushort.MaxValue:
                     data = data with { TextWebSocketPort = port };
+                    break;
+                case "text_websocket_origin" when TryParseWebSocketOrigin(value, out string? origin):
+                    data = data with { TextWebSocketOrigin = origin };
                     break;
                 case "screenshot_notice" when TryParseSwitch(value, out bool notice):
                     data = data with { ScreenshotNotice = notice };
@@ -284,6 +324,12 @@ public static class AppSettings
         {
             text.Append("# text_websocket_port: the WebSocket's port, 1..65535 (6677 when the line is missing)\n");
             text.Append(CultureInfo.InvariantCulture, $"text_websocket_port={port}\n");
+        }
+
+        if (TryParseWebSocketOrigin(data.TextWebSocketOrigin, out string? origin))
+        {
+            text.Append("# text_websocket_origin: the trusted page's HTTP or HTTPS origin, with no path. Use an ASCII or punycode host. Restart the program after changing it\n");
+            text.Append(CultureInfo.InvariantCulture, $"text_websocket_origin={origin}\n");
         }
 
         if (data.ScreenshotNotice is { } notice)

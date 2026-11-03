@@ -18,7 +18,11 @@ You can also start `Tsukihime.exe` directly. It asks for the game folder on firs
 
 ### Linux
 
-Follow the **[Linux build and run guide](docs/LINUX.md)**. The native player includes a game folder picker and settings in the pause menu. The separate WPF launcher is Windows only. A self-contained Linux build includes .NET and SDL, while FFmpeg comes from your distribution or compatible libraries placed beside the program.
+1. Download `Tsukihime-vX.Y.Z-linux-x64.tar.gz` from [Releases](https://github.com/Take00C/Tsukihime-Native-PC-Port/releases), if the release lists one; otherwise build it with the [Linux guide](docs/LINUX.md).
+2. Extract it and run `./Tsukihime` in the extracted folder.
+3. Choose your extracted game folder when it asks. Without a desktop file chooser (xdg-desktop-portal or zenity), run `./Tsukihime --game /path/to/CUSA47999` instead.
+
+The Linux download includes .NET, SDL and FFmpeg. The player has its own game folder picker and settings in the pause menu; the separate WPF launcher is Windows only. The **[Linux guide](docs/LINUX.md)** covers requirements and building from source.
 
 ## Requirements
 
@@ -26,7 +30,7 @@ Follow the **[Linux build and run guide](docs/LINUX.md)**. The native player inc
 - A graphics driver supporting OpenGL 3.3. Integrated graphics are supported.
 - Your own extracted PS4 game folder, `CUSA47999`, containing `eboot.bin`, `image/`, `data/` and `sce_sys/`. The game files take about 44 GB.
 - About 260 MB for the Windows port, separate from the game files.
-- On Linux, FFmpeg 9 shared libraries with ATRAC9, H.264 and AAC support. The Linux guide lists the required library names.
+- On Linux, glibc 2.34 or newer. A source build also needs FFmpeg 9 shared libraries; the Linux guide lists them.
 
 The setup guide explains supported folder layouts, including separate base-game and update folders. The program reads the game files without modifying them. Saves and settings are stored separately, and existing profiles keep their `Tsuki` folder name.
 
@@ -53,7 +57,7 @@ The setup guide explains supported folder layouts, including separate base-game 
 
 ## Status and support
 
-The port was developed against **CUSA47999, update 1.04**. Other builds are checked at startup and may be refused if required tables or files cannot be found. Only languages present in your game files are offered. Current source version is **0.1.4**. Linux instructions cover building from source.
+The port was developed against **CUSA47999, update 1.01**. Other builds are checked at startup and may be refused if required tables or files cannot be found. Only languages present in your game files are offered. Current source version is **0.1.6**. The Linux download is newer and less tested than the Windows one.
 
 Report problems through Issues with reproduction steps and the relevant log. Include the build information and your operating system, graphics card and driver. See [CONTRIBUTING.md](CONTRIBUTING.md) for details. Do not attach game files, saves, story text or screenshots of the game.
 

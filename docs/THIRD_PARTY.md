@@ -6,14 +6,12 @@ that the repository or the release download carries, each with the notice its li
 programs in the `licenses\` folder (`FFmpeg-LGPL.txt`, `FFmpeg-GPL-3.0.txt`, `FFmpeg-SOURCE.txt`, `knife-MPL-2.0.txt`, `SDL3-zlib.txt`,
 `LICENSE.txt`, and this file as `THIRD_PARTY.md`); the copies the build takes are tracked in `src/Tsuki.Launcher/Licenses/`.
 
-The Linux publish includes the player, SDL and the .NET runtime with the same notices below.
-It uses external system FFmpeg libraries and does not include FFmpeg or the WPF launcher.
-Its `licenses/dotnet-LICENSE.txt` and `licenses/dotnet-THIRD-PARTY-NOTICES.txt` are copied
-unmodified from the resolved `Microsoft.NETCore.App.Runtime.linux-x64` NuGet package,
-so they match the runtime being shipped. No separate download is needed during publishing.
-For runtime 10.0.14, the upstream originals are
-https://github.com/dotnet/runtime/blob/v10.0.14/LICENSE.TXT and
-https://github.com/dotnet/runtime/blob/v10.0.14/THIRD-PARTY-NOTICES.TXT.
+The Linux archive includes the player, SDL, FFmpeg and the .NET runtime with the same notices below; it does not include
+the WPF launcher. Both downloads carry `licenses/dotnet-LICENSE.txt` and `licenses/dotnet-THIRD-PARTY-NOTICES.txt`, copied
+unmodified from the resolved `Microsoft.NETCore.App.Runtime.<rid>` NuGet package, so they match the runtime being shipped.
+For runtime 10.0.13, the upstream originals are
+https://github.com/dotnet/runtime/blob/v10.0.13/LICENSE.TXT and
+https://github.com/dotnet/runtime/blob/v10.0.13/THIRD-PARTY-NOTICES.TXT.
 
 ## knife (MPL-2.0)
 
@@ -54,14 +52,14 @@ the rest of Tsuki is unaffected. The rules are in `docs/design/knife_port.md` 1.
 
 The game decodes its sound and movies with [FFmpeg](https://ffmpeg.org). Windows bundles only `avcodec-63.dll`, `avformat-63.dll`,
 `avutil-61.dll` and `swresample-7.dll`, loaded by `FfmpegLibrary.RequiredDlls`. These are the unmodified DLLs of BtbN's
-`win64-lgpl-shared-9.0` build, with banner `n9.0.2-39-g7adfbe40dc-20261031`, from the
-[2026-10-31 autobuild](https://github.com/BtbN/FFmpeg-Builds/releases/tag/autobuild-2026-10-31-12-59), archive
-`ffmpeg-n9.0.2-39-g7adfbe40dc-win64-lgpl-shared-9.0.zip`.
+`win64-lgpl-shared-9.0` build of FFmpeg 9.0.1 (`ffmpeg version n9.0.1-11-ge47273f4d9-20260831`), winget package
+`BtbN.FFmpeg.LGPL.Shared.9.0` 9.0.1-20260831; https://github.com/BtbN/FFmpeg-Builds/releases carries the zips and the build
+scripts, and the FFmpeg source (tag `n9.0.1`, commit e47273f4d9 of `release/9.0`) is at https://git.ffmpeg.org/ffmpeg.git.
+`tools/setup/ffmpeg_dlls.ps1` copies them into `third_party/ffmpeg/bin`; `Directory.Build.props` copies the four DLLs next to `Tsukihime.exe`.
 
-The exact FFmpeg source is [commit 7adfbe40dcde598f93a6963d2f7b22cd75202ccc](https://github.com/FFmpeg/FFmpeg/commit/7adfbe40dcde598f93a6963d2f7b22cd75202ccc)
-on `release/9.0`, 39 commits after `n9.0.2`, not the release tag itself. The Windows package's `licenses/FFmpeg-SOURCE.txt` gives
-the separate downloads for that source and the dated BtbN build scripts, plus the exact build configuration.
-`Directory.Build.props` copies the four DLLs next to `Tsukihime.exe`. Linux uses external FFmpeg libraries as described above.
+The Linux archive bundles the same four libraries as `libavcodec.so.63`, `libavformat.so.63`, `libavutil.so.61` and
+`libswresample.so.7`, unmodified from BtbN's `linux64-lgpl-shared-9.0` build; `tools/setup/ffmpeg_linux.py` copies them into
+`third_party/ffmpeg/linux` and writes the archive's `licenses/FFmpeg-SOURCE.txt`, which names that exact build and its source.
 
 The build is configured with `--enable-version3`, so the libraries are under the **GNU Lesser General Public License, version 3 or later**: `avcodec_license()` answers
 "LGPL version 3 or later" (`Tsukihime.exe --smoke` prints it) and the package's `LICENSE.txt` is the LGPL v3 text (ARCHITECTURE 0.5). The release ships that text

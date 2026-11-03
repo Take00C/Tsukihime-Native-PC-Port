@@ -1,7 +1,10 @@
+using Tsuki.App;
 using Tsuki.App.Play;
 using Tsuki.Data;
+using Tsuki.Engine.Contracts;
 using Tsuki.Media.Ffmpeg;
 using Tsuki.Platform;
+using Tsuki.Ui;
 
 namespace Tsuki.Tests.Synthetic.App;
 
@@ -87,5 +90,29 @@ public sealed class StartupMessageTests
     {
         Assert.Equal("a decode failed", GameApp.PlayerMessage(new InvalidOperationException("a decode failed")));
         Assert.Equal("x", GameApp.PlayerMessage(new StartupFailure("x", new InvalidOperationException("cause"))));
+    }
+
+    [Fact]
+    public void AFolderDialogTheSystemCannotOpenNamesTheErrorAndTheWayToNameTheFolder()
+    {
+        // K46: on a Linux desktop without xdg-desktop-portal and zenity, SDL's folder dialog fails at once; the first run used to quit without a word
+        const string sdl = "File dialog driver unsupported (supported values for SDL_HINT_FILE_DIALOG_DRIVER are 'zenity' and 'portal')";
+        string command = OperatingSystem.IsWindows() ? @"Tsukihime.exe --game ""D:\Games\CUSA47999""" : "./Tsukihime --game /path/to/CUSA47999";
+        Assert.Equal(
+            $"The folder window could not be opened ({sdl}).\n\nStart the game with the path of your CUSA47999 folder instead, for example:\n{command}\n\n"
+            + "or set the environment variable TSUKI_GAME_DIR to that folder. On Linux the folder window needs xdg-desktop-portal or zenity.",
+            GameApp.FolderDialogFailedMessage(sdl));
+        foreach (Language lang in PortText.Languages)
+        {
+            string text = GameApp.FolderDialogFailedMessage(sdl, lang);
+            Assert.Contains(sdl, text, StringComparison.Ordinal);
+            Assert.Contains(command, text, StringComparison.Ordinal);
+            Assert.Contains("TSUKI_GAME_DIR", text, StringComparison.Ordinal);
+            Assert.Contains("zenity", text, StringComparison.Ordinal);
+        }
+
+        Assert.Contains("(?)", GameApp.FolderDialogFailedMessage(null), StringComparison.Ordinal);
+        Assert.True(AppArgs.TryParse(["--game", "/g/CUSA47999"], out AppArgs? args, out _));
+        Assert.Equal("/g/CUSA47999", args!.GameDir);
     }
 }

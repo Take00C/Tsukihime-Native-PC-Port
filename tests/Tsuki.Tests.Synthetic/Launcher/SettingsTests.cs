@@ -38,7 +38,8 @@ public sealed class SettingsTests : IDisposable
         TextWebSocket: true,
         TextWebSocketPort: 6700,
         ScreenshotNotice: false,
-        UpdateCheck: false);
+        UpdateCheck: false,
+        TextWebSocketOrigin: "https://reader.example");
 
     [Fact]
     public void EveryKeyRoundTripsThroughTheFile()
@@ -55,7 +56,7 @@ public sealed class SettingsTests : IDisposable
     {
         string text = AppSettings.Format(new AppSettingsData());
         Assert.Contains("prompts=auto", text, StringComparison.Ordinal);
-        foreach (string key in new[] { "fullscreen=", "window=", "monitor=", "vsync=", "language=", "mute_in_background=", "copy_text=", "text_hooker=", "text_websocket=", "text_websocket_port=", "screenshot_notice=", "update_check=" })
+        foreach (string key in new[] { "fullscreen=", "window=", "monitor=", "vsync=", "language=", "mute_in_background=", "copy_text=", "text_hooker=", "text_websocket=", "text_websocket_port=", "text_websocket_origin=", "screenshot_notice=", "update_check=" })
         {
             Assert.DoesNotContain(key, text, StringComparison.Ordinal);
         }
@@ -79,6 +80,39 @@ public sealed class SettingsTests : IDisposable
         AppSettingsData both = AppSettings.Parse("text_hooker=off\ntext_websocket=on");
         Assert.Equal((false, true), (both.TextHooker, both.TextWebSocket));
         Assert.Null(AppSettings.Parse("text_hooker=sometimes").TextHooker);
+    }
+
+    [Theory]
+    [InlineData("https://reader.example/", "https://reader.example")]
+    [InlineData("HTTPS://READER.EXAMPLE:443", "https://reader.example")]
+    [InlineData("http://127.0.0.1:8000", "http://127.0.0.1:8000")]
+    [InlineData("null", null)]
+    [InlineData("*", null)]
+    [InlineData("file:///reader.html", null)]
+    [InlineData("https://reader.example/page", null)]
+    [InlineData("https://reader.example?query", null)]
+    [InlineData("https://reader.example#fragment", null)]
+    [InlineData("https://user@reader.example", null)]
+    [InlineData("https://reader.example\\page", null)]
+    public void BrowserAuthorizationUsesOneExplicitOrigin(string text, string? expected)
+    {
+        AppSettingsData data = AppSettings.Parse("text_websocket_origin=" + text);
+        Assert.Equal(expected, data.TextWebSocketOrigin);
+        Assert.Equal(expected, AppSettings.Parse(AppSettings.Format(data)).TextWebSocketOrigin);
+        // K46: an absent or refused value leaves the game trusting texthooker-ui's page, as v0.1.5 let it in
+        Assert.Equal(expected ?? AppSettingsData.DefaultTextWebSocketOrigin, new PortSettings(null, data).TextWebSocketOrigin);
+        Assert.Equal("https://renji-xd.github.io", new PortSettings(null, new AppSettingsData()).TextWebSocketOrigin);
+    }
+
+    [Fact]
+    public void UpdatingOtherSettingsPreservesTheTrustedBrowserOrigin()
+    {
+        Assert.True(AppSettings.Save(SettingsPath, Everything()));
+        Assert.True(AppSettings.Update(SettingsPath, data => data with { TextWebSocket = false }));
+        AppSettingsData loaded = AppSettings.Load(SettingsPath);
+        Assert.Equal("https://reader.example", loaded.TextWebSocketOrigin);
+        Assert.False(loaded.TextWebSocket);
+        Assert.False(AppSettings.TryParseWebSocketOrigin("https://reader.example\r\nOrigin: https://untrusted.example", out _));
     }
 
     [Theory]

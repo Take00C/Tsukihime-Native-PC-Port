@@ -70,6 +70,16 @@ public sealed partial class SetupGuideTests
     }
 
     [Fact]
+    public void ALinuxPublishCarriesNoCompilerXmlDocumentation()
+    {
+        // K46 review: the Windows launcher's publish deletes Tsuki.*.xml and Tsukihime.xml; a Linux publish of the player does not make them
+        XDocument distribution = XDocument.Load(Path.Combine(Repo.Src, "Tsuki.Distribution.targets"));
+        XElement group = Assert.Single(distribution.Descendants("PropertyGroup"), g => ((string?)g.Attribute("Condition") ?? string.Empty).Contains("'linux-'", StringComparison.Ordinal));
+        Assert.Equal("false", group.Element("PublishDocumentationFile")?.Value);
+        Assert.Equal("false", group.Element("PublishReferencesDocumentationFiles")?.Value);
+    }
+
+    [Fact]
     public void PublishedDocumentationIncludesItsLocalLinksAndImages()
     {
         XDocument distribution = XDocument.Load(Path.Combine(Repo.Src, "Tsuki.Distribution.targets"));
@@ -97,7 +107,8 @@ public sealed partial class SetupGuideTests
 
                 string root = Path.Combine(Path.GetTempPath(), "tsuki-documentation-links");
                 string target = Path.GetFullPath(Path.Combine(root, Path.GetDirectoryName(destination) ?? string.Empty, link));
-                Assert.Contains(Path.GetRelativePath(root, target).Replace('\\', '/'), files.Keys);
+                string relative = Path.GetRelativePath(root, target).Replace('\\', '/');
+                Assert.Contains(relative, files.Keys);
             }
         }
     }

@@ -112,6 +112,71 @@ public sealed class TextWebSocketSecurityTests
         Assert.Equal(0, server.Served);
     }
 
+    [Fact]
+    public async Task WithNoOriginConfiguredTexthookerUiStillConnectsAndOtherPagesAreRefused()
+    {
+        // K46: v0.1.5 let every page in; the merged hardening (GitHub PR #4) refuses browser pages, but the guide's page, texthooker-ui, keeps working untouched
+        var port = new PortSettings(null, AppSettings.Parse("text_websocket=on"));
+        using var output = new TextWebSocketOutput(() => port.TextWebSocket, () => 0, origin: () => port.TextWebSocketOrigin);
+        output.Tick();
+        TextWebSocketServer server = Assert.IsType<TextWebSocketServer>(output.Server);
+        Assert.StartsWith("HTTP/1.1 101", await UpgradeAsync(server.Port, "https://renji-xd.github.io"), StringComparison.Ordinal);
+        Assert.StartsWith("HTTP/1.1 101", await UpgradeAsync(server.Port), StringComparison.Ordinal);                    // a native client sends no Origin
+        Assert.StartsWith("HTTP/1.1 403", await UpgradeAsync(server.Port, "https://untrusted.example"), StringComparison.Ordinal);
+        Assert.StartsWith("HTTP/1.1 403", await UpgradeAsync(server.Port, "null"), StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("http://127.0.0.1:{0}", "127.0.0.1:{0}")]
+    [InlineData("http://localhost:{0}", "localhost:{0}")]
+    [InlineData("http://LOCALHOST:{0}", "localhost:{0}")]
+    [InlineData("http://localhost:{0}", "127.0.0.1:{0}")]
+    [InlineData("https://127.0.0.1:{0}", "127.0.0.1:{0}")]
+    public async Task NativeLibrariesSendingTheServersOwnOriginConnect(string origin, string host)
+    {
+        // K46: Python's websocket-client sends "Origin: http://<Host>" by default; v0.1.5 let it in, and no page can be served from the game's own port
+        using var server = TextWebSocketServer.Start(0, origin: "https://reader.example");
+        string Fill(string text) => string.Format(System.Globalization.CultureInfo.InvariantCulture, text, server.Port);
+        Assert.StartsWith("HTTP/1.1 101", await UpgradeAsync(server.Port, Fill(origin), Fill(host)), StringComparison.Ordinal);
+        Assert.StartsWith("HTTP/1.1 403", await UpgradeAsync(server.Port, $"http://127.0.0.1:{(server.Port == 1 ? 2 : server.Port - 1)}"), StringComparison.Ordinal);
+        Assert.StartsWith("HTTP/1.1 403", await UpgradeAsync(server.Port, $"http://127.0.0.1.untrusted.example:{server.Port}"), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task RefusedPagesAndHostsAreLoggedOnceWithTheSettingThatWouldTrustThem()
+    {
+        // K46: v0.1.6 refuses pages v0.1.5 let in; the log says which origin was refused and what to write, once per origin
+        var lines = new System.Collections.Concurrent.ConcurrentQueue<string>();
+        using var server = TextWebSocketServer.Start(0, lines.Enqueue);
+        Assert.StartsWith("HTTP/1.1 403", await UpgradeAsync(server.Port, "http://localhost:8000"), StringComparison.Ordinal);
+        Assert.StartsWith("HTTP/1.1 403", await UpgradeAsync(server.Port, "http://localhost:8000"), StringComparison.Ordinal);
+        Assert.StartsWith("HTTP/1.1 403", await UpgradeAsync(server.Port, "null"), StringComparison.Ordinal);
+        Assert.StartsWith("HTTP/1.1 403", await UpgradeAsync(server.Port, "chrome-extension://abcdefghijklmnop"), StringComparison.Ordinal);
+        Assert.StartsWith("HTTP/1.1 403", await UpgradeAsync(server.Port, host: "untrusted.example"), StringComparison.Ordinal);
+        Assert.StartsWith("HTTP/1.1 101", await UpgradeAsync(server.Port), StringComparison.Ordinal);
+        await UntilAsync(() => lines.Count >= 5); // four refusals and the connected client
+        string[] log = [.. lines];
+        Assert.Equal(1, log.Count(l => l.Contains("http://localhost:8000", StringComparison.Ordinal)));
+        Assert.Contains(log, l => l.Contains("set text_websocket_origin=http://localhost:8000 in settings.ini", StringComparison.Ordinal));
+        Assert.Contains(log, l => l.Contains("Origin null", StringComparison.Ordinal) && l.Contains("file://", StringComparison.Ordinal));
+        Assert.Contains(log, l => l.Contains("chrome-extension://abcdefghijklmnop", StringComparison.Ordinal) && l.Contains("only one http or https page", StringComparison.Ordinal));
+        Assert.Contains(log, l => l.Contains("host untrusted.example", StringComparison.Ordinal));
+        Assert.Equal(4, log.Count(l => l.Contains("refused", StringComparison.Ordinal))); // the second http://localhost:8000 is not logged again
+    }
+
+    [Fact]
+    public async Task RefusalLogsStopAfterSixteenDifferentOrigins()
+    {
+        var lines = new System.Collections.Concurrent.ConcurrentQueue<string>();
+        using var server = TextWebSocketServer.Start(0, lines.Enqueue);
+        for (int i = 0; i < 20; i++)
+        {
+            Assert.StartsWith("HTTP/1.1 403", await UpgradeAsync(server.Port, $"https://page{i}.example"), StringComparison.Ordinal);
+        }
+
+        Assert.Equal(16, lines.Count);
+    }
+
     [Theory]
     [InlineData("https://reader.example")]
     [InlineData("http://127.0.0.1:8000")]
@@ -176,7 +241,7 @@ public sealed class TextWebSocketSecurityTests
         AppSettingsData settings = AppSettings.Parse("text_websocket_origin=" + configured);
         Assert.Null(settings.TextWebSocketOrigin);
         var port = new PortSettings(null, AppSettings.Parse(AppSettings.Format(settings)));
-        Assert.Null(port.TextWebSocketOrigin);
+        Assert.Equal(AppSettingsData.DefaultTextWebSocketOrigin, port.TextWebSocketOrigin);    // an ignored value leaves texthooker-ui's default (K46)
         using var server = TextWebSocketServer.Start(0, origin: configured);
         Assert.StartsWith("HTTP/1.1 403", await UpgradeAsync(server.Port, browserOrigin), StringComparison.Ordinal);
         Assert.StartsWith("HTTP/1.1 101", await UpgradeAsync(server.Port), StringComparison.Ordinal);

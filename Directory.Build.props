@@ -77,4 +77,35 @@
     <Error Code="TSUKI001"
            Text="FFmpeg DLLs not found in $(TsukiFFmpegBinDir). Run tools/setup/ffmpeg_dlls.ps1 (ARCHITECTURE 0.5)." />
   </Target>
+
+  <!--
+    The Linux release (K46): a linux-* publish bundles the same four FFmpeg 9 libraries as shared objects from third_party/ffmpeg/linux (git-ignored; filled by
+    tools/setup/ffmpeg_linux.py from an extracted BtbN linux64-lgpl-shared-9.0 build, never downloaded), with the source notice that step writes, as
+    licenses/FFmpeg-SOURCE.txt. Builds and tests never need them (a build without a runtime identifier loads the system's FFmpeg, FfmpegLibrary); a publish without
+    them stops with TSUKI002. -p:TsukiBundleFFmpeg=false publishes without them, for a machine whose own FFmpeg 9 is used.
+  -->
+  <PropertyGroup>
+    <TsukiFFmpegLinuxDir>$(MSBuildThisFileDirectory)third_party\ffmpeg\linux\</TsukiFFmpegLinuxDir>
+  </PropertyGroup>
+  <!--
+    A restore for a runtime fetches only the runtime packs the projects use (Microsoft.NETCore.App, and WindowsDesktop for the launcher), not ASP.NET Core's as well, which
+    nothing references: a linux-x64 publish then needs two packages (the runtime and the apphost). It is set for every project because a restore evaluates the referenced
+    projects without the runtime identifier.
+  -->
+  <PropertyGroup>
+    <DisableTransitiveFrameworkReferenceDownloads>true</DisableTransitiveFrameworkReferenceDownloads>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(TsukiUsesFFmpeg)' == 'true' and '$(TsukiBundleFFmpeg)' != 'false' and $([System.String]::Copy('$(RuntimeIdentifier)').StartsWith('linux-'))">
+    <None Include="$(TsukiFFmpegLinuxDir)libavutil.so.61;$(TsukiFFmpegLinuxDir)libswresample.so.7;$(TsukiFFmpegLinuxDir)libavcodec.so.63;$(TsukiFFmpegLinuxDir)libavformat.so.63"
+          Link="%(Filename)%(Extension)"
+          CopyToPublishDirectory="PreserveNewest"
+          Visible="false" />
+    <None Include="$(TsukiFFmpegLinuxDir)FFmpeg-SOURCE.txt" Link="licenses\FFmpeg-SOURCE.txt" CopyToPublishDirectory="PreserveNewest" Visible="false" />
+  </ItemGroup>
+  <Target Name="TsukiCheckFFmpegLinux"
+          BeforeTargets="PrepareForPublish"
+          Condition="'$(TsukiUsesFFmpeg)' == 'true' and '$(TsukiBundleFFmpeg)' != 'false' and $([System.String]::Copy('$(RuntimeIdentifier)').StartsWith('linux-')) and (!Exists('$(TsukiFFmpegLinuxDir)libavutil.so.61') or !Exists('$(TsukiFFmpegLinuxDir)libswresample.so.7') or !Exists('$(TsukiFFmpegLinuxDir)libavcodec.so.63') or !Exists('$(TsukiFFmpegLinuxDir)libavformat.so.63') or !Exists('$(TsukiFFmpegLinuxDir)FFmpeg-SOURCE.txt'))">
+    <Error Code="TSUKI002"
+           Text="FFmpeg 9 shared libraries for Linux not found in $(TsukiFFmpegLinuxDir) (libavutil.so.61, libswresample.so.7, libavcodec.so.63, libavformat.so.63 and FFmpeg-SOURCE.txt). Extract BtbN's ffmpeg-n9.0-latest-linux64-lgpl-shared-9.0.tar.xz to third_party/ffmpeg/linux-src/ and run tools/setup/ffmpeg_linux.py (docs/PUBLISHING.md), or publish with -p:TsukiBundleFFmpeg=false to use the system's FFmpeg 9." />
+  </Target>
 </Project>

@@ -292,9 +292,16 @@ internal sealed class GameApp : IDisposable
     internal static string PlayerMessage(Exception e, Language language = Language.En) => e switch
     {
         StartupFailure s => s.Message,
-        FfmpegMissingException f => PortText.Format(PortString.FfmpegMissing, language, string.Join(", ", f.MissingFiles)),
+        FfmpegMissingException f => PortText.Format(OperatingSystem.IsLinux() ? PortString.LinuxFfmpegMissing : PortString.FfmpegMissing, language, string.Join(", ", f.MissingFiles)),
         _ => e.Message,
     };
+
+    /// <summary>K46: the box for a folder dialog the system could not open: SDL's words and the command line (or TSUKI_GAME_DIR) that names the folder instead.</summary>
+    internal static string FolderDialogFailedMessage(string? error, Language language = Language.En) => PortText.Format(
+        PortString.FolderDialogUnavailable,
+        language,
+        string.IsNullOrWhiteSpace(error) ? "?" : error.Trim(),
+        OperatingSystem.IsWindows() ? @"Tsukihime.exe --game ""D:\Games\CUSA47999""" : "./Tsukihime --game /path/to/CUSA47999");
 
     /// <summary>The sentence for a window that <see cref="GameWindow.Create"/> could not make: SDL names the call that failed, and the GL 3.3 context is the one a player's machine refuses.</summary>
     internal static string WindowMessage(PlatformException e, Language language = Language.En) => e.Message.StartsWith("SDL_GL_", StringComparison.Ordinal)
@@ -629,6 +636,16 @@ internal sealed class GameApp : IDisposable
                 Thread.Sleep(16);
             }
 
+            if (request.Outcome == FolderDialogOutcome.Failed)
+            {
+                // K46: a Linux desktop without xdg-desktop-portal and zenity has no folder dialog; say so, and how to name the folder instead
+                _log.WriteLine($"the folder dialog could not be opened: {request.Error}");
+                string text = FolderDialogFailedMessage(request.Error, _lang);
+                Console.Error.WriteLine(text);
+                MessageBox.ShowError(AppIdentity.ProductName, text, _window);
+                return null;
+            }
+
             if (request.Outcome != FolderDialogOutcome.Chosen || request.Path is null)
             {
                 return null;
@@ -811,8 +828,9 @@ internal sealed class GameApp : IDisposable
             Say("clipboard: the first text of the run was copied (toast shown)");
             _runtime?.Ui.ShowToast(PortText.Get(PortString.TextCopied, _services.Language));
         };
-        _hook = new TextHookOutput(() => _port.TextHookerOutput, new GdiTextHookSink(), Say);
-        _webSocket = new TextWebSocketOutput(() => _port.TextWebSocket, () => _port.TextWebSocketPort, Say);
+        // the GDI hook point is Windows only: elsewhere every line failed and logged two lines (package K46, seen in WSL)
+        _hook = new TextHookOutput(() => OperatingSystem.IsWindows() && _port.TextHookerOutput, new GdiTextHookSink(), Say);
+        _webSocket = new TextWebSocketOutput(() => _port.TextWebSocket, () => _port.TextWebSocketPort, Say, () => _port.TextWebSocketOrigin);
         // the WebSocket toasts carry an address or an error to read: the longer hold (package K24 made the toast brief)
         _webSocket.Listening += port => _runtime?.Ui.ShowToast(PortText.Format(PortString.TextWebSocketListening, _services.Language, port), brief: false);
         _webSocket.Failed += (port, error) => _runtime?.Ui.ShowToast(PortText.Format(PortString.TextWebSocketFailed, _services.Language, port, error), brief: false);

@@ -136,7 +136,127 @@ public sealed class ReleaseCheckTests : IDisposable
         File.WriteAllBytes(Path.Combine(folder, "Tsukihime"), [0x7F, 0x45, 0x4C, 0x46]);
         ReleaseCheckResult result = ReleaseCheck.Run(folder, _crescent);
         Assert.False(result.Ok);
-        Assert.Equal("Tsukihime.dll is not in " + folder + ": the Linux player assembly is missing", Assert.Single(result.Problems));
+        Assert.Contains("Tsukihime.dll is not in " + folder + ": the Linux player assembly is missing", result.Problems);
+        Assert.Contains("Tsukihime is not an x86-64 ELF program", result.Problems);                // four bytes are no ELF header (K46)
+    }
+
+    [Fact]
+    public void ALinuxPublishWithItsLibrariesAndLicencesMayBeReleased()
+    {
+        // package K46: the player, SDL, the four FFmpeg 9 libraries of an LGPL build and the licences
+        string folder = LinuxRelease.Folder(_root, "linux");
+        ReleaseCheckResult result = ReleaseCheck.Run(folder, _crescent);
+        Assert.True(result.Ok, string.Join("; ", result.Problems));
+        Assert.Contains("Tsukihime: x86-64 ELF program", result.Notes);
+        Assert.Contains(result.Notes, n => n.StartsWith("Tsukihime.dll: the icon group is the crescent", StringComparison.Ordinal));
+        Assert.Contains("libavcodec.so.63: x86-64 shared object, LGPL build", result.Notes);
+        Assert.Contains("libSDL3.so: x86-64 shared object", result.Notes);
+        Assert.Contains("licenses/FFmpeg-SOURCE.txt names the Linux FFmpeg build", result.Notes);
+        Assert.Contains("the self-contained .NET runtime is beside the player", result.Notes);
+    }
+
+    [Theory]
+    [InlineData("gpl")]
+    [InlineData("nonfree")]
+    [InlineData("no licence string")]
+    [InlineData("postproc")]
+    [InlineData("no libavformat")]
+    [InlineData("no SDL")]
+    [InlineData("library not ELF")]
+    [InlineData("windows notice")]
+    [InlineData("no licence file")]
+    [InlineData("windows program")]
+    [InlineData("host not x86-64")]
+    [InlineData("framework-dependent")]
+    public void ALinuxPublishWithoutItsLibrariesOrWithAGplFfmpegIsRefused(string what)
+    {
+        string folder = LinuxRelease.Folder(_root, "linux-" + what.Replace(' ', '-'));
+        string expected;
+        switch (what)
+        {
+            case "gpl":
+                File.WriteAllBytes(Path.Combine(folder, "libavcodec.so.63"), LinuxRelease.Ffmpeg("libavcodec.so.63", LinuxRelease.LgplConfiguration + " --enable-gpl --enable-libx264"));
+                expected = "libavcodec.so.63 was built with --enable-gpl or --enable-nonfree";
+                break;
+            case "nonfree":
+                File.WriteAllBytes(Path.Combine(folder, "libavformat.so.63"), LinuxRelease.Ffmpeg("libavformat.so.63", LinuxRelease.LgplConfiguration + " --enable-nonfree"));
+                expected = "libavformat.so.63 was built with --enable-gpl or --enable-nonfree";
+                break;
+            case "no licence string":
+                File.WriteAllBytes(Path.Combine(folder, "libavutil.so.61"), LinuxRelease.Elf(3, "\0" + LinuxRelease.LgplConfiguration));
+                expected = "libavutil.so.61 does not carry FFmpeg's LGPL licence string";
+                break;
+            case "postproc":
+                File.WriteAllBytes(Path.Combine(folder, "libpostproc.so.59"), LinuxRelease.Elf(3));
+                expected = "libpostproc.so.59 is FFmpeg's GPL-only post-processing library";
+                break;
+            case "no libavformat":
+                File.Delete(Path.Combine(folder, "libavformat.so.63"));
+                expected = "libavformat.so.63 is not beside Tsukihime";
+                break;
+            case "no SDL":
+                File.Delete(Path.Combine(folder, "libSDL3.so"));
+                expected = "libSDL3.so is not beside Tsukihime";
+                break;
+            case "library not ELF":
+                File.WriteAllText(Path.Combine(folder, "libswresample.so.7"), "libswresample.so.7.1.100");      // a link an extractor left as text
+                expected = "libswresample.so.7 is not an x86-64 ELF shared object";
+                break;
+            case "windows notice":
+                File.WriteAllText(Path.Combine(folder, "licenses", "FFmpeg-SOURCE.txt"), "BtbN's win64-lgpl-shared-9.0 build: avcodec-63.dll avformat-63.dll avutil-61.dll swresample-7.dll");
+                expected = "licenses/FFmpeg-SOURCE.txt is not the notice of the Linux libraries";
+                break;
+            case "no licence file":
+                File.Delete(Path.Combine(folder, "licenses", "dotnet-THIRD-PARTY-NOTICES.txt"));
+                expected = "licenses/dotnet-THIRD-PARTY-NOTICES.txt is missing";
+                break;
+            case "windows program":
+                File.WriteAllBytes(Path.Combine(folder, "createdump.exe"), [0x4D, 0x5A]);
+                expected = "createdump.exe is a Windows program in the Linux folder";
+                break;
+            case "framework-dependent":
+                // K46 review: an offline `--self-contained false` publish has everything but the runtime
+                File.Delete(Path.Combine(folder, "libcoreclr.so"));
+                File.Delete(Path.Combine(folder, "System.Private.CoreLib.dll"));
+                expected = "libcoreclr.so, System.Private.CoreLib.dll not beside Tsukihime: the Linux release is a self-contained publish";
+                break;
+            default:
+                byte[] host = LinuxRelease.Elf(2);
+                host[18] = 183;                                                                                 // aarch64
+                File.WriteAllBytes(Path.Combine(folder, "Tsukihime"), host);
+                expected = "Tsukihime is not an x86-64 ELF program";
+                break;
+        }
+
+        ReleaseCheckResult result = ReleaseCheck.Run(folder, _crescent);
+        Assert.False(result.Ok);
+        Assert.StartsWith(expected, Assert.Single(result.Problems), StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("assets/branding/tsukihime-cg.png", "is a picture")]
+    [InlineData("docs/screenshot.jpg", "is a picture")]
+    [InlineData("icons/tsukihime.ico", "is a picture")]
+    [InlineData("image/movie/op.mp4", "is game data or a save")]
+    [InlineData("eboot.bin", "is game data or a save")]
+    [InlineData("save.dat", "is game data or a save")]
+    public void APictureOrGameDataInAFolderToBeReleasedIsRefusedOnEitherPlatform(string file, string why)
+    {
+        // package K46: pictures (bar the README's logo) and anything cut from a game folder never go out
+        foreach (string folder in new[] { NormalFolder("art-" + Guid.NewGuid().ToString("N")[..6]), LinuxRelease.Folder(_root, "linux-art-" + Guid.NewGuid().ToString("N")[..6]) })
+        {
+            string path = Path.Combine(folder, file.Replace('/', Path.DirectorySeparatorChar));
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            File.WriteAllBytes(path, [1, 2, 3]);
+            ReleaseCheckResult result = ReleaseCheck.Run(folder, _crescent);
+            Assert.False(result.Ok);
+            Assert.StartsWith($"{file} {why}", Assert.Single(result.Problems).Replace('\\', '/'), StringComparison.Ordinal);
+        }
+
+        Assert.Null(ReleaseRules.Forbidden(ReleaseRules.Logo));
+        Assert.Null(ReleaseRules.Forbidden("licenses/FFmpeg-LGPL.txt"));
+        Assert.Null(ReleaseRules.Forbidden("libavcodec.so.63"));
+        Assert.Null(ReleaseRules.Forbidden("Tsukihime.dll"));
     }
 
     [Fact]

@@ -31,7 +31,7 @@ public sealed class PortSettings : IUiPortSettings
         _socket = data.TextWebSocket ?? false;
         _notice = data.ScreenshotNotice ?? true;
         TextWebSocketPort = data.TextWebSocketPort ?? AppSettingsData.DefaultTextWebSocketPort;
-        TextWebSocketOrigin = data.TextWebSocketOrigin;
+        TextWebSocketOrigin = data.TextWebSocketOrigin ?? AppSettingsData.DefaultTextWebSocketOrigin;
     }
 
     /// <summary>Raised after a switch changed (and was saved).</summary>
@@ -120,7 +120,7 @@ public sealed class PortSettings : IUiPortSettings
     /// <summary>The WebSocket's port (settings.ini <c>text_websocket_port=</c>, else 6677); read at start, the file alone changes it.</summary>
     public int TextWebSocketPort { get; }
 
-    /// <summary>The trusted browser origin from settings.ini, read at start.</summary>
+    /// <summary>The trusted browser origin from settings.ini, else texthooker-ui's (<see cref="AppSettingsData.DefaultTextWebSocketOrigin"/>); read at start.</summary>
     public string? TextWebSocketOrigin { get; }
 
     private void Save(Func<AppSettingsData, AppSettingsData> change, string key, bool value)

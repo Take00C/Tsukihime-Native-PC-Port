@@ -26,6 +26,10 @@ internal sealed class TextWebSocketServer : IDisposable
     private static readonly TimeSpan HandshakeTimeout = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan FrameTimeout = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan WriteTimeout = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan DrainTimeout = TimeSpan.FromSeconds(1);
+    private const int MaxDrainBytes = 64 * 1024;
+    private const int MaxRefusalLogs = 16;
+    private static readonly string[] LoopbackNames = ["127.0.0.1", "localhost"];
 
     private readonly TcpListener _listener;
     private readonly Action<string>? _log;
@@ -35,6 +39,7 @@ internal sealed class TextWebSocketServer : IDisposable
     private readonly Lock _lock = new();
     private readonly List<Client> _clients = [];
     private readonly HashSet<TcpClient> _connections = [];
+    private readonly HashSet<string> _refusalsLogged = new(StringComparer.Ordinal);
     private string? _latest;
     private int _served;
     private bool _disposed;
@@ -210,6 +215,7 @@ internal sealed class TextWebSocketServer : IDisposable
             {
                 string reason = status == 403 ? "Forbidden" : "Bad Request";
                 await WriteAsync(stream, Encoding.ASCII.GetBytes($"HTTP/1.1 {status} {reason}\r\nConnection: close\r\nContent-Length: 0\r\n\r\n")).ConfigureAwait(false);
+                await DrainAsync(tcp, stream).ConfigureAwait(false);
                 return;
             }
 
@@ -351,14 +357,75 @@ internal sealed class TextWebSocketServer : IDisposable
         if (!headers.TryGetValue("Host", out string? host)
             || !(host.Equals($"127.0.0.1:{Port}", StringComparison.Ordinal)
                 || host.Equals($"localhost:{Port}", StringComparison.OrdinalIgnoreCase)
-                || (Port == 80 && (host == "127.0.0.1" || host.Equals("localhost", StringComparison.OrdinalIgnoreCase))))
-            || (headers.TryGetValue("Origin", out string? origin) && (_origin is null || origin != _origin)))
+                || (Port == 80 && (host == "127.0.0.1" || host.Equals("localhost", StringComparison.OrdinalIgnoreCase)))))
         {
+            NoteRefusal("host " + (host ?? "(none)"), $"websocket: refused a request for host {Shorten(host)} (only 127.0.0.1:{Port} and localhost:{Port} are served)");
+            return (null, 403);
+        }
+
+        if (headers.TryGetValue("Origin", out string? origin) && !TrustsOrigin(origin))
+        {
+            NoteRefusal("origin " + origin, RefusedOriginLine(origin));
             return (null, 403);
         }
 
         return (key, 101);
     }
+
+    /// <summary>
+    /// The trusted page's origin, or the server's own (K46): native WebSocket libraries such as Python's websocket-client send
+    /// <c>Origin: http://&lt;the Host they connect to&gt;</c> by default, and no web page can be served from this port while the game listens on it.
+    /// </summary>
+    private bool TrustsOrigin(string origin)
+    {
+        if (_origin is not null && origin == _origin)
+        {
+            return true;
+        }
+
+        foreach (string name in LoopbackNames)
+        {
+            if (origin.Equals($"http://{name}:{Port}", StringComparison.OrdinalIgnoreCase)
+                || origin.Equals($"https://{name}:{Port}", StringComparison.OrdinalIgnoreCase)
+                || (Port == 80 && origin.Equals("http://" + name, StringComparison.OrdinalIgnoreCase))
+                || (Port == 443 && origin.Equals("https://" + name, StringComparison.OrdinalIgnoreCase)))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>The log line for a refused Origin: the exact setting that would trust it, or why none can (K46).</summary>
+    internal static string RefusedOriginLine(string origin)
+    {
+        if (origin == "null")
+        {
+            return "websocket: refused a page with Origin null (a file:// page or a sandboxed frame); serve the page over http://127.0.0.1 and set text_websocket_origin= to that address (setup guide, Text WebSocket)";
+        }
+
+        return origin.Length <= 120 && AppSettings.TryParseWebSocketOrigin(origin, out string? setting) && setting == origin
+            ? $"websocket: refused a connection from the page {origin}; to trust it, set text_websocket_origin={origin} in settings.ini and restart"
+            : $"websocket: refused a connection from {Shorten(origin)}; text_websocket_origin= can trust only one http or https page";
+    }
+
+    /// <summary>Logs a refusal the first time its <paramref name="key"/> is seen, for at most <see cref="MaxRefusalLogs"/> different keys.</summary>
+    private void NoteRefusal(string key, string line)
+    {
+        lock (_lock)
+        {
+            if (_refusalsLogged.Count >= MaxRefusalLogs || !_refusalsLogged.Add(key))
+            {
+                return;
+            }
+        }
+
+        _log?.Invoke(line);
+    }
+
+    /// <summary>A header value for the log: already printable ASCII (the handshake refuses anything else), cut to 120 characters.</summary>
+    private static string Shorten(string? value) => string.IsNullOrEmpty(value) ? "(empty)" : value.Length <= 120 ? value : value[..120] + "...";
 
     private static bool HasToken(string value, string token) => value.Split(',').Any(part => part.Trim().Equals(token, StringComparison.OrdinalIgnoreCase));
 
@@ -478,6 +545,28 @@ internal sealed class TextWebSocketServer : IDisposable
 
         payload.CopyTo(frame.AsSpan(headerLength));
         return frame;
+    }
+
+    /// <summary>
+    /// After a refused handshake: ends the sending side and reads (and drops) what the client still sends, for at most <see cref="DrainTimeout"/> and
+    /// <see cref="MaxDrainBytes"/>, so that the client reads the refusal rather than a reset (Windows resets a connection that is closed with bytes unread).
+    /// </summary>
+    private async Task DrainAsync(TcpClient tcp, NetworkStream stream)
+    {
+        tcp.Client.Shutdown(SocketShutdown.Send);
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(_stopToken);
+        timeout.CancelAfter(DrainTimeout);
+        var buffer = new byte[4096];
+        for (int total = 0; total < MaxDrainBytes;)
+        {
+            int n = await stream.ReadAsync(buffer, timeout.Token).ConfigureAwait(false);
+            if (n == 0)
+            {
+                return;
+            }
+
+            total += n;
+        }
     }
 
     private static async Task WriteAsync(NetworkStream stream, byte[] bytes)
