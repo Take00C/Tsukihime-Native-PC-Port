@@ -1,6 +1,11 @@
-# text files are stored with LF and checked out as the machine's core.autocrlf says (docs/PUBLISHING.md 7.1)
+# Text files are stored with LF. Shell scripts and the texts a package ships (licences and guides) are also checked out
+# with LF, so a publish carries the same bytes from every fresh checkout. An older checkout keeps its CRLF copies until they are
+# rewritten (tools/tests/test_repository_files.py checks the working tree and gives the command).
 * text=auto
+*.sh text eol=lf
+*.md text eol=lf
+*.txt text eol=lf
+LICENSE text eol=lf
 *.ico binary
 *.png binary
 *.rgba binary
-*.sh text eol=lf
