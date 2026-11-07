@@ -1,0 +1,65 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <AssemblyName>TsukihimeLauncher</AssemblyName>
+    <RootNamespace>Tsuki.Launcher.Avalonia</RootNamespace>
+    <Version>0.1.7</Version>
+    <Product>Tsukihime PC port</Product>
+    <AssemblyTitle>Tsukihime Launcher</AssemblyTitle>
+    <ApplicationIcon>..\..\assets\icon\tsukihime.ico</ApplicationIcon>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Avalonia.Desktop" />
+    <PackageReference Include="Avalonia.Headless" />
+    <PackageReference Include="Avalonia.Skia" />
+    <PackageReference Include="Avalonia.Themes.Fluent" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Tsuki.Data\Tsuki.Data.csproj" />
+    <ProjectReference Include="..\Tsuki.Engine\Tsuki.Engine.csproj" />
+    <ProjectReference Include="..\Tsuki.Ui\Tsuki.Ui.csproj" />
+    <ProjectReference Include="..\Tsuki.App\Tsuki.App.csproj" ReferenceOutputAssembly="false" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="..\Tsuki.App\Services\AppSettings.cs" Link="Core\Shared\AppSettings.cs" />
+    <Compile Include="..\Tsuki.Platform\WindowFit.cs" Link="Core\Shared\WindowFit.cs" />
+    <Compile Include="..\Tsuki.App\Services\ProfileDirectory.cs" Link="Core\Shared\ProfileDirectory.cs" />
+    <Compile Include="..\Tsuki.Cli\Commands\ReleaseRules.cs" Link="Core\ReleaseRules.cs" />
+    <Compile Include="..\Tsuki.Cli\Commands\ReleaseRules.Mac.cs" Link="Core\ReleaseRules.Mac.cs" />
+    <Compile Include="..\Tsuki.Launcher\Core\ReleaseCheck.Shared.cs" Link="Core\ReleaseCheck.Shared.cs" />
+    <Compile Include="..\Tsuki.Launcher\Core\GameFolderCheck.cs" Link="Core\GameFolderCheck.cs" />
+    <Compile Include="..\Tsuki.Launcher\Core\ReadyCheck.cs" Link="Core\ReadyCheck.cs" />
+    <Compile Include="..\Tsuki.Launcher\Core\LauncherPaths.cs" Link="Core\LauncherPaths.cs" />
+    <Compile Include="..\Tsuki.Launcher\Core\LauncherFolderChoice.cs" Link="Core\LauncherFolderChoice.cs" />
+    <Compile Include="..\Tsuki.Launcher\Core\LauncherProfile.cs" Link="Core\LauncherProfile.cs" />
+    <Compile Include="..\Tsuki.Launcher\Core\LauncherLog.cs" Link="Core\LauncherLog.cs" />
+    <Compile Include="..\Tsuki.Launcher\Core\KeyTable.cs" Link="Core\KeyTable.cs" />
+    <Compile Include="..\Tsuki.Launcher\Core\SaveTools.cs" Link="Core\SaveTools.cs" />
+    <Compile Include="..\Tsuki.Launcher\Core\GameLauncher.cs" Link="Core\GameLauncher.cs" />
+    <Compile Include="..\Tsuki.Launcher\Core\ReleaseSums.cs" Link="Core\ReleaseSums.cs" />
+    <Compile Include="..\Tsuki.Launcher\Core\ReleaseVersion.cs" Link="Core\ReleaseVersion.cs" />
+    <Compile Include="..\Tsuki.Launcher\Core\UpdateSource.cs" Link="Core\UpdateSource.cs" />
+    <Compile Include="..\Tsuki.Launcher\Core\UpdateFeed.cs" Link="Core\UpdateFeed.cs" />
+    <Compile Include="..\Tsuki.Launcher\Core\UpdateClient.cs" Link="Core\UpdateClient.cs" />
+    <Compile Include="..\Tsuki.Launcher\Core\UpdateInstaller.cs" Link="Core\UpdateInstaller.cs" />
+    <Compile Include="..\Tsuki.Launcher\Core\Updater.cs" Link="Core\Updater.cs" />
+    <Compile Include="..\Tsuki.Launcher\Core\UpdateButtonState.cs" Link="Core\UpdateButtonState.cs" />
+    <Compile Include="..\Tsuki.Launcher\Core\LauncherTexts.cs" Link="Core\LauncherTexts.cs" />
+    <AvaloniaResource Include="..\..\assets\icon\tsukihime_256.png" Link="Assets\tsukihime_256.png" />
+    <None Include="Licenses\Avalonia-MIT.txt" Link="licenses\Avalonia-MIT.txt" CopyToPublishDirectory="PreserveNewest" />
+    <None Include="Licenses\SkiaSharp-LICENSE.txt" Link="licenses\SkiaSharp-LICENSE.txt" CopyToPublishDirectory="PreserveNewest" />
+    <None Include="Licenses\HarfBuzzSharp-LICENSE.txt" Link="licenses\HarfBuzzSharp-LICENSE.txt" CopyToPublishDirectory="PreserveNewest" />
+    <None Include="$(NuGetPackageRoot)/skiasharp/2.88.9/THIRD-PARTY-NOTICES.txt" Link="licenses\SkiaSharp-THIRD-PARTY-NOTICES.txt" CopyToPublishDirectory="PreserveNewest" />
+    <None Include="Licenses\MicroCom-MIT.txt" Link="licenses\MicroCom-MIT.txt" CopyToPublishDirectory="PreserveNewest" />
+    <None Include="Licenses\Tmds-DBus-MIT.txt" Link="licenses\Tmds-DBus-MIT.txt" CopyToPublishDirectory="PreserveNewest" />
+    <InternalsVisibleTo Include="Tsuki.Tests.Avalonia" />
+  </ItemGroup>
+  <Import Project="..\Tsuki.Distribution.targets" />
+  <Target Name="TsukiPublishApp" AfterTargets="Publish" Condition="'$(TsukiSkipAppCopy)' != 'true'">
+    <MSBuild Projects="..\Tsuki.App\Tsuki.App.csproj" Targets="Publish" Properties="Configuration=$(Configuration);RuntimeIdentifier=$(RuntimeIdentifier);SelfContained=$(SelfContained);PublishDir=$(PublishDir);NoBuild=false;TsukiSkipAppCopy=true" />
+    <ItemGroup>
+      <_TsukiPublishedSymbols Include="$(PublishDir)*.pdb" />
+    </ItemGroup>
+    <Delete Files="@(_TsukiPublishedSymbols)" />
+  </Target>
+</Project>

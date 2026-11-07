@@ -1,0 +1,75 @@
+<UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:views="clr-namespace:Tsuki.Launcher.Avalonia.Views" x:Class="Tsuki.Launcher.Avalonia.Views.GameFilesPage">
+  <ScrollViewer Classes="Page">
+    <StackPanel Margin="0,0,0,24">
+      <views:PageHeader Overline="GAME FILES" Title="Your copy of the game"
+                        Description="The port reads the PS4 game you own, the extracted CUSA47999 folder. The launcher only looks inside it; nothing in that folder is ever changed."/>
+      <Border Classes="Card">
+        <StackPanel>
+          <TextBlock Text="GAME FOLDER" Classes="SmallCaps"/>
+          <Rectangle Classes="GoldDivider" Margin="0,11,0,16"/>
+          <Grid ColumnDefinitions="*,10,Auto,8,Auto">
+            <TextBox x:Name="PathBox" Text="{Binding FolderText, Mode=TwoWay}" Watermark="Path of the CUSA47999 folder" Height="40">
+              <TextBox.KeyBindings>
+                <KeyBinding Gesture="Enter" Command="{Binding ApplyFolderCommand}"/>
+              </TextBox.KeyBindings>
+            </TextBox>
+            <Button Grid.Column="2" Content="Browse…" Classes="AccentButton" Command="{Binding BrowseCommand}" Height="40" Padding="20,0"/>
+            <Button Grid.Column="4" Content="Open" Classes="GhostButton" Command="{Binding OpenGameFolderCommand}" Height="40" Padding="20,0"/>
+          </Grid>
+          <TextBlock x:Name="FolderMessageText" Text="{Binding FolderMessage}" Classes="Muted" Foreground="{StaticResource WarningBrush}" Margin="2,10,0,0" IsVisible="{Binding FolderMessageVisible}"/>
+          <TextBlock Text="{Binding FolderHelp}" Classes="Muted" Margin="2,12,0,0"/>
+        </StackPanel>
+      </Border>
+
+      <!-- Linux: the application-menu entry starts the game, which finds the folder above in game_dir.txt -->
+      <Border Classes="Card" Margin="0,18,0,0" IsVisible="{Binding ShortcutSupported}">
+        <StackPanel>
+          <TextBlock Text="APPLICATION MENU" Classes="SmallCaps"/>
+          <Rectangle Classes="GoldDivider" Margin="0,11,0,16"/>
+          <TextBlock Text="{Binding ShortcutsText}" Classes="Muted"/>
+          <WrapPanel Margin="0,14,0,0">
+            <Button Content="Add Tsukihime to the application menu" Classes="AccentButton" Command="{Binding ShortcutCommand}" Height="38" Padding="18,0" Margin="0,0,10,8"/>
+          </WrapPanel>
+        </StackPanel>
+      </Border>
+
+      <Border Classes="Card" Margin="0,18,0,0">
+        <StackPanel>
+          <Grid>
+            <TextBlock Text="VERIFICATION" Classes="SmallCaps"/>
+            <Button Content="Check again" Classes="LinkButton" Command="{Binding RecheckCommand}" HorizontalAlignment="Right"/>
+          </Grid>
+          <Rectangle Classes="GoldDivider" Margin="0,11,0,16"/>
+          <Grid ColumnDefinitions="150,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto">
+            <TextBlock Grid.Row="0" Text="Status" Classes="Muted" Margin="0,0,0,10"/>
+            <TextBlock Grid.Row="0" Grid.Column="1" x:Name="StatusValue" Text="{Binding StatusText}" FontWeight="SemiBold" TextWrapping="Wrap" Margin="0,0,0,10"/>
+            <TextBlock Grid.Row="1" Text="Title and version" Classes="Muted" Margin="0,0,0,10"/>
+            <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding TitleText}" Margin="0,0,0,10"/>
+            <TextBlock Grid.Row="2" Text="Build" Classes="Muted" Margin="0,0,0,10"/>
+            <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding BuildDetail}" TextWrapping="Wrap" Margin="0,0,0,10"/>
+            <TextBlock Grid.Row="3" Text="Languages" Classes="Muted" Margin="0,0,0,10"/>
+            <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding LanguagesDetail}" Margin="0,0,0,10"/>
+            <TextBlock Grid.Row="4" Text="Size on disk" Classes="Muted" Margin="0,0,0,10"/>
+            <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding FolderSize}" Margin="0,0,0,10"/>
+            <TextBlock Grid.Row="5" Text="Build checks" Classes="Muted" Margin="0,0,0,10"/>
+            <TextBlock Grid.Row="5" Grid.Column="1" Text="{Binding ChecksText}" Margin="0,0,0,10"/>
+            <TextBlock Grid.Row="6" Text="Contents" Classes="Muted"/>
+            <TextBlock Grid.Row="6" Grid.Column="1" Text="{Binding ContentsText}"/>
+          </Grid>
+          <ItemsControl x:Name="ProblemList" ItemsSource="{Binding Folder.ProblemList}" Margin="0,16,0,0">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate>
+                <Grid ColumnDefinitions="22,*" Margin="0,0,0,6">
+                  <Viewbox Width="14" Height="14" Margin="0,2,0,0" VerticalAlignment="Top" HorizontalAlignment="Left">
+                    <Path Classes="Icon" Data="{StaticResource WarningIcon}" Stroke="{StaticResource WarningBrush}" StrokeThickness="1.8"/>
+                  </Viewbox>
+                  <TextBlock Grid.Column="1" Text="{Binding}" Classes="Muted" Foreground="#E8D9A6"/>
+                </Grid>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </StackPanel>
+      </Border>
+    </StackPanel>
+  </ScrollViewer>
+</UserControl>

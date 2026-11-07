@@ -1,0 +1,74 @@
+<UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" x:Class="Tsuki.Launcher.Avalonia.Views.HeroView">
+  <!-- the banner of the Play page (the Windows launcher's HeroView): the game's own title art, or a drawn moon until a game folder is set -->
+  <Border x:Name="Frame" CornerRadius="10" BorderBrush="{StaticResource PanelBorderBrush}" BorderThickness="1" Background="{StaticResource NightBrush}" ClipToBounds="True">
+    <Panel>
+      <Viewbox Stretch="UniformToFill" IsVisible="{Binding HeroArt, Converter={x:Static ObjectConverters.IsNull}}">
+        <Canvas Width="900" Height="290">
+          <Canvas.Background>
+            <LinearGradientBrush StartPoint="0%,0%" EndPoint="0%,100%">
+              <GradientStop Color="#0A0F24" Offset="0"/>
+              <GradientStop Color="#16225A" Offset="0.78"/>
+              <GradientStop Color="#0E1532" Offset="1"/>
+            </LinearGradientBrush>
+          </Canvas.Background>
+          <Ellipse Canvas.Left="440" Canvas.Top="-95" Width="440" Height="440">
+            <Ellipse.Fill><RadialGradientBrush><GradientStop Color="#665E8BFF" Offset="0"/><GradientStop Color="#225E8BFF" Offset="0.55"/><GradientStop Color="#005E8BFF" Offset="1"/></RadialGradientBrush></Ellipse.Fill>
+          </Ellipse>
+          <Ellipse Canvas.Left="520" Canvas.Top="-15" Width="280" Height="280" Stroke="#1F9CD2FF" StrokeThickness="1"/>
+          <Border Canvas.Left="570" Canvas.Top="35" Width="180" Height="180" CornerRadius="90" BoxShadow="0 0 46 0 #B39CD2FF">
+            <Border.Background>
+              <RadialGradientBrush GradientOrigin="36%,30%" Center="45%,42%" RadiusX="78%" RadiusY="78%">
+                <GradientStop Color="#F7FBFF" Offset="0"/>
+                <GradientStop Color="#C4E3FF" Offset="0.32"/>
+                <GradientStop Color="#7DA8FF" Offset="0.72"/>
+                <GradientStop Color="#3A55B5" Offset="1"/>
+              </RadialGradientBrush>
+            </Border.Background>
+          </Border>
+          <Ellipse Canvas.Left="578" Canvas.Top="43" Width="164" Height="164" Stroke="#40FFFFFF" StrokeThickness="1.2"/>
+          <Path Fill="#B3FFFFFF" Canvas.Left="800" Canvas.Top="50" Data="{StaticResource SparkleGeometry}"/>
+          <Path Fill="#80FFFFFF" Canvas.Left="520" Canvas.Top="210" Data="{StaticResource SparkleGeometry}">
+            <Path.RenderTransform><ScaleTransform ScaleX="0.6" ScaleY="0.6"/></Path.RenderTransform>
+          </Path>
+          <Ellipse Canvas.Left="470" Canvas.Top="38" Width="3" Height="3" Fill="#CCFFFFFF"/>
+          <Ellipse Canvas.Left="835" Canvas.Top="160" Width="2.5" Height="2.5" Fill="#B3FFFFFF"/>
+          <Ellipse Canvas.Left="745" Canvas.Top="24" Width="2" Height="2" Fill="#99FFFFFF"/>
+          <Ellipse Canvas.Left="880" Canvas.Top="96" Width="2" Height="2" Fill="#80FFFFFF"/>
+          <Ellipse Canvas.Left="420" Canvas.Top="140" Width="2" Height="2" Fill="#66FFFFFF"/>
+          <Ellipse Canvas.Left="610" Canvas.Top="250" Width="2" Height="2" Fill="#66FFFFFF"/>
+          <Ellipse Canvas.Left="790" Canvas.Top="225" Width="2.5" Height="2.5" Fill="#80FFFFFF"/>
+          <Rectangle Canvas.Top="228" Width="900" Height="62">
+            <Rectangle.Fill><LinearGradientBrush StartPoint="0%,0%" EndPoint="0%,100%"><GradientStop Color="#00080C20" Offset="0"/><GradientStop Color="#CC080C20" Offset="1"/></LinearGradientBrush></Rectangle.Fill>
+          </Rectangle>
+        </Canvas>
+      </Viewbox>
+
+      <!-- the game's own title art, read from the player's files at run time; HeroView.axaml.cs keeps its shape (PlaceArt) -->
+      <Image x:Name="Art" Source="{Binding HeroArt}" Stretch="Fill" HorizontalAlignment="Left" VerticalAlignment="Top" RenderOptions.BitmapInterpolationMode="HighQuality"/>
+
+      <!-- darkening, left to right, so that the text reads on any picture -->
+      <Rectangle><Rectangle.Fill><LinearGradientBrush StartPoint="0%,0%" EndPoint="100%,0%"><GradientStop Color="#F00A0F24" Offset="0"/><GradientStop Color="#C70A1030" Offset="0.34"/><GradientStop Color="#590B1234" Offset="0.62"/><GradientStop Color="#0D0E1532" Offset="1"/></LinearGradientBrush></Rectangle.Fill></Rectangle>
+      <Rectangle VerticalAlignment="Bottom" Height="110"><Rectangle.Fill><LinearGradientBrush StartPoint="0%,0%" EndPoint="0%,100%"><GradientStop Color="#000A0F24" Offset="0"/><GradientStop Color="#99090E22" Offset="1"/></LinearGradientBrush></Rectangle.Fill></Rectangle>
+
+      <StackPanel HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="38,0,0,30">
+        <TextBlock Text="{Binding PlatformLine}" Classes="SmallCaps" FontSize="11.5" LetterSpacing="2.6"/>
+        <Panel Margin="0,4,0,0">
+          <StackPanel IsVisible="{Binding HeroLogo, Converter={x:Static ObjectConverters.IsNull}}">
+            <TextBlock Text="{Binding HeroTitle}" FontFamily="{StaticResource SerifFont}" FontSize="60" LetterSpacing="5">
+              <TextBlock.Effect><DropShadowEffect Color="#5E8BFF" BlurRadius="24" OffsetX="0" OffsetY="0" Opacity="0.55"/></TextBlock.Effect>
+            </TextBlock>
+            <TextBlock Text="-A piece of blue glass moon-" FontFamily="{StaticResource SerifFont}" FontStyle="Italic" FontSize="19" Foreground="#C4D2F5" Margin="2,0,0,0"/>
+          </StackPanel>
+          <Image Source="{Binding HeroLogo}" Width="400" HorizontalAlignment="Left" VerticalAlignment="Center" Stretch="Uniform" RenderOptions.BitmapInterpolationMode="HighQuality"
+                 IsVisible="{Binding HeroLogo, Converter={x:Static ObjectConverters.IsNotNull}}">
+            <Image.Effect><DropShadowEffect Color="#5E8BFF" BlurRadius="22" OffsetX="0" OffsetY="0" Opacity="0.5"/></Image.Effect>
+          </Image>
+        </Panel>
+        <StackPanel Orientation="Horizontal" Margin="0,18,0,0">
+          <Border Classes="Chip"><TextBlock Text="{Binding GameChip}" FontSize="11.5" Foreground="#C4D2F5"/></Border>
+          <Border Classes="Chip"><TextBlock x:Name="VersionChip" Text="{Binding LauncherVersion}" FontSize="11.5" Foreground="#C4D2F5"/></Border>
+        </StackPanel>
+      </StackPanel>
+    </Panel>
+  </Border>
+</UserControl>
