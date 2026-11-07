@@ -49,7 +49,21 @@ if [[ "$origin" != "https://git.ffmpeg.org/ffmpeg.git" ]]; then
     printf 'ffmpeg_macos: the checkout origin is not the official FFmpeg repository: %s\n' "$origin" >&2
     exit 1
 fi
-git -C "$source_dir" fetch --depth 1 origin "$ref"
+# git.ffmpeg.org sometimes drops a connection ("Connection reset by peer" on GitHub's macOS runner): try it three times, then FFmpeg's own
+# GitHub mirror. The commit check below still decides: n9.0.2 must resolve to the expected commit wherever it came from.
+fetched=""
+for attempt in 1 2 3; do
+    if git -C "$source_dir" fetch --depth 1 origin "$ref"; then
+        fetched=1
+        break
+    fi
+    printf 'ffmpeg_macos: fetching %s from git.ffmpeg.org failed (try %s of 3)\n' "$ref" "$attempt" >&2
+    sleep $((attempt * 10))
+done
+if [[ -z "$fetched" ]]; then
+    printf 'ffmpeg_macos: fetching %s from FFmpeg'"'"'s GitHub mirror instead\n' "$ref" >&2
+    git -C "$source_dir" fetch --depth 1 https://github.com/FFmpeg/FFmpeg.git "$ref"
+fi
 git -C "$source_dir" checkout --detach FETCH_HEAD
 if [[ -n "$(git -C "$source_dir" status --porcelain)" ]]; then
     printf 'ffmpeg_macos: the FFmpeg checkout has local changes: %s\n' "$source_dir" >&2

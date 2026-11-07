@@ -148,6 +148,29 @@ public sealed class RunningGameTests : IDisposable
     }
 
     [Fact]
+    public void OnlyOneLookOfTheWatchSaysThatTheGameEnded()
+    {
+        // a slow machine (GitHub's Intel Mac) ran two looks at once: both said the game had ended and two reloads crashed into each other
+        string install = Path.Combine(_root, "overlap");
+        Directory.CreateDirectory(install);
+        using Process process = CopiedGame(install, out _);
+        try
+        {
+            UnixLauncherModel model = Model(install, new Uri("http://127.0.0.1:9/"), interval: TimeSpan.FromHours(1));   // the timer never looks by itself
+            Assert.True(SpinWait.SpinUntil(() => model.GameRunning, TimeSpan.FromSeconds(5)), "the copied Tsukihime process was not detected");
+            Assert.False(model.ExternalWatchTick(null));                       // still running: nothing to say
+            Stop(process);
+            Assert.True(SpinWait.SpinUntil(() => !GameLauncher.IsGameRunningFrom(install, PlatformServices.AppName), TimeSpan.FromSeconds(10)));
+            Assert.True(model.ExternalWatchTick(null));                        // the look that takes the watch says it
+            Assert.False(model.ExternalWatchTick(null));                       // a look that overlapped it says nothing
+        }
+        finally
+        {
+            Stop(process);
+        }
+    }
+
+    [Fact]
     public void BackInFrontTheLauncherReadsTheProfileAgainOnlyWhenAFileChanged()
     {
         // the window's Activated: settings.ini or save.dat written since the last read are read again and said; otherwise only the play state is said
@@ -260,7 +283,7 @@ public sealed class RunningGameTests : IDisposable
         }
     }
 
-    private UnixLauncherModel Model(string install, Uri api, bool? linux = null) => new(_paths, install, Path.Combine(_root, "no-game"))
+    private UnixLauncherModel Model(string install, Uri api, bool? linux = null, TimeSpan? interval = null) => new(_paths, install, Path.Combine(_root, "no-game"))
     {
         IsLinux = linux ?? OperatingSystem.IsLinux(),
         // a desktop, not a Steam Deck (whose launcher leaves the window mode to the game)
@@ -270,7 +293,7 @@ public sealed class RunningGameTests : IDisposable
         CurrentVersionOverride = new ReleaseVersion(0, 0, 1),
         // the Linux layout on every host, a Mac included
         MacBundleUpdate = false,
-        ExternalGameInterval = TimeSpan.FromMilliseconds(100),
+        ExternalGameInterval = interval ?? TimeSpan.FromMilliseconds(100),
     };
 
     /// <summary>Ends a stand-in game (one the model followed and disposed has ended already).</summary>

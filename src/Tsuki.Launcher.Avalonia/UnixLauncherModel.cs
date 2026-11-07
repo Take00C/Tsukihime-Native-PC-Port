@@ -498,13 +498,7 @@ public sealed partial class UnixLauncherModel : INotifyPropertyChanged
     {
         if (_externalWatch is not null) { return; }
         SynchronizationContext? ui = SynchronizationContext.Current;
-        var watch = new Timer(_ =>
-        {
-            if (GameLauncher.IsGameRunningFrom(_launcherDirectory, PlatformServices.AppName)) { return; }
-            Interlocked.Exchange(ref _externalWatch, null)?.Dispose();
-            if (ui is null) { OnExternalGameEnded(); }
-            else { ui.Post(_ => OnExternalGameEnded(), null); }
-        });
+        var watch = new Timer(_ => ExternalWatchTick(ui));
         if (Interlocked.CompareExchange(ref _externalWatch, watch, null) is not null)
         {
             watch.Dispose();
@@ -512,6 +506,21 @@ public sealed partial class UnixLauncherModel : INotifyPropertyChanged
         }
 
         watch.Change(ExternalGameInterval, ExternalGameInterval);
+    }
+
+    /// <summary>
+    /// One look of the watch for a game the launcher did not start. Only the look that takes the watch away says the game ended: on a slow machine
+    /// two looks can overlap (a timer does not wait for its last callback), and without a window's thread to queue on, two reloads would run at once.
+    /// </summary>
+    /// <returns>Whether this look said that the game ended.</returns>
+    internal bool ExternalWatchTick(SynchronizationContext? ui)
+    {
+        if (GameLauncher.IsGameRunningFrom(_launcherDirectory, PlatformServices.AppName)) { return false; }
+        if (Interlocked.Exchange(ref _externalWatch, null) is not { } watch) { return false; }
+        watch.Dispose();
+        if (ui is null) { OnExternalGameEnded(); }
+        else { ui.Post(_ => OnExternalGameEnded(), null); }
+        return true;
     }
 
     /// <summary>A game the launcher did not start has ended: it may have changed settings.ini (F11, Config › Display Mode) and save.dat, so both are read again.</summary>
