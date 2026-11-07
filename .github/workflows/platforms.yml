@@ -1,0 +1,120 @@
+name: Native platforms
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  TSUKI_GAME_DIR: /nonexistent
+  DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+  DOTNET_NOLOGO: '1'
+  AVALONIA_TELEMETRY_OPTOUT: '1'
+
+jobs:
+  build-test:
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-15
+            rid: osx-arm64
+            arch: arm64
+            solution: src/Tsuki.Linux.slnx
+            build_options: ''
+          - os: macos-15-intel
+            rid: osx-x64
+            arch: x64
+            solution: src/Tsuki.Linux.slnx
+            build_options: ''
+          - os: ubuntu-latest
+            rid: linux-x64
+            solution: src/Tsuki.Linux.slnx
+            build_options: ''
+          - os: windows-latest
+            rid: win-x64
+            solution: src/Tsuki.slnx
+            build_options: '-p:TsukiUsesFFmpeg=false'
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0 (Node 24)
+        with:
+          dotnet-version: 10.0.x
+      - name: Build without warnings
+        run: dotnet build "${{ matrix.solution }}" -warnaserror --nologo ${{ matrix.build_options }}
+      - name: Run synthetic tests
+        run: dotnet test tests/Tsuki.Tests.Synthetic --no-build -warnaserror --nologo
+      - name: Run Avalonia launcher tests
+        run: dotnet test tests/Tsuki.Tests.Avalonia -warnaserror --nologo ${{ matrix.build_options }}
+      # The real Linux launcher downloads, installs and restarts into an update; the test adds FFmpeg stand-ins to the release it serves.
+      - name: Run the real Linux update test
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          dotnet publish src/Tsuki.Launcher.Avalonia -c Release -r linux-x64 --self-contained true -p:TsukiBundleFFmpeg=false -o "$RUNNER_TEMP/linux-publish" --nologo
+          test -x "$RUNNER_TEMP/linux-publish/TsukihimeLauncher"
+          TSUKI_K48_LINUX_PUBLISH="$RUNNER_TEMP/linux-publish" dotnet test tests/Tsuki.Tests.Avalonia --no-build --nologo --filter "FullyQualifiedName~LinuxUpdateEndToEndTests" | tee "$RUNNER_TEMP/linux-update-test.txt"
+          # a skip (no publish seen) or no matching test would pass silently
+          grep -Eq 'Failed: +0, Passed: +[1-9][0-9]*, Skipped: +0,' "$RUNNER_TEMP/linux-update-test.txt"
+      # The Data tests' packaging agreement check runs the Python ICNS writer, so Python comes first.
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0 (Node 24)
+        if: runner.os != 'Windows'
+        with:
+          python-version-file: .python-version
+      - name: Run data tests that need no game
+        if: runner.os != 'Windows'
+        run: dotnet test tests/Tsuki.Tests.Data --no-build -warnaserror --nologo
+      - name: Run Python packaging and workflow tests
+        if: runner.os != 'Windows'
+        env:
+          PYTHONPATH: tools
+          PYTEST_DISABLE_PLUGIN_AUTOLOAD: '1'
+        run: |
+          python -m pip install --only-binary=:all: -c requirements-dev.txt pytest
+          python -m pytest tools/tests/test_macos_release.py tools/tests/test_linux_release.py tools/tests/test_repository_files.py tools/tests/test_release_tools.py -q
+      - name: Cache minimal FFmpeg
+        id: ffmpeg-cache
+        if: runner.os == 'macOS'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0 (Node 24)
+        with:
+          path: third_party/ffmpeg/macos-${{ matrix.arch }}
+          key: ffmpeg-n9.0.2-macos-${{ matrix.arch }}-minimal-v2-${{ hashFiles('tools/setup/ffmpeg_macos.sh') }}
+      - name: Install nasm for Intel FFmpeg
+        if: steps.ffmpeg-cache.outputs.cache-hit != 'true' && matrix.arch == 'x64'
+        run: brew install nasm
+      - name: Build minimal shared LGPL FFmpeg
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          if [ ! -f "third_party/ffmpeg/macos-${{ matrix.arch }}/libavformat.63.dylib" ]; then
+            bash tools/setup/ffmpeg_macos.sh "${{ matrix.arch }}"
+          fi
+      - name: Publish self-contained launcher and player
+        if: runner.os == 'macOS'
+        run: dotnet publish src/Tsuki.Launcher.Avalonia -c Release -r "${{ matrix.rid }}" --self-contained true -p:PublishReadyToRun=true -o "artifacts/${{ matrix.rid }}" --nologo
+      - name: Package, ad-hoc sign and zip Tsukihime.app
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          version=$(python3 -I tools/setup/release_version.py --ref-type "$GITHUB_REF_TYPE" --ref-name "$GITHUB_REF_NAME")
+          echo "version=$version" >> "$GITHUB_ENV"
+          python3 -I tools/setup/package_macos.py "artifacts/${{ matrix.rid }}" --version "$version" --arch "${{ matrix.arch }}" --out "artifacts/package-${{ matrix.arch }}" --zip
+      - name: Check the packaged app and ZIP
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          dotnet run --project src/Tsuki.Cli -c Release -- release-check "artifacts/package-${{ matrix.arch }}/Tsukihime.app"
+          dotnet run --project src/Tsuki.Cli -c Release -- release-sums "artifacts/package-${{ matrix.arch }}/Tsukihime-v${{ env.version }}-macos-${{ matrix.arch }}.zip"
+      # The updater every Mac copy ships, on the real ZIP: ditto, the unpack comparison, codesign, the bundle swap and the restart.
+      - name: Update the extracted app to this ZIP with its own launcher
+        if: runner.os == 'macOS'
+        shell: bash
+        run: python3 -I tools/tests/update_e2e.py "artifacts/package-${{ matrix.arch }}/Tsukihime-v${{ env.version }}-macos-${{ matrix.arch }}.zip" --work "$RUNNER_TEMP/update-e2e" --summary "$GITHUB_STEP_SUMMARY"
+      # SDL's offscreen driver needs EGL, which macOS does not provide. Run --smoke on Mac hardware.

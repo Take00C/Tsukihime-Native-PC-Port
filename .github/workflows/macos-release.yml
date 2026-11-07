@@ -1,0 +1,267 @@
+name: macOS experimental downloads
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  TSUKI_GAME_DIR: /nonexistent
+  DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+  DOTNET_NOLOGO: '1'
+  AVALONIA_TELEMETRY_OPTOUT: '1'
+
+jobs:
+  package:
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-15
+            rid: osx-arm64
+            arch: arm64
+          - os: macos-15-intel
+            rid: osx-x64
+            arch: x64
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      # First: a commit without the version bump (or a tag that is not vX.Y.Z of it) stops before the FFmpeg build, and the summary starts with the version.
+      - name: Check the release version
+        shell: bash
+        run: |
+          version=$(python3 -I tools/setup/release_version.py --ref-type "$GITHUB_REF_TYPE" --ref-name "$GITHUB_REF_NAME")
+          echo "version=$version" >> "$GITHUB_ENV"
+          printf '## Tsukihime v%s, macOS %s\n\nZIP: Tsukihime-v%s-macos-%s.zip\n\n' "$version" "${{ matrix.arch }}" "$version" "${{ matrix.arch }}" >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0 (Node 24)
+        with:
+          dotnet-version: 10.0.x
+      - name: Install nasm for Intel FFmpeg
+        if: matrix.arch == 'x64'
+        run: brew install nasm
+      - name: Build minimal shared LGPL FFmpeg from source
+        shell: bash
+        run: bash tools/setup/ffmpeg_macos.sh "${{ matrix.arch }}"
+      - name: Publish self-contained launcher and player
+        run: dotnet publish src/Tsuki.Launcher.Avalonia -c Release -r "${{ matrix.rid }}" --self-contained true -p:PublishReadyToRun=true -o "artifacts/${{ matrix.rid }}" --nologo
+      - name: Package, sign and zip Tsukihime.app
+        shell: bash
+        run: python3 -I tools/setup/package_macos.py "artifacts/${{ matrix.rid }}" --version "${{ env.version }}" --arch "${{ matrix.arch }}" --out "artifacts/package-${{ matrix.arch }}" --zip
+      # Recorded before the checks, and after a failure too, so a refused ZIP still shows what codesign and ditto wrote.
+      - name: Record source, toolchain and ZIP provenance
+        if: always()
+        shell: bash
+        run: |
+          app="artifacts/package-${{ matrix.arch }}/Tsukihime.app"
+          zip="artifacts/package-${{ matrix.arch }}/Tsukihime-v${{ env.version }}-macos-${{ matrix.arch }}.zip"
+          ffmpeg="third_party/ffmpeg/macos-${{ matrix.arch }}/FFmpeg-SOURCE.txt"
+          {
+            echo '### macOS ${{ matrix.arch }}'
+            echo '```text'
+            printf 'Source commit: %s\n' "${{ github.sha }}"
+            if command -v nasm >/dev/null; then nasm -v; fi
+            clang --version | sed -n 1p
+            xcodebuild -version
+            if [ -f "$ffmpeg" ]; then grep -E '^(Official source|Requested ref|Exact source commit|Configure command)' "$ffmpeg"; else echo "no $ffmpeg"; fi
+            if [ -d "$app" ]; then
+              for program in TsukihimeLauncher Tsukihime; do
+                printf '%s signature: %s\n' "$program" "$(codesign -dv "$app/Contents/MacOS/$program" 2>&1 | grep '^Identifier=' || echo none)"
+              done
+              printf 'com.apple.cs attributes in the app: %s\n' "$(xattr -lr "$app" | grep -c com.apple.cs || true)"
+            else
+              echo "no $app"
+            fi
+            if [ -f "$zip" ]; then
+              printf '__MACOSX entries in the ZIP: %s\n' "$(zipinfo -1 "$zip" | grep -c '^__MACOSX/' || true)"
+              shasum -a 256 "$zip"
+            else
+              echo "no $zip"
+            fi
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Check the packaged app and ZIP
+        shell: bash
+        run: |
+          dotnet run --project src/Tsuki.Cli -c Release -- release-check "artifacts/package-${{ matrix.arch }}/Tsukihime.app"
+          dotnet run --project src/Tsuki.Cli -c Release -- release-sums "artifacts/package-${{ matrix.arch }}/Tsukihime-v${{ env.version }}-macos-${{ matrix.arch }}.zip"
+          rm -rf "artifacts/verify-${{ matrix.arch }}"
+          ditto -x -k "artifacts/package-${{ matrix.arch }}/Tsukihime-v${{ env.version }}-macos-${{ matrix.arch }}.zip" "artifacts/verify-${{ matrix.arch }}"
+          codesign --verify --deep --strict "artifacts/verify-${{ matrix.arch }}/Tsukihime.app"
+      # The smoke runs the copy extracted from the ZIP, which is what players get.
+      - name: Run headless native smoke checks
+        shell: bash
+        env:
+          SDL_AUDIODRIVER: dummy
+        run: |
+          app="artifacts/verify-${{ matrix.arch }}/Tsukihime.app/Contents/MacOS"
+          "$app/TsukihimeLauncher" --selftest "$RUNNER_TEMP/selftest.txt" --data "$RUNNER_TEMP/tsuki-profile" --game /nonexistent
+          "$app/TsukihimeLauncher" --render "$RUNNER_TEMP/tsuki-renders" --data "$RUNNER_TEMP/tsuki-profile" --game /nonexistent
+          "$app/TsukihimeLauncher" --window-smoke --data "$RUNNER_TEMP/tsuki-profile" --game /nonexistent
+          "$app/Tsukihime" --smoke-headless --report "$RUNNER_TEMP/smoke.txt"
+          {
+            echo '### Smoke ${{ matrix.arch }}'
+            echo '```text'
+            cat "$RUNNER_TEMP/selftest.txt"
+            echo 'TsukihimeLauncher --window-smoke: exit 0'
+            cat "$RUNNER_TEMP/smoke.txt"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      # Whether a hosted Mac gives the game an OpenGL 3.3 window: informational, so it never stops the downloads.
+      - name: Try the GL window smoke (informational)
+        continue-on-error: true
+        timeout-minutes: 5
+        shell: bash
+        env:
+          SDL_AUDIODRIVER: dummy
+        run: |
+          code=0
+          "artifacts/verify-${{ matrix.arch }}/Tsukihime.app/Contents/MacOS/Tsukihime" --smoke --report "$RUNNER_TEMP/smoke-gl.txt" || code=$?
+          {
+            echo "### GL window smoke ${{ matrix.arch }} (informational): exit $code"
+            echo '```text'
+            cat "$RUNNER_TEMP/smoke-gl.txt" 2>/dev/null || echo '(no report)'
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit "$code"
+      # Whether the launcher's window opens on the hosted Mac's own windowing (the start that crashed before cfdb8da): informational too.
+      - name: Try the launcher's native window smoke (informational)
+        continue-on-error: true
+        timeout-minutes: 5
+        shell: bash
+        run: |
+          code=0
+          profile="$RUNNER_TEMP/tsuki-native-profile"
+          "artifacts/verify-${{ matrix.arch }}/Tsukihime.app/Contents/MacOS/TsukihimeLauncher" --window-smoke native --data "$profile" --game /nonexistent || code=$?
+          {
+            echo "### Launcher native window smoke ${{ matrix.arch }} (informational): exit $code"
+            echo '```text'
+            cat "$profile/launcher_crash.log" 2>/dev/null || echo '(no launcher_crash.log)'
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit "$code"
+      # With archive: false the ZIP's own file name is the artifact name.
+      - name: Upload experimental ZIP
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2 (Node 24)
+        with:
+          path: artifacts/package-${{ matrix.arch }}/Tsukihime-v${{ env.version }}-macos-${{ matrix.arch }}.zip
+          if-no-files-found: error
+          retention-days: 3
+          archive: false
+      - name: Upload the ZIP for the macOS 26 check (not for release)
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2 (Node 24)
+        with:
+          name: internal-macos-26-check-${{ matrix.arch }}
+          path: artifacts/package-${{ matrix.arch }}/Tsukihime-v${{ env.version }}-macos-${{ matrix.arch }}.zip
+          if-no-files-found: error
+          retention-days: 1
+      # The updater every v0.1.7 copy ships, on this ZIP: ditto, the unpack comparison, codesign, the bundle swap and the restart. It runs after the
+      # uploads, so a failure here turns the run red but still leaves the ZIPs and the diagnostics to look at: never release a ZIP of a red run unread.
+      - name: Update the extracted app to this ZIP with its own launcher
+        shell: bash
+        run: python3 -I tools/tests/update_e2e.py "artifacts/package-${{ matrix.arch }}/Tsukihime-v${{ env.version }}-macos-${{ matrix.arch }}.zip" --work "$RUNNER_TEMP/update-e2e" --summary "$GITHUB_STEP_SUMMARY"
+      - name: Collect diagnostics after a failure
+        if: failure()
+        shell: bash
+        run: |
+          out="$RUNNER_TEMP/mac-diagnostics"
+          mkdir -p "$out"
+          for app in "artifacts/package-${{ matrix.arch }}/Tsukihime.app" "artifacts/verify-${{ matrix.arch }}/Tsukihime.app"; do
+            [ -d "$app" ] || continue
+            name=$(dirname "$app" | tr '/' '-')
+            codesign -dvvv --deep "$app" > "$out/$name-codesign.txt" 2>&1 || true
+            codesign --verify --deep --strict --verbose=4 "$app" >> "$out/$name-codesign.txt" 2>&1 || true
+            xattr -lr "$app" > "$out/$name-xattr.txt" 2>&1 || true
+          done
+          for zip in artifacts/package-${{ matrix.arch }}/*.zip; do
+            if [ -f "$zip" ]; then zipinfo "$zip" > "$out/$(basename "$zip").zipinfo.txt" 2>&1 || true; fi
+          done
+          cp "$RUNNER_TEMP"/update-e2e/report.txt* "$RUNNER_TEMP"/update-e2e/profile/*.log "$out/" 2>/dev/null || true
+          # what FFmpeg's configure tried, when the FFmpeg build is what failed
+          cp "third_party/ffmpeg/macos-${{ matrix.arch }}-build/build/ffbuild/config.log" "$out/" 2>/dev/null || true
+      - name: Upload diagnostics after a failure (not for release)
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2 (Node 24)
+        with:
+          name: mac-diagnostics-${{ matrix.arch }}-not-for-release
+          path: |
+            ${{ runner.temp }}/mac-diagnostics
+            artifacts/package-${{ matrix.arch }}
+          retention-days: 3
+
+  # macOS 26, which most testers run: the same ZIPs, checked again without a rebuild.
+  check-macos-26:
+    needs: package
+    # also after a red package job: an updater failure there still uploaded the ZIPs, and macOS 26 says whether it fails the same way
+    if: ${{ !cancelled() }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-26
+            arch: arm64
+          - os: macos-26-intel
+            arch: x64
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - name: Check the release version
+        shell: bash
+        run: |
+          version=$(python3 -I tools/setup/release_version.py --ref-type "$GITHUB_REF_TYPE" --ref-name "$GITHUB_REF_NAME")
+          echo "version=$version" >> "$GITHUB_ENV"
+          printf '## Tsukihime v%s, macOS %s on %s (%s)\n\n' "$version" "${{ matrix.arch }}" "${{ matrix.os }}" "$(sw_vers -productVersion)" >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2 (Node 24)
+        with:
+          name: internal-macos-26-check-${{ matrix.arch }}
+          path: ${{ runner.temp }}/download
+      - name: Check and smoke the extracted ZIP
+        shell: bash
+        env:
+          SDL_AUDIODRIVER: dummy
+        run: |
+          ditto -x -k "$RUNNER_TEMP/download/Tsukihime-v${{ env.version }}-macos-${{ matrix.arch }}.zip" "$RUNNER_TEMP/verify"
+          codesign --verify --deep --strict "$RUNNER_TEMP/verify/Tsukihime.app"
+          app="$RUNNER_TEMP/verify/Tsukihime.app/Contents/MacOS"
+          "$app/TsukihimeLauncher" --selftest "$RUNNER_TEMP/selftest.txt" --data "$RUNNER_TEMP/tsuki-profile" --game /nonexistent
+          "$app/TsukihimeLauncher" --render "$RUNNER_TEMP/tsuki-renders" --data "$RUNNER_TEMP/tsuki-profile" --game /nonexistent
+          "$app/TsukihimeLauncher" --window-smoke --data "$RUNNER_TEMP/tsuki-profile" --game /nonexistent
+          "$app/Tsukihime" --smoke-headless --report "$RUNNER_TEMP/smoke.txt"
+          {
+            echo '```text'
+            cat "$RUNNER_TEMP/selftest.txt"
+            echo 'TsukihimeLauncher --window-smoke: exit 0'
+            cat "$RUNNER_TEMP/smoke.txt"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Update the extracted app to this ZIP with its own launcher
+        shell: bash
+        run: python3 -I tools/tests/update_e2e.py "$RUNNER_TEMP/download/Tsukihime-v${{ env.version }}-macos-${{ matrix.arch }}.zip" --work "$RUNNER_TEMP/update-e2e" --summary "$GITHUB_STEP_SUMMARY"
+      - name: Collect diagnostics after a failure
+        if: failure()
+        shell: bash
+        run: |
+          out="$RUNNER_TEMP/mac26-diagnostics"
+          mkdir -p "$out"
+          for name in verify update-e2e/install; do
+            app="$RUNNER_TEMP/$name/Tsukihime.app"
+            [ -d "$app" ] || continue
+            file="$out/$(echo "$name" | tr '/' '-')"
+            codesign -dvvv --deep "$app" > "$file-codesign.txt" 2>&1 || true
+            codesign --verify --deep --strict --verbose=4 "$app" >> "$file-codesign.txt" 2>&1 || true
+            xattr -lr "$app" > "$file-xattr.txt" 2>&1 || true
+          done
+          cp "$RUNNER_TEMP"/update-e2e/report.txt* "$RUNNER_TEMP"/update-e2e/profile/*.log "$out/" 2>/dev/null || true
+      - name: Upload diagnostics after a failure (not for release)
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2 (Node 24)
+        with:
+          name: mac26-diagnostics-${{ matrix.arch }}-not-for-release
+          path: ${{ runner.temp }}/mac26-diagnostics
+          retention-days: 3
