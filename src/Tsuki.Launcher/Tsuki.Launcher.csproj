@@ -16,7 +16,7 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>..\..\assets\icon\tsukihime.ico</ApplicationIcon>
     <AllowUnsafeBlocks>false</AllowUnsafeBlocks>
-    <Version>0.1.6</Version>
+    <Version>0.1.7</Version>
     <Product>Tsukihime PC port</Product>
     <AssemblyTitle>Tsukihime Launcher</AssemblyTitle>
   </PropertyGroup>
@@ -41,6 +41,8 @@
     <!-- Package K19: the window-size presets and the clamp to the monitor's work area, the same arithmetic as the game's (no SDL in that file). -->
     <Compile Include="..\Tsuki.Platform\WindowFit.cs" Link="Core\Shared\WindowFit.cs" />
     <!-- Package K23's Arcueid icon (FaceIcon, FaceIconCache) comes through Tsuki.Data since package K28 (src/Tsuki.Data/Icons). -->
+    <!-- The release rules' shared part is compiled into Tsuki.Cli and the macOS/Linux launcher only; the Windows launcher never uses it. -->
+    <Compile Remove="Core\ReleaseCheck.Shared.cs" />
   </ItemGroup>
   <!-- Package K28: `-p:TsukiPersonalIcon=<game folder>` makes a PERSONAL build whose executable carries the Arcueid icon (never to be shared); see the file. -->
   <Import Project="..\Tsuki.PersonalIcon.targets" />

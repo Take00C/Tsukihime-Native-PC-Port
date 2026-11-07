@@ -103,6 +103,9 @@ public enum PortString
     /// <summary>The Linux FFmpeg 9 shared libraries are missing.</summary>
     LinuxFfmpegMissing,
 
+    /// <summary>The bundled macOS FFmpeg libraries are missing.</summary>
+    MacFfmpegMissing,
+
     /// <summary>K46: the system could not open the folder dialog (on Linux: no xdg-desktop-portal and no zenity); {0} SDL's words, {1} the command line that names the folder.</summary>
     FolderDialogUnavailable,
 }
@@ -279,6 +282,13 @@ public static class PortText
             "FFmpeg 9 shared libraries are missing ({0}). Install the FFmpeg 9 shared libraries or place them next to Tsukihime.",
             "缺少 FFmpeg 9 共享库 ({0})。请安装 FFmpeg 9 共享库，或将其放在 Tsukihime 旁边。",
             "缺少 FFmpeg 9 共用程式庫 ({0})。請安裝 FFmpeg 9 共用程式庫，或將其放在 Tsukihime 旁邊。",
+        ],
+        // MacFfmpegMissing
+        [
+            "Tsukihime.app 内に FFmpeg のライブラリがありません ({0})。ポートを入れ直すか、ファイルを戻してください。",
+            "The FFmpeg libraries are missing inside Tsukihime.app ({0}). Reinstall the port or copy them back.",
+            "Tsukihime.app 内缺少 FFmpeg 库 ({0})。请重新安装移植版或把文件复制回来。",
+            "Tsukihime.app 內缺少 FFmpeg 程式庫 ({0})。請重新安裝移植版或把檔案複製回來。",
         ],
         // FolderDialogUnavailable
         [

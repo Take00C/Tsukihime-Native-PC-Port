@@ -148,6 +148,11 @@ public sealed unsafe partial class GameWindow : IDisposable
             SetAttr(SDL_GLAttr.SDL_GL_CONTEXT_MAJOR_VERSION, 3);
             SetAttr(SDL_GLAttr.SDL_GL_CONTEXT_MINOR_VERSION, 3);
             SetAttr(SDL_GLAttr.SDL_GL_CONTEXT_PROFILE_MASK, (int)SDL_GLProfile.SDL_GL_CONTEXT_PROFILE_CORE);
+            if (OperatingSystem.IsMacOS())
+            {
+                SetAttr(SDL_GLAttr.SDL_GL_CONTEXT_FLAGS, (int)SDL_GLContextFlag.SDL_GL_CONTEXT_FORWARD_COMPATIBLE_FLAG);
+            }
+
             SetAttr(SDL_GLAttr.SDL_GL_DOUBLEBUFFER, 1);
             SetAttr(SDL_GLAttr.SDL_GL_RED_SIZE, 8);
             SetAttr(SDL_GLAttr.SDL_GL_GREEN_SIZE, 8);
@@ -242,6 +247,8 @@ public sealed unsafe partial class GameWindow : IDisposable
 
         return SDL_SetWindowFullscreen(Handle, fullscreen);
     }
+
+    internal void NoteFullscreenFromEvent(bool fullscreen) => FullscreenRequested = fullscreen;
 
     /// <summary>Flips the requested fullscreen state (Alt+Enter, F11; ARCHITECTURE 9.4).</summary>
     public bool ToggleFullscreen() => SetFullscreen(!FullscreenRequested);

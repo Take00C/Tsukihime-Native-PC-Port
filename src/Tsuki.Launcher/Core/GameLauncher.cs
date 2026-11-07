@@ -1,6 +1,6 @@
 // Starting the game (package K17): where Tsukihime.exe (project Tsuki.App; package K20 gave the program the player's name) is, which arguments it gets, and the process. The
-// launcher passes the game folder (--game) and a log file (--log) and, since package K18, the window mode (--fullscreen or --windowed, every time); language and prompts
-// travel in settings.ini, which the game reads itself.
+// launcher passes the game folder (--game) and a log file (--log) and, since package K18, the window mode (--fullscreen or --windowed, every time; only the macOS / Linux
+// launcher on a Steam Deck leaves it to the game's Deck rule); language and prompts travel in settings.ini, which the game reads itself.
 using System.Diagnostics;
 
 namespace Tsuki.Launcher.Core;
@@ -48,16 +48,18 @@ public static class GameLauncher
 
     /// <summary>
     /// True while a Tsukihime.exe started from <paramref name="folder"/> runs (package K40: an update replaces that folder's files, so the game there must be closed
-    /// first; a game started from another copy of the port does not hold them). A process whose program cannot be read counts as running from the folder.
+    /// first; a game started from another copy of the port does not hold them). A process whose program cannot be read counts as running from the folder. Off
+    /// Windows the system reports a running program with its links resolved (macOS: /var is /private/var), so both paths are compared that way too.
     /// </summary>
-    public static bool IsGameRunningFrom(string folder)
+    public static bool IsGameRunningFrom(string folder, string? appFileName = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(folder);
-        string wanted = Path.GetFullPath(Path.Combine(folder, AppFileName));
+        string program = appFileName ?? AppFileName;
+        string wanted = Path.GetFullPath(Path.Combine(folder, program));
         Process[] running;
         try
         {
-            running = Process.GetProcessesByName(Path.GetFileNameWithoutExtension(AppFileName));
+            running = Process.GetProcessesByName(Path.GetFileNameWithoutExtension(program));
         }
         catch (InvalidOperationException)
         {
@@ -72,7 +74,8 @@ public static class GameLauncher
                 try
                 {
                     string? path = p.MainModule?.FileName;
-                    found |= path is null || string.Equals(Path.GetFullPath(path), wanted, StringComparison.OrdinalIgnoreCase);
+                    found |= path is null || string.Equals(Path.GetFullPath(path), wanted, StringComparison.OrdinalIgnoreCase)
+                        || (!OperatingSystem.IsWindows() && string.Equals(ResolveLinks(path), ResolveLinks(wanted), StringComparison.OrdinalIgnoreCase));
                 }
                 catch (Exception e) when (e is System.ComponentModel.Win32Exception or InvalidOperationException or NotSupportedException)
                 {
@@ -83,6 +86,31 @@ public static class GameLauncher
         }
 
         return found;
+    }
+
+    /// <summary>
+    /// <paramref name="path"/> with every symbolic link in it resolved, as the system names a running program; the path as it is when a part cannot be read.
+    /// </summary>
+    internal static string ResolveLinks(string path, int depth = 0)
+    {
+        try
+        {
+            string full = Path.GetFullPath(path);
+            string root = Path.GetPathRoot(full) ?? string.Empty;
+            string resolved = root;
+            foreach (string part in full[root.Length..].Split(Path.DirectorySeparatorChar, StringSplitOptions.RemoveEmptyEntries))
+            {
+                string next = Path.Combine(resolved, part);
+                // a link's target is read relative to the folder it lies in, and may itself go through links
+                resolved = new FileInfo(next).LinkTarget is { } target && depth < 40 ? ResolveLinks(Path.Combine(resolved, target), depth + 1) : next;
+            }
+
+            return resolved;
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+        {
+            return path;
+        }
     }
 
     private static bool Exited(Process p)
@@ -143,12 +171,19 @@ public static class GameLauncher
     /// <param name="paths">The profile (the log goes beside the saves).</param>
     /// <param name="fullscreen">The launcher's choice, passed as <c>--fullscreen</c> or <c>--windowed</c> on every start (the game remembers it), so that the remembered window mode of an earlier run can never override what the switch showed.</param>
     /// <param name="extra">More arguments, for tests (<c>--hidden --mute</c>) and for support.</param>
-    public static LaunchPlan Plan(string appExe, string gameFolder, LauncherPaths paths, bool fullscreen, IEnumerable<string>? extra = null)
+    /// <param name="windowMode">False leaves out <c>--fullscreen</c> / <c>--windowed</c>, so that the game decides: the macOS / Linux launcher on a Steam Deck, whose
+    /// game then follows its Deck rule. The Windows launcher always passes the mode.</param>
+    public static LaunchPlan Plan(string appExe, string gameFolder, LauncherPaths paths, bool fullscreen, IEnumerable<string>? extra = null, bool windowMode = true)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(appExe);
         ArgumentException.ThrowIfNullOrWhiteSpace(gameFolder);
         ArgumentNullException.ThrowIfNull(paths);
-        var args = new List<string> { "--game", gameFolder, "--log", paths.LastRunLog, fullscreen ? "--fullscreen" : "--windowed" };
+        var args = new List<string> { "--game", gameFolder, "--log", paths.LastRunLog };
+        if (windowMode)
+        {
+            args.Add(fullscreen ? "--fullscreen" : "--windowed");
+        }
+
         if (!paths.IsUserProfile)
         {
             // a launcher on another profile (--data: the verification runs) starts the game on that profile too, where its pending language and window mode are

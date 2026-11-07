@@ -297,11 +297,12 @@ public static class UpdateInstaller
     /// to <paramref name="journal"/> before it is taken. When a step fails, every step taken is undone in reverse and the result says whether that worked.
     /// <paramref name="beforeStep"/> runs before each file (the tests make a step fail with it).
     /// </summary>
-    public static ApplyResult Apply(string appDirectory, StagedRelease release, string journal, Action<string>? beforeStep = null)
+    public static ApplyResult Apply(string appDirectory, StagedRelease release, string journal, Action<string>? beforeStep = null, string? launcherFileName = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(appDirectory);
         ArgumentNullException.ThrowIfNull(release);
         ArgumentException.ThrowIfNullOrWhiteSpace(journal);
+        launcherFileName ??= GameLauncher.LauncherFileName;
         string app = Path.GetFullPath(appDirectory);
         string appWithSlash = app.EndsWith(Path.DirectorySeparatorChar) ? app : app + Path.DirectorySeparatorChar;
         var steps = new List<(string Kind, string Target)>();
@@ -311,7 +312,7 @@ public static class UpdateInstaller
         try
         {
             // the launcher goes last: if anything before it fails, the program the player starts next is still the old one in the old folder
-            foreach (string relative in release.Files.OrderBy(f => string.Equals(f, GameLauncher.LauncherFileName, StringComparison.OrdinalIgnoreCase) ? 1 : 0))
+            foreach (string relative in release.Files.OrderBy(f => string.Equals(f, launcherFileName, StringComparison.OrdinalIgnoreCase) ? 1 : 0))
             {
                 string source = Path.Combine(release.Root, relative);
                 string target = Path.GetFullPath(Path.Combine(app, relative));
@@ -358,6 +359,34 @@ public static class UpdateInstaller
         }
     }
 
+    /// <summary>
+    /// Restores the files named by a completed apply journal when starting the new program fails, and writes the outcome after its "done" ("rolled back" or
+    /// "rollback incomplete"), so that the next start repairs what could not be put back instead of deleting the .old copies (<see cref="Cleanup"/>). The Windows
+    /// updater does not need this separate step.
+    /// </summary>
+    public static bool Rollback(string journal)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(journal);
+        var steps = new List<(string Kind, string Target)>();
+        foreach (string line in File.ReadLines(journal))
+        {
+            string[] parts = line.Split('\t', 2);
+            if (parts.Length == 2 && parts[0] is "old" or "new") { steps.Add((parts[0], parts[1])); }
+        }
+
+        bool undone = Undo(steps);
+        try
+        {
+            File.AppendAllText(journal, (undone ? "rolled back" : "rollback incomplete") + Environment.NewLine);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            // the folder cannot be written: the .old copies stay as they are
+        }
+
+        return undone;
+    }
+
     /// <summary>Undoes the steps in reverse: a moved-in file is removed, a renamed one is renamed back. False when a step could not be undone.</summary>
     private static bool Undo(List<(string Kind, string Target)> steps)
     {
@@ -398,8 +427,9 @@ public static class UpdateInstaller
     /// <summary>
     /// Deletes what an update left: the <c>.old</c> files its journal names (the replaced programs, deletable once the old launcher has exited) and then the staging
     /// folder. A file still in use stays, and so does the journal, for the next start. Returns how many .old files are left (0 when everything is gone).
+    /// <paramref name="launcherFileName"/> is the program the apply moved last (the Linux launcher has no .exe).
     /// </summary>
-    public static int Cleanup(string appDirectory)
+    public static int Cleanup(string appDirectory, string? launcherFileName = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(appDirectory);
         var staging = new UpdateStaging(Path.GetFullPath(appDirectory));
@@ -422,9 +452,11 @@ public static class UpdateInstaller
             }
 
             string app = staging.AppDirectory.EndsWith(Path.DirectorySeparatorChar) ? staging.AppDirectory : staging.AppDirectory + Path.DirectorySeparatorChar;
-            string launcher = Path.Combine(staging.AppDirectory, GameLauncher.LauncherFileName);
+            string launcher = Path.Combine(staging.AppDirectory, launcherFileName ?? GameLauncher.LauncherFileName);
             bool launcherMoved = lines.Contains("new\t" + launcher, StringComparer.OrdinalIgnoreCase) && File.Exists(launcher);
-            if (!lines.Contains("done") && !lines.Contains("rolled back") && !launcherMoved)
+            // a restart that failed after "done" was undone by Rollback (macOS/Linux), which writes its outcome after "done"; the Windows updater never does
+            bool restartUndoIncomplete = lines.Contains("done") && lines.LastOrDefault(line => line is "done" or "rolled back" or "rollback incomplete") == "rollback incomplete";
+            if ((!lines.Contains("done") && !lines.Contains("rolled back") && !launcherMoved) || restartUndoIncomplete)
             {
                 // an apply that was cut off (power loss) before its last step, the launcher, or whose rollback could not finish ("rollback incomplete"): put the old
                 // version back before anything is deleted (once the new launcher is in place every other file is too, so that journal counts as done). When a file

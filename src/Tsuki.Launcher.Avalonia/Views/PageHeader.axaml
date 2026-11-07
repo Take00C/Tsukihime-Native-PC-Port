@@ -1,0 +1,8 @@
+<UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" x:Class="Tsuki.Launcher.Avalonia.Views.PageHeader">
+  <!-- the heading every page below the hero starts with: a gold overline, a serif title and a muted sentence -->
+  <StackPanel Margin="0,2,0,22">
+    <TextBlock x:Name="Over" Classes="SmallCaps"/>
+    <TextBlock x:Name="Head" Classes="Heading" Margin="0,6,0,0"/>
+    <TextBlock x:Name="Desc" Classes="Muted" Margin="0,8,0,0" MaxWidth="640"/>
+  </StackPanel>
+</UserControl>

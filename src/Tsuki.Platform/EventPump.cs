@@ -45,6 +45,15 @@ public enum PlatformEventKind
 
     /// <summary>F12 went down (packages K21 and K24): the app saves the frame it presents next as a picture.</summary>
     ScreenshotRequested,
+
+    /// <summary>An audio device appeared (<see cref="PlatformEvent.Device"/>; SDL also says so for each device when audio starts). Linux and macOS only.</summary>
+    AudioDeviceAdded,
+
+    /// <summary>An audio device went away (<see cref="PlatformEvent.Device"/>). Linux and macOS only.</summary>
+    AudioDeviceRemoved,
+
+    /// <summary>An audio device changed its format (<see cref="PlatformEvent.Device"/>). Linux and macOS only.</summary>
+    AudioDeviceFormatChanged,
 }
 
 /// <summary>One platform event.</summary>
@@ -56,6 +65,8 @@ public enum PlatformEventKind
 /// <param name="Gamepad">The pad (GamepadAdded / GamepadRemoved).</param>
 /// <param name="Key">SDL key name (KeyDown).</param>
 /// <param name="Wheel">Wheel steps (MouseWheel).</param>
+/// <param name="Device">SDL's audio device id (AudioDeviceAdded / AudioDeviceRemoved / AudioDeviceFormatChanged).</param>
+/// <param name="Recording">The audio device records rather than plays.</param>
 public readonly record struct PlatformEvent(
     PlatformEventKind Kind,
     int Width = 0,
@@ -64,7 +75,9 @@ public readonly record struct PlatformEvent(
     bool Accepted = false,
     GamepadInfo? Gamepad = null,
     string? Key = null,
-    int Wheel = 0);
+    int Wheel = 0,
+    uint Device = 0,
+    bool Recording = false);
 
 /// <summary>Polls SDL events on the main thread.</summary>
 /// <param name="window">The game window (fullscreen hotkeys act on it), or null.</param>
@@ -73,6 +86,18 @@ public sealed unsafe class EventPump(GameWindow? window, GamepadSet? gamepads)
 {
     /// <summary>The gamepad set hot-plug events open and close pads in; null until the app has created one (it does so behind the first frame, package R1).</summary>
     public GamepadSet? Gamepads { get; set; } = gamepads;
+
+    /// <summary>
+    /// Whether SDL's enter / leave fullscreen events set the window's requested state: on macOS only, where the green button and the system's fullscreen switch
+    /// the window without the app asking; Windows and Linux keep the state the app asked for (as in v0.1.6).
+    /// </summary>
+    internal bool FullscreenFromEvents { get; init; } = OperatingSystem.IsMacOS();
+
+    /// <summary>
+    /// Whether SDL's audio device events are passed on: on Linux and macOS, where the run log names them (a Steam Deck's sleep, a headset); Windows passes none,
+    /// as in v0.1.6.
+    /// </summary>
+    internal bool AudioDeviceEvents { get; init; } = !OperatingSystem.IsWindows();
 
     /// <summary>Drains SDL's queue into <paramref name="sink"/>; returns the number of SDL events read.</summary>
     public int Pump(List<PlatformEvent> sink)
@@ -143,6 +168,9 @@ public sealed unsafe class EventPump(GameWindow? window, GamepadSet? gamepads)
         }
     }
 
+    /// <summary>Mouse wheel steps; macOS trackpads report small fractional scrolls as integer ticks.</summary>
+    internal static int WheelSteps(float y, int integerY, bool macOS) => macOS ? integerY : (int)Math.Round(y);
+
     /// <summary>
     /// True for F12 alone, ignoring key repeat (package K21; K24 took Print Screen out). Print Screen and its combinations (Win+Print Screen, Alt+Print Screen, Win+Shift+S)
     /// belong to Windows: the player's own screenshot must not also take the game's and show its notice.
@@ -177,9 +205,19 @@ public sealed unsafe class EventPump(GameWindow? window, GamepadSet? gamepads)
                 sink.Add(new PlatformEvent(PlatformEventKind.PixelSizeChanged, ev.window.data1, ev.window.data2));
                 break;
             case SDL_EventType.SDL_EVENT_WINDOW_ENTER_FULLSCREEN:
+                if (FullscreenFromEvents)
+                {
+                    window?.NoteFullscreenFromEvent(true);
+                }
+
                 sink.Add(new PlatformEvent(PlatformEventKind.EnteredFullscreen, Fullscreen: true));
                 break;
             case SDL_EventType.SDL_EVENT_WINDOW_LEAVE_FULLSCREEN:
+                if (FullscreenFromEvents)
+                {
+                    window?.NoteFullscreenFromEvent(false);
+                }
+
                 sink.Add(new PlatformEvent(PlatformEventKind.LeftFullscreen, Fullscreen: false));
                 break;
             case SDL_EventType.SDL_EVENT_KEY_DOWN:
@@ -199,7 +237,7 @@ public sealed unsafe class EventPump(GameWindow? window, GamepadSet? gamepads)
 
                 break;
             case SDL_EventType.SDL_EVENT_MOUSE_WHEEL:
-                sink.Add(new PlatformEvent(PlatformEventKind.MouseWheel, Wheel: (int)Math.Round(ev.wheel.y)));
+                sink.Add(new PlatformEvent(PlatformEventKind.MouseWheel, Wheel: WheelSteps(ev.wheel.y, ev.wheel.integer_y, OperatingSystem.IsMacOS())));
                 break;
             case SDL_EventType.SDL_EVENT_WINDOW_FOCUS_LOST:
                 sink.Add(new PlatformEvent(PlatformEventKind.FocusLost));
@@ -220,6 +258,15 @@ public sealed unsafe class EventPump(GameWindow? window, GamepadSet? gamepads)
                     sink.Add(new PlatformEvent(PlatformEventKind.GamepadRemoved, Gamepad: removed));
                 }
 
+                break;
+            case SDL_EventType.SDL_EVENT_AUDIO_DEVICE_ADDED when AudioDeviceEvents:
+                sink.Add(new PlatformEvent(PlatformEventKind.AudioDeviceAdded, Device: (uint)ev.adevice.which, Recording: ev.adevice.recording));
+                break;
+            case SDL_EventType.SDL_EVENT_AUDIO_DEVICE_REMOVED when AudioDeviceEvents:
+                sink.Add(new PlatformEvent(PlatformEventKind.AudioDeviceRemoved, Device: (uint)ev.adevice.which, Recording: ev.adevice.recording));
+                break;
+            case SDL_EventType.SDL_EVENT_AUDIO_DEVICE_FORMAT_CHANGED when AudioDeviceEvents:
+                sink.Add(new PlatformEvent(PlatformEventKind.AudioDeviceFormatChanged, Device: (uint)ev.adevice.which, Recording: ev.adevice.recording));
                 break;
         }
     }

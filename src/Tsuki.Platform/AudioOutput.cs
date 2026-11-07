@@ -67,6 +67,9 @@ public sealed unsafe class AudioOutput : IDisposable
     /// <summary>The device buffer in sample frames, or 0 for a pull-only stream.</summary>
     public int DeviceBufferFrames { get; private set; }
 
+    /// <summary>SDL's id of the device the stream plays on (the logical device opened on the default), or 0 for a pull-only stream.</summary>
+    public uint DeviceId { get; private set; }
+
     /// <summary>Frames the callback has rendered so far.</summary>
     public long FramesRendered => Interlocked.Read(ref _framesRendered);
 
@@ -103,6 +106,7 @@ public sealed unsafe class AudioOutput : IDisposable
 
             o.Driver = SDL_GetCurrentAudioDriver();
             o.DeviceName = SDL_GetAudioDeviceName(dev);
+            o.DeviceId = (uint)dev;
             return o;
         }
         catch
@@ -111,6 +115,9 @@ public sealed unsafe class AudioOutput : IDisposable
             throw;
         }
     }
+
+    /// <summary>The name SDL gives an audio device id (an id of an audio device event), or null when SDL no longer knows it.</summary>
+    public static string? DeviceNameOf(uint deviceId) => SDL_GetAudioDeviceName((SDL_AudioDeviceID)deviceId);
 
     /// <summary>Creates a 48 kHz float stereo stream with no device; read it with <see cref="Pull"/>.</summary>
     public static AudioOutput CreatePullOnly(AudioRenderCallback render)

@@ -211,14 +211,7 @@ public sealed partial class LauncherModel : INotifyPropertyChanged
     public IReadOnlyList<ReadyRow> ReadyRows => _readyRows;
 
     /// <summary>"All set" or "2 things need attention".</summary>
-    public string ReadySummary
-    {
-        get
-        {
-            int n = _readyRows.Count(r => r.State == CheckState.Warning);
-            return n == 0 ? "All set" : n == 1 ? "1 thing needs attention" : $"{n} things need attention";
-        }
-    }
+    public string ReadySummary => LauncherTexts.ReadySummary(_readyRows);
 
     /// <summary>True when every ready-check row is fine.</summary>
     public bool ReadyAllGood => _readyRows.All(r => r.State == CheckState.Ok);
@@ -251,30 +244,13 @@ public sealed partial class LauncherModel : INotifyPropertyChanged
     public IReadOnlyList<KeyRow> EssentialKeys => KeyTable.Essentials;
 
     /// <summary>"Ready" or why not (package K25: a usable copy that is not the verified build says so).</summary>
-    public string StatusText => !_folder.IsReady ? _folder.Summary
-        : _folder.IsVerifiedBuild ? "Ready: this is the game the port was made for"
-        : $"Ready, but not the verified build: {_folder.BuildText}";
+    public string StatusText => LauncherTexts.StatusText(_folder);
 
     /// <summary>What the dump is, in words (package K25): "known build: CUSA47999 01.01 (official 1.01 update eboot)", with the update folder when there is one.</summary>
-    public string BuildDetail => _folder.BuildName is null
-        ? "unknown"
-        : _folder.BuildName + (_folder.PatchFolder is { } patch ? $"; update folder {Path.GetFileName(patch)} beside the game, its files take precedence" : string.Empty)
-            + (_folder.IgnoredPatchFolder is { } ignored ? $"; the update folder {Path.GetFileName(ignored)} beside the game is not needed (the game folder already holds an update as new)" : string.Empty)
-            + (_folder.TablesNote is { } note ? $"; {note}" : string.Empty);
+    public string BuildDetail => LauncherTexts.BuildDetail(_folder);
 
     /// <summary>The languages the data carries, in words (package K25): "日本語, English, 简体中文, 繁體中文".</summary>
-    public string LanguagesDetail => _folder.State == FolderState.Ready
-        ? string.Join(", ", _folder.LanguageList.Select(LanguageName))
-        : "unknown";
-
-    private static string LanguageName(Language language) => language switch
-    {
-        Language.Ja => "日本語",
-        Language.Zc => "简体中文",
-        Language.Zt => "繁體中文",
-        Language.Ko => "한국어",
-        _ => "English",
-    };
+    public string LanguagesDetail => LauncherTexts.LanguagesDetail(_folder);
 
     /// <summary>Whether a language tile is shown: the data carries the language, or no folder is ready yet (package K25).</summary>
     public Visibility LanguageVisibility(Language language) => !_folder.IsReady || _folder.LanguageList.Contains(language) ? Visibility.Visible : Visibility.Collapsed;
@@ -292,33 +268,25 @@ public sealed partial class LauncherModel : INotifyPropertyChanged
     public Visibility ZtVisibility => LanguageVisibility(Language.Zt);
 
     /// <summary>"CUSA47999, version 01.01".</summary>
-    public string TitleText => _folder.TitleId is null
-        ? "unknown"
-        : $"{_folder.TitleId}  ·  version {_folder.AppVersion ?? "?"}{(_folder.IsReady && _folder.SfoVersion is { } sfo && sfo != _folder.AppVersion ? $" (param.sfo says {sfo})" : string.Empty)}";
+    public string TitleText => LauncherTexts.TitleText(_folder);
 
     /// <summary>"120 of 120 passed".</summary>
-    public string ChecksText => _folder.ChecksTotal == 0 ? "not run" : $"{_folder.ChecksPassed} of {_folder.ChecksTotal} passed";
+    public string ChecksText => LauncherTexts.ChecksText(_folder);
 
     /// <summary>"20 archives and data files, 134 movies".</summary>
-    public string ContentsText => _folder.ChecksTotal == 0 ? "unknown" : $"{_folder.Archives} archives and data files, {_folder.Movies} movies";
+    public string ContentsText => LauncherTexts.ContentsText(_folder);
 
     /// <summary>The connected controllers, in words.</summary>
     public string ControllersText => _controllers.Count == 0 ? "No controller detected" : string.Join("\n", _controllers.Select(c => "•  " + c));
 
     /// <summary>"CUSA47999 · game version 01.01" (a folder that is set but incomplete says "version unknown", not "not set"; package R1).</summary>
-    public string GameChip => _folder.State switch
-    {
-        FolderState.NotSet or FolderState.Missing => "CUSA47999  ·  game folder not set",
-        FolderState.NotTheGame or FolderState.PkgFile or FolderState.UpdateOnly or FolderState.Several => "CUSA47999  ·  not the game folder",
-        FolderState.Ready when !_folder.IsVerifiedBuild => $"{_folder.TitleId ?? "CUSA47999"}  ·  game version {_folder.AppVersion ?? "unknown"}  ·  not the verified build",
-        _ => $"{_folder.TitleId ?? "CUSA47999"}  ·  game version {_folder.AppVersion ?? "unknown"}",
-    };
+    public string GameChip => LauncherTexts.GameChip(_folder);
 
     /// <summary>The launcher's own version.</summary>
-    public string LauncherVersion => "Launcher " + (typeof(LauncherModel).Assembly.GetName().Version is { } v ? $"{v.Major}.{v.Minor}.{v.Build}" : "1.0.0");
+    public string LauncherVersion => LauncherTexts.LauncherVersion(typeof(LauncherModel).Assembly);
 
     /// <summary>"46.3 GB".</summary>
-    public string FolderSize => _folder.TotalBytes > 0 ? GameFolderCheck.FormatSize(_folder.TotalBytes) : "unknown";
+    public string FolderSize => LauncherTexts.FolderSize(_folder);
 
     /// <summary>The adapter name for the Display page.</summary>
     public string GraphicsName => _graphics.Count > 0 ? string.Join(", ", _graphics) : "not detected";
@@ -690,21 +658,19 @@ public sealed partial class LauncherModel : INotifyPropertyChanged
     /// <summary>Takes the folder the user chose or typed: checks it and, when it holds the game, remembers it for the game and the launcher.</summary>
     public async Task SetGameFolderAsync(string path)
     {
-        string resolved = GameFolderCheck.Resolve(path);
-        GameFolderInfo info = await Task.Run(() => GameFolderCheck.Inspect(resolved));
+        LauncherFolderChoice choice = await LauncherFolderChoice.ChooseAsync(_paths, path);
         _gameFolderOverride = null;           // the user chose: from now on the remembered folder is the one that counts, not the --game option of this launch
-        _folderText = info.Path ?? path;
+        _folderText = choice.DisplayPath;
         Raise(nameof(FolderText));
-        if (info.State is FolderState.NotTheGame or FolderState.Missing or FolderState.NotSet or FolderState.PkgFile or FolderState.UpdateOnly or FolderState.Several)
+        if (!choice.Accepted)
         {
             // the rejected folder is not taken as the model's folder: the remembered one still holds the game, so the Ready check, the banner and PLAY keep telling
             // the truth about it (package R1); the sentence under the box says what was wrong with the typed one
-            FolderMessage = info.Summary + " The folder was not remembered.";
+            FolderMessage = choice.Message;
             return;
         }
 
-        bool saved = _paths.WriteGameDirectory(resolved);
-        FolderMessage = saved ? (resolved == path ? string.Empty : "Using " + resolved) : "The folder could not be remembered (" + _paths.GameDirFile + ").";
+        FolderMessage = choice.Message;
         await RefreshAsync();
     }
 
@@ -720,16 +686,14 @@ public sealed partial class LauncherModel : INotifyPropertyChanged
         if (!CanPlay)
         {
             Page = LauncherPage.GameFiles;
-            ShowToast(_folder.IsReady
-                ? "The game program or its libraries are missing (see Help)."
-                : _folder.State == FolderState.Incomplete ? "The game files are not complete: see the problems on this page." : "Choose your game folder first.");
+            ShowToast(LauncherTexts.CannotPlay(_folder));
             return;
         }
 
         if (GameLauncher.IsGameRunning())
         {
             // started by hand, or by another launcher: a second copy would die on the shared log file or overwrite the first one's save.dat at quit (package R1)
-            ShowToast("The game is already running.");
+            ShowToast(LauncherTexts.GameAlreadyRunning);
             return;
         }
 
@@ -744,7 +708,7 @@ public sealed partial class LauncherModel : INotifyPropertyChanged
         }
         catch (Exception e) when (e is System.ComponentModel.Win32Exception or InvalidOperationException or IOException)
         {
-            ShowToast("The game could not be started: " + e.Message);
+            ShowToast(LauncherTexts.GameNotStarted(e.Message));
             return;
         }
 
@@ -769,13 +733,9 @@ public sealed partial class LauncherModel : INotifyPropertyChanged
         (PlayCommand as RelayCommand)?.Raise();
         await RefreshAsync();
         GameExited?.Invoke(code);
-        if (code == GameLauncher.ExitAlreadyRunning)
+        if (LauncherTexts.GameExited(code) is { } toast)
         {
-            ShowToast("The game is already running in another window.");
-        }
-        else if (code != 0)
-        {
-            ShowToast($"The game closed with an error (code {code}). Press Log to see why.");
+            ShowToast(toast);
         }
     }
 
@@ -797,12 +757,8 @@ public sealed partial class LauncherModel : INotifyPropertyChanged
 
     private void AskRestore(BackupInfo backup)
     {
-        Confirm = new ConfirmRequest(
-            "Restore this backup?",
-            $"save.dat will be replaced by the backup of {backup.Created.ToString("d MMM yyyy, HH:mm", CultureInfo.InvariantCulture)} ({backup.Save.Describe()}). " +
-            "Your current save is backed up first, so you can undo this. Settings are kept as they are.",
-            "Restore",
-            () => DoRestore(backup));
+        (string title, string body, string label) = LauncherTexts.RestoreQuestion(backup);
+        Confirm = new ConfirmRequest(title, body, label, () => DoRestore(backup));
     }
 
     private void DoRestore(BackupInfo backup)
@@ -823,11 +779,8 @@ public sealed partial class LauncherModel : INotifyPropertyChanged
     /// <summary>Asks before replacing the save by a PS4 image.</summary>
     public void AskImport(string imagePath)
     {
-        Confirm = new ConfirmRequest(
-            "Import this PS4 save?",
-            $"{Path.GetFileName(imagePath)} is read (the file itself is never changed). Its slots and system data replace save.dat; your current save is backed up first.",
-            "Import",
-            () => DoImport(imagePath));
+        (string title, string body, string label) = LauncherTexts.ImportQuestion(imagePath);
+        Confirm = new ConfirmRequest(title, body, label, () => DoImport(imagePath));
     }
 
     private void DoImport(string imagePath)

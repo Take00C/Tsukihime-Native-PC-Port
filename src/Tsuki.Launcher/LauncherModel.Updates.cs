@@ -315,7 +315,7 @@ public sealed partial class LauncherModel
         }
 
         SetChecking(true);
-        UpdateStatus = "Checking for updates...";
+        UpdateStatus = LauncherTexts.Checking;
         ReleaseVersion current = CurrentVersion;
         _log.Write($"update check ({(manual ? "Check now" : "start")}): {UpdateSource.ReleasesUri} for {current.Tag} (running {Build.InformationalVersion})");
         UpdateCheckResult result;
@@ -352,14 +352,12 @@ public sealed partial class LauncherModel
         if (result.Error is { } error)
         {
             // a release found earlier stays offered
-            UpdateStatus = $"Could not check for updates ({error}). The launcher works as before; Check now tries again.";
+            UpdateStatus = LauncherTexts.CheckFailed(error);
         }
         else
         {
             AvailableUpdate = result.Update;
-            UpdateStatus = result.Update is { } u
-                ? $"{u.Tag} is available (checked at {at}). Press \"Update to {u.Tag}\" at the bottom of the window."
-                : $"You have the newest version, {current.Tag} (checked at {at}).";
+            UpdateStatus = result.Update is { } u ? LauncherTexts.UpdateAvailable(u.Tag, at) : LauncherTexts.Newest(current, at);
         }
 
         if (!manual)
@@ -465,7 +463,7 @@ public sealed partial class LauncherModel
         UpdateMessage = string.Empty;
         if (GameRunning || GameLauncher.IsGameRunningFrom(app))
         {
-            UpdateMessage = "Close the game first: Tsukihime.exe of this folder is running, and its files are the ones the update replaces. Quit the game (your progress is in your saves), then press Update now again.";
+            UpdateMessage = LauncherTexts.UpdateGameRunning(GameLauncher.AppFileName);
             _log.Write("update: refused, the game of this folder is running");
             UpdateStage = UpdateStage.Offer;
             return;
@@ -490,7 +488,7 @@ public sealed partial class LauncherModel
         if (UpdateInstaller.Cleanup(app) > 0)
         {
             // the .old files of the last update are still in use: its journal must stay until they are gone, so no new update starts over it
-            UpdateMessage = "The files of the last update are still in use. Close the launcher, start it again, then press Update now.";
+            UpdateMessage = LauncherTexts.UpdateLastStillInUse;
             _log.Write("update: refused, the .old files of the last update are still in use");
             UpdateStage = UpdateStage.Failed;
             return;
@@ -512,7 +510,7 @@ public sealed partial class LauncherModel
         catch (OperationCanceledException)
         {
             _log.Write("update: cancelled");
-            UpdateMessage = "The download was cancelled. Nothing was changed.";
+            UpdateMessage = LauncherTexts.UpdateCancelled;
             UpdateStage = UpdateStage.Offer;
             return;
         }
@@ -520,7 +518,7 @@ public sealed partial class LauncherModel
         {
             string why = UpdateClient.Describe(e);
             _log.Write("update failed: " + why);
-            UpdateMessage = $"The update did not work: {why}. Nothing was changed; the launcher you have keeps working.";
+            UpdateMessage = LauncherTexts.UpdateFailed(why);
             UpdateStage = UpdateStage.Failed;
             return;
         }
@@ -532,7 +530,7 @@ public sealed partial class LauncherModel
         if (GameRunning || GameLauncher.IsGameRunningFrom(app))
         {
             UpdateInstaller.DeleteTree(staging.Root);
-            UpdateMessage = "The game was started while the update downloaded. Quit it, then press Update now again.";
+            UpdateMessage = LauncherTexts.UpdateGameStartedMeanwhile;
             UpdateStage = UpdateStage.Offer;
             return;
         }
@@ -563,9 +561,9 @@ public sealed partial class LauncherModel
     /// <summary>After the restart: says that the update worked (the toast of the new launcher).</summary>
     public void SayUpdated(ReleaseVersion from)
     {
-        _log.Write($"updated from {from.Tag} to {Build.Version.Tag} ({Build.InformationalVersion})");
-        UpdateStatus = $"Updated from {from.Tag} to {Build.Version.Tag}.";
-        ShowToast($"Updated from {from.Tag} to {Build.Version.Tag}. Your saves and settings are as they were.");
+        _log.Write(LauncherTexts.UpdatedLog(from, Build.Version, Build.InformationalVersion));
+        UpdateStatus = LauncherTexts.UpdatedStatus(from, Build.Version);
+        ShowToast(LauncherTexts.UpdatedToast(from, Build.Version));
     }
 
     // -- the offscreen render (no network) ----------------------------------------------------------------------------
@@ -574,7 +572,7 @@ public sealed partial class LauncherModel
     internal void PreviewUpdate(ReleaseInfo? release)
     {
         AvailableUpdate = release;
-        UpdateStatus = release is null ? string.Empty : $"{release.Tag} is available (checked at 14:02). Press \"Update to {release.Tag}\" at the bottom of the window.";
+        UpdateStatus = release is null ? string.Empty : LauncherTexts.UpdateAvailable(release.Tag, "14:02");
     }
 
     /// <summary>Puts the overlay into a state for the render check.</summary>

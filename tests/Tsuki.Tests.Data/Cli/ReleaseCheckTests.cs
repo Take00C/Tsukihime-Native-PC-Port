@@ -47,9 +47,13 @@ public sealed class ReleaseCheckTests : IDisposable
         throw new InvalidOperationException("the repository root was not found above " + AppContext.BaseDirectory);
     }
 
-    /// <summary>A folder that looks like a publish of a normal build: the apphost and its assembly, copied from the test output.</summary>
+    /// <summary>
+    /// A folder that looks like a publish of a normal build: on Windows the apphost and its assembly, copied from the test output; elsewhere a whole Linux publish
+    /// (<see cref="LinuxRelease.Folder"/>), since a Linux release needs SDL, FFmpeg, the runtime, the launcher and the licences beside the player.
+    /// </summary>
     private string NormalFolder(string name)
     {
+        if (!OperatingSystem.IsWindows()) { return LinuxRelease.Folder(_root, name); }
         string folder = Path.Combine(_root, name);
         Directory.CreateDirectory(folder);
         foreach (string file in new[] { HostName, "Tsukihime.dll" })
@@ -69,7 +73,9 @@ public sealed class ReleaseCheckTests : IDisposable
         Assert.True(result.Ok, string.Join("; ", result.Problems));
         Assert.Contains(result.Notes, n => n.StartsWith(IconName + ": the icon group is the crescent", StringComparison.Ordinal));
         Assert.Contains(result.Notes, n => n.StartsWith("Tsukihime.dll: version", StringComparison.Ordinal) && n.EndsWith("no personal mark", StringComparison.Ordinal));
-        Assert.Equal([$"Tsukihime:{FaceIcon.DecodeIco(_crescent).Count}"], dumped);
+        int frames = FaceIcon.DecodeIco(_crescent).Count;
+        // a Linux publish also carries the launcher, whose assembly holds the same crescent
+        Assert.Equal(OperatingSystem.IsWindows() ? [$"Tsukihime:{frames}"] : [$"Tsukihime:{frames}", $"TsukihimeLauncher:{frames}"], dumped);
 
         using var stdout = new StringWriter();
         using var stderr = new StringWriter();
@@ -237,6 +243,7 @@ public sealed class ReleaseCheckTests : IDisposable
     [InlineData("assets/branding/tsukihime-cg.png", "is a picture")]
     [InlineData("docs/screenshot.jpg", "is a picture")]
     [InlineData("icons/tsukihime.ico", "is a picture")]
+    [InlineData("Contents/Resources/Tsukihime.icns", "is a picture")]
     [InlineData("image/movie/op.mp4", "is game data or a save")]
     [InlineData("eboot.bin", "is game data or a save")]
     [InlineData("save.dat", "is game data or a save")]
@@ -257,6 +264,102 @@ public sealed class ReleaseCheckTests : IDisposable
         Assert.Null(ReleaseRules.Forbidden("licenses/FFmpeg-LGPL.txt"));
         Assert.Null(ReleaseRules.Forbidden("libavcodec.so.63"));
         Assert.Null(ReleaseRules.Forbidden("Tsukihime.dll"));
+    }
+
+    [Theory]
+    [InlineData("Tsuki.Cli.dll")]
+    [InlineData("Tsuki.Cli")]
+    [InlineData("Tsuki.Cli.exe")]
+    [InlineData("Tsuki.Cli.runtimeconfig.json")]
+    [InlineData("Tsuki.DevBridge.dll")]
+    [InlineData("Tsuki.DevBridge.deps.json")]
+    public void NoReleaseOfAnyPlatformCarriesADeveloperProgram(string file)
+    {
+        // review K48: a Debug publish brings the dev bridge along; release-check, release-sums and the updaters refuse it by name
+        Assert.Equal($"{file} is a developer program; a release carries none (publish with -c Release)", ReleaseRules.Forbidden(file));
+        Assert.Equal($"Contents/MacOS/{file} is a developer program; a release carries none (publish with -c Release)", ReleaseRules.Forbidden("Contents/MacOS/" + file, macBundle: true));
+        string folder = LinuxRelease.Folder(_root, "dev-" + file);
+        File.WriteAllBytes(Path.Combine(folder, file), [0x4D, 0x5A]);
+        Assert.Contains($"{file} is a developer program; a release carries none (publish with -c Release)", ReleaseCheck.Run(folder, _crescent).Problems);
+        Assert.Null(ReleaseRules.Forbidden("Tsuki.Data.dll"));
+        Assert.Null(ReleaseRules.Forbidden("Tsuki.Client.dll"));
+    }
+
+    [Theory]
+    [InlineData("runtimeconfig", "TsukihimeLauncher.runtimeconfig.json is missing: the launcher cannot start without it")]
+    [InlineData("deps", "Tsukihime.deps.json is missing: the player cannot start without it")]
+    [InlineData("listed", "Avalonia.Base.dll, listed in TsukihimeLauncher.deps.json, not beside TsukihimeLauncher: the launcher would not start")]
+    [InlineData("unreadable", "TsukihimeLauncher.deps.json is not a readable dependency file")]
+    public void ALinuxPublishWhoseProgramsCannotStartIsRefused(string what, string expected)
+    {
+        // review K48: a launcher without its runtimeconfig, deps.json or Avalonia passed every gate and died at its start
+        string folder = LinuxRelease.Folder(_root, "start-" + what);
+        switch (what)
+        {
+            case "runtimeconfig": File.Delete(Path.Combine(folder, "TsukihimeLauncher.runtimeconfig.json")); break;
+            case "deps": File.Delete(Path.Combine(folder, "Tsukihime.deps.json")); break;
+            case "listed": File.Delete(Path.Combine(folder, "Avalonia.Base.dll")); break;
+            default: File.WriteAllText(Path.Combine(folder, "TsukihimeLauncher.deps.json"), "[]"); break;
+        }
+
+        ReleaseCheckResult result = ReleaseCheck.Run(folder, _crescent);
+        Assert.Equal([expected], result.Problems);
+    }
+
+    [Fact]
+    public void ADepsFileListsTheRuntimeAndNativeFilesOfEveryTarget()
+    {
+        string folder = LinuxRelease.Folder(_root, "deps-files");
+        Assert.Equal(["Avalonia.Base.dll", "TsukihimeLauncher.dll", "libSkiaSharp.so"], ReleaseRules.DepsFiles(Path.Combine(folder, "TsukihimeLauncher.deps.json")));
+        Assert.Equal(["Tsukihime.dll"], ReleaseRules.DepsFiles(Path.Combine(folder, "Tsukihime.deps.json")));
+        Assert.Contains("TsukihimeLauncher: runtimeconfig.json, deps.json and the 3 files it lists", ReleaseCheck.Run(folder, _crescent).Notes);
+    }
+
+    [Fact]
+    public void TheRequiredLicencesArePinned()
+    {
+        // review K48 tests-docs-12: the fixtures are built from these lists, so the lists themselves are pinned, and every notice the launcher publishes is in both
+        string[] common =
+        [
+            "licenses/FFmpeg-SOURCE.txt", "licenses/SDL3-zlib.txt", "licenses/knife-MPL-2.0.txt", "licenses/LICENSE.txt", "licenses/THIRD_PARTY.md",
+            "licenses/Avalonia-MIT.txt", "licenses/SkiaSharp-LICENSE.txt", "licenses/HarfBuzzSharp-LICENSE.txt", "licenses/SkiaSharp-THIRD-PARTY-NOTICES.txt",
+            "licenses/MicroCom-MIT.txt", "licenses/Tmds-DBus-MIT.txt", "licenses/dotnet-LICENSE.txt", "licenses/dotnet-THIRD-PARTY-NOTICES.txt",
+        ];
+        string[] linux = [.. common, "licenses/FFmpeg-LGPL.txt", "licenses/FFmpeg-GPL-3.0.txt", "LINUX.md"];
+        string[] mac = [.. common, "licenses/FFmpeg-LGPL-2.1.txt", "licenses/FFmpeg-LICENSE.md", "MACOS.md"];
+        Assert.Equal(linux.Order(StringComparer.Ordinal), ReleaseRules.LinuxLicences.Order(StringComparer.Ordinal));
+        Assert.Equal(mac.Order(StringComparer.Ordinal), ReleaseRules.MacLicences.Order(StringComparer.Ordinal));
+        string project = File.ReadAllText(Path.Combine(RepoRoot(), "src", "Tsuki.Launcher.Avalonia", "Tsuki.Launcher.Avalonia.csproj"));
+        string[] published = [.. System.Text.RegularExpressions.Regex.Matches(project, "Link=\"(licenses\\\\[^\"]+)\"").Select(m => m.Groups[1].Value.Replace('\\', '/'))];
+        Assert.NotEmpty(published);
+        Assert.Subset(ReleaseRules.LinuxLicences.ToHashSet(StringComparer.Ordinal), published.ToHashSet(StringComparer.Ordinal));
+        Assert.Subset(ReleaseRules.MacLicences.ToHashSet(StringComparer.Ordinal), published.ToHashSet(StringComparer.Ordinal));
+    }
+
+    [Fact]
+    public void TheMacIconsPngsCannotStopAWindowsOrLinuxCheck()
+    {
+        // review K48 windows-regression-7: the Mac ICNS is made from the PNGs beside --icon for every check; one that cannot be read must not throw
+        string icons = Path.Combine(_root, "odd-icons");
+        Directory.CreateDirectory(icons);
+        string icon = Path.Combine(icons, "tsukihime.ico");
+        File.Copy(Path.Combine(RepoRoot(), "assets", "icon", "tsukihime.ico"), icon);
+        Directory.CreateDirectory(Path.Combine(icons, "tsukihime_16.png"));        // a folder where a PNG belongs: reading it is an UnauthorizedAccessException
+        File.Copy(Path.Combine(RepoRoot(), "assets", "icon", "tsukihime_32.png"), Path.Combine(icons, "tsukihime_32.png"));
+        File.Copy(Path.Combine(RepoRoot(), "assets", "icon", "tsukihime_256.png"), Path.Combine(icons, "tsukihime_256.png"));
+        string folder = LinuxRelease.Folder(_root, "odd-icon-linux");
+        using var stdout = new StringWriter();
+        using var stderr = new StringWriter();
+        Assert.Equal(ExitCode.Ok, CliApp.Run(["release-check", folder, "--icon", icon], stdout, stderr));
+        string tar = LinuxRelease.Tar(LinuxRelease.Folder(_root, "odd-icon-tar"), Path.Combine(_root, "odd-icon-sums", $"Tsukihime-v{PeIcons.Marks(Path.Combine(AppContext.BaseDirectory, "Tsukihime.dll"))!.InformationalVersion!.Split('+')[0]}-linux-x64.tar.gz"));
+        Assert.Equal(ExitCode.Ok, CliApp.Run(["release-sums", tar, "--icon", icon], stdout, stderr));
+    }
+
+    [Fact]
+    public void TheWindowsUpdaterAndTheReleaseRulesNameTheSamePersonalNote()
+    {
+        // the two constants live in the Windows launcher's Core and in the shared release rules; they must not drift apart
+        Assert.Equal(Tsuki.Launcher.Core.UpdateInstaller.PersonalNote, ReleaseCheck.PersonalNote);
     }
 
     [Fact]

@@ -38,7 +38,7 @@ public static partial class UpdateFeed
     public const int MaxNotesLength = 20_000;
 
     /// <summary>Reads the JSON array; every release gets an entry, installable or with the reason it is skipped. Throws <see cref="JsonException"/> on text that is not a release list.</summary>
-    public static IReadOnlyList<FeedEntry> Parse(string json)
+    public static IReadOnlyList<FeedEntry> Parse(string json, Func<ReleaseVersion, string>? assetName = null)
     {
         using JsonDocument doc = JsonDocument.Parse(json ?? string.Empty, new JsonDocumentOptions { MaxDepth = 32 });
         if (doc.RootElement.ValueKind != JsonValueKind.Array)
@@ -55,13 +55,13 @@ public static partial class UpdateFeed
             }
 
             string tag = String(r, "tag_name") ?? string.Empty;
-            list.Add(Read(r, tag));
+            list.Add(Read(r, tag, assetName ?? UpdateSource.ZipAssetName));
         }
 
         return list;
     }
 
-    private static FeedEntry Read(JsonElement r, string tag)
+    private static FeedEntry Read(JsonElement r, string tag, Func<ReleaseVersion, string> assetName)
     {
         if (Bool(r, "draft"))
         {
@@ -73,7 +73,7 @@ public static partial class UpdateFeed
             return new FeedEntry(tag, null, "the tag is not vX.Y.Z");
         }
 
-        string zipName = UpdateSource.ZipAssetName(version);
+        string zipName = assetName(version);
         ReleaseAsset? zip = null;
         ReleaseAsset? sums = null;
         if (r.TryGetProperty("assets", out JsonElement assets) && assets.ValueKind == JsonValueKind.Array)

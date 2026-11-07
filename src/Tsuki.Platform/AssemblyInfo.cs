@@ -1,4 +1,5 @@
 using System.Runtime.CompilerServices;
 
-// The hotkey rule (EventPump.IsFullscreenHotkey) is tested directly in the render test project.
+// The hotkey rule (EventPump.IsFullscreenHotkey) and native-library candidates are tested directly.
 [assembly: InternalsVisibleTo("Tsuki.Tests.Render")]
+[assembly: InternalsVisibleTo("Tsuki.Tests.Synthetic")]

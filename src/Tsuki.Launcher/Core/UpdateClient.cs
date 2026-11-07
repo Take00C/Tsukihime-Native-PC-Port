@@ -73,7 +73,7 @@ public sealed class UpdateClient : IDisposable
     public UpdateSource Source => _source;
 
     /// <summary>Reads the release list and picks the highest installable release newer than <paramref name="current"/>. Never throws for network trouble: <see cref="UpdateCheckResult.Error"/> says it.</summary>
-    public async Task<UpdateCheckResult> CheckAsync(ReleaseVersion current, CancellationToken cancel)
+    public async Task<UpdateCheckResult> CheckAsync(ReleaseVersion current, CancellationToken cancel, Func<ReleaseVersion, string>? assetName = null)
     {
         using var limit = CancellationTokenSource.CreateLinkedTokenSource(cancel);
         limit.CancelAfter(CheckTimeout);
@@ -89,7 +89,7 @@ public sealed class UpdateClient : IDisposable
             }
 
             string json = await ReadTextAsync(response, MaxListBytes, limit.Token).ConfigureAwait(false);
-            IReadOnlyList<FeedEntry> entries = UpdateFeed.Parse(json);
+            IReadOnlyList<FeedEntry> entries = UpdateFeed.Parse(json, assetName);
             return new UpdateCheckResult(UpdateFeed.Pick(entries, current), entries, null);
         }
         catch (OperationCanceledException) when (!cancel.IsCancellationRequested)

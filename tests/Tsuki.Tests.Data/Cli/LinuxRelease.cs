@@ -41,8 +41,14 @@ internal static class LinuxRelease
         Directory.CreateDirectory(Path.Combine(folder, "licenses"));
         Directory.CreateDirectory(Path.Combine(folder, "docs"));
         File.WriteAllBytes(Path.Combine(folder, ReleaseRules.LinuxHost), Elf(2));
+        File.WriteAllBytes(Path.Combine(folder, "TsukihimeLauncher"), Elf(2));
         File.Copy(Path.Combine(AppContext.BaseDirectory, "Tsukihime.dll"), Path.Combine(folder, "Tsukihime.dll"));
-        File.WriteAllBytes(Path.Combine(folder, "libSDL3.so"), Elf(3));
+        File.Copy(Path.Combine(AppContext.BaseDirectory, "Tsukihime.dll"), Path.Combine(folder, "TsukihimeLauncher.dll"));
+        foreach (string lib in ReleaseRules.LinuxLibraries.Where(lib => !ReleaseRules.LinuxFfmpeg.Contains(lib)))
+        {
+            File.WriteAllBytes(Path.Combine(folder, lib), Elf(3));
+        }
+
         foreach (string lib in ReleaseRules.LinuxFfmpeg)
         {
             File.WriteAllBytes(Path.Combine(folder, lib), Ffmpeg(lib));
@@ -62,7 +68,53 @@ internal static class LinuxRelease
             "BtbN's \"linux64-lgpl-shared-9.0\" build: " + string.Join("  ", ReleaseRules.LinuxFfmpeg) + "\n");
         File.WriteAllText(Path.Combine(folder, "README.md"), "readme");
         File.WriteAllText(Path.Combine(folder, "docs", "SETUP_GUIDE.md"), "guide");
+        StartFiles(folder, "linux-x64", "libSkiaSharp.so");
         return folder;
+    }
+
+    /// <summary>
+    /// Changes a block of pixels of the first frame in <paramref name="pe"/>'s icon group: the file stays a valid PE image (an assembly keeps its metadata) with
+    /// an icon that is not the crescent, as a launcher-stamped or personal program has.
+    /// </summary>
+    public static void ChangeIcon(string pe)
+    {
+        byte[] bytes = File.ReadAllBytes(pe);
+        byte[] group = Tsuki.Data.Icons.PeIcons.IconGroup(pe) ?? throw new InvalidOperationException(pe + " has no icon group");
+        int imageOffset = BitConverter.ToInt32(group, 6 + 12);
+        int imageLength = BitConverter.ToInt32(group, 6 + 8);
+        int at = bytes.AsSpan().IndexOf(group.AsSpan(imageOffset, imageLength));
+        if (at <= 0)
+        {
+            throw new InvalidOperationException("the first icon image was not found in " + pe);
+        }
+
+        for (int i = 40; i < 40 + 256; i++)
+        {
+            bytes[at + i] ^= 0x5A;
+        }
+
+        File.WriteAllBytes(pe, bytes);
+    }
+
+    /// <summary>
+    /// What both programs need to start, the way a publish has it: their runtimeconfig.json and a deps.json that lists the program's assembly and, for the launcher,
+    /// Avalonia.Base.dll (a stand-in written here) and <paramref name="launcherNative"/>.
+    /// </summary>
+    public static void StartFiles(string folder, string rid, string launcherNative)
+    {
+        File.WriteAllBytes(Path.Combine(folder, "Avalonia.Base.dll"), [0x4D, 0x5A]);
+        foreach (string program in ReleaseRules.UnixPrograms)
+        {
+            File.WriteAllText(Path.Combine(folder, program + ".runtimeconfig.json"), "{\"runtimeOptions\":{\"tfm\":\"net10.0\"}}");
+            string assets = "\"" + program + "/1.0.0\":{\"runtime\":{\"" + program + ".dll\":{}}}";
+            if (program != ReleaseRules.LinuxHost)
+            {
+                assets += ",\"Avalonia/11.3.22\":{\"runtime\":{\"lib/net8.0/Avalonia.Base.dll\":{}}}"
+                    + ",\"SkiaSharp.NativeAssets/2.88.9\":{\"native\":{\"runtimes/" + rid + "/native/" + launcherNative + "\":{}}}";
+            }
+
+            File.WriteAllText(Path.Combine(folder, program + ".deps.json"), "{\"targets\":{\".NETCoreApp,Version=v10.0\":{},\".NETCoreApp,Version=v10.0/" + rid + "\":{" + assets + "}}}");
+        }
     }
 
     /// <summary>
@@ -77,17 +129,16 @@ internal static class LinuxRelease
         using (var gzip = new GZipStream(stream, CompressionLevel.Fastest))
         using (var writer = new TarWriter(gzip, TarEntryFormat.Pax))
         {
-            writer.WriteEntry(new PaxTarEntry(TarEntryType.Directory, root + "/") { Mode = ReleaseSumsCommand.ExecutableMode });
+            writer.WriteEntry(new PaxTarEntry(TarEntryType.Directory, root + "/") { Mode = UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute | UnixFileMode.GroupRead | UnixFileMode.GroupExecute | UnixFileMode.OtherRead | UnixFileMode.OtherExecute });
             foreach (string dir in Directory.GetDirectories(folder, "*", SearchOption.AllDirectories).Order(StringComparer.Ordinal))
             {
-                writer.WriteEntry(new PaxTarEntry(TarEntryType.Directory, root + "/" + Path.GetRelativePath(folder, dir).Replace('\\', '/') + "/") { Mode = ReleaseSumsCommand.ExecutableMode });
+                writer.WriteEntry(new PaxTarEntry(TarEntryType.Directory, root + "/" + Path.GetRelativePath(folder, dir).Replace('\\', '/') + "/") { Mode = UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute | UnixFileMode.GroupRead | UnixFileMode.GroupExecute | UnixFileMode.OtherRead | UnixFileMode.OtherExecute });
             }
 
             foreach (string file in Directory.GetFiles(folder, "*", SearchOption.AllDirectories).Order(StringComparer.Ordinal))
             {
                 string rel = Path.GetRelativePath(folder, file).Replace('\\', '/');
-                bool executable = rel == ReleaseRules.LinuxHost || rel.Contains(".so", StringComparison.Ordinal);
-                UnixFileMode m = executable ? ReleaseSumsCommand.ExecutableMode : UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.GroupRead | UnixFileMode.OtherRead;
+                UnixFileMode m = ReleaseRules.LinuxMode(rel, directory: false);
                 var entry = new PaxTarEntry(TarEntryType.RegularFile, root + "/" + rel)
                 {
                     Mode = mode?.Invoke(rel, m) ?? m,

@@ -101,14 +101,17 @@ public sealed record GameFolderInfo(
         _ => $"unknown build ({TitleId ?? "no title id"} {AppVersion ?? "?"}): tables found by content",
     };
 
+    /// <summary>The folder separator these sentences show: a backslash on Windows, as in v0.1.6, and a slash on Linux and macOS.</summary>
+    private static string Separator => OperatingSystem.IsWindows() ? "\\" : "/";
+
     /// <summary>A one-line reason for a folder that is not ready.</summary>
     public string Summary => State switch
     {
         FolderState.NotSet => "No game folder chosen yet.",
         FolderState.Missing => "This folder does not exist.",
-        FolderState.NotTheGame => "No eboot.bin in this folder. Choose the CUSA47999 folder (it holds eboot.bin and image\\).",
+        FolderState.NotTheGame => $"No eboot.bin in this folder. Choose the CUSA47999 folder (it holds eboot.bin and image{Separator}).",
         FolderState.PkgFile => "This is a PS4 package (.pkg). Extract it first (shadPS4, or a PKG extractor), then choose the extracted CUSA47999 folder.",
-        FolderState.UpdateOnly => "This folder holds only the game's update. The base game folder (with image\\allpac0.mrg and the other archives) must be beside it.",
+        FolderState.UpdateOnly => $"This folder holds only the game's update. The base game folder (with image{Separator}allpac0.mrg and the other archives) must be beside it.",
         FolderState.Several => $"Several game folders are inside this one{(Layout is { CandidateList.Count: > 0 } l ? " (" + string.Join(", ", l.CandidateList.Select(System.IO.Path.GetFileName)) + ")" : string.Empty)}. Choose one of them.",
         FolderState.Incomplete => ProblemList.Count > 0 ? ProblemList[0] : "The game files are incomplete.",
         _ => "Ready.",

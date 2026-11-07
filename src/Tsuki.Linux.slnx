@@ -1,6 +1,7 @@
 <Solution>
   <Folder Name="/src/">
     <Project Path="Tsuki.App/Tsuki.App.csproj" />
+    <Project Path="Tsuki.Launcher.Avalonia/Tsuki.Launcher.Avalonia.csproj" />
     <Project Path="Tsuki.Cli/Tsuki.Cli.csproj" />
     <Project Path="Tsuki.Data/Tsuki.Data.csproj" />
     <Project Path="Tsuki.DevBridge/Tsuki.DevBridge.csproj" />
@@ -11,6 +12,7 @@
     <Project Path="Tsuki.Ui/Tsuki.Ui.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="../tests/Tsuki.Tests.Avalonia/Tsuki.Tests.Avalonia.csproj" />
     <Project Path="../tests/Tsuki.Tests.Data/Tsuki.Tests.Data.csproj" />
     <Project Path="../tests/Tsuki.Tests.Render/Tsuki.Tests.Render.csproj" />
     <Project Path="../tests/Tsuki.Tests.Synthetic/Tsuki.Tests.Synthetic.csproj" />

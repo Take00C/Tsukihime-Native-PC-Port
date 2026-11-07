@@ -1,0 +1,74 @@
+<UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:views="clr-namespace:Tsuki.Launcher.Avalonia.Views" x:Class="Tsuki.Launcher.Avalonia.Views.PlayPage">
+  <ScrollViewer Classes="Page">
+    <StackPanel Margin="0,0,0,24">
+      <views:HeroView x:Name="Hero" Height="274"/>
+      <!-- side by side; one under the other on a narrow page (PlayPage.axaml.cs) -->
+      <Grid x:Name="Cards" ColumnDefinitions="1.05*,18,0.95*" Margin="0,18,0,0">
+        <Border Classes="Card" VerticalAlignment="Stretch">
+          <StackPanel>
+            <Grid>
+              <TextBlock Text="READY CHECK" Classes="SmallCaps"/>
+              <TextBlock Text="{Binding ReadySummary}" HorizontalAlignment="Right" FontSize="12" Foreground="{StaticResource MutedBrush}"/>
+            </Grid>
+            <Rectangle Classes="GoldDivider" Margin="0,11,0,16"/>
+            <ItemsControl x:Name="ReadyList" ItemsSource="{Binding ReadyRows}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                  <Grid ColumnDefinitions="38,*,Auto" Margin="0,0,0,13">
+                    <Border Width="26" Height="26" CornerRadius="13" HorizontalAlignment="Left" VerticalAlignment="Top" BorderThickness="1"
+                            Background="{Binding State, Converter={StaticResource StateMark}, ConverterParameter=fill}" BorderBrush="{Binding State, Converter={StaticResource StateMark}, ConverterParameter=rim}">
+                      <Viewbox Width="13" Height="13">
+                        <Path Classes="Icon" Data="{Binding State, Converter={StaticResource StateMark}, ConverterParameter=glyph}" Stroke="{Binding State, Converter={StaticResource StateMark}, ConverterParameter=ink}" StrokeThickness="2.4"/>
+                      </Viewbox>
+                    </Border>
+                    <StackPanel Grid.Column="1" Margin="0,0,12,0">
+                      <TextBlock Text="{Binding Title}" Classes="RowTitle" FontSize="13.5"/>
+                      <TextBlock Text="{Binding Detail}" Classes="Muted" FontSize="12" LineHeight="16" Margin="0,1,0,0"/>
+                    </StackPanel>
+                    <Button Grid.Column="2" Content="Fix" Classes="LinkButton" VerticalAlignment="Top" Margin="0,3,0,0" IsVisible="{Binding HasFix}"
+                            Command="{Binding DataContext.FixCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}" CommandParameter="{Binding Fix}"/>
+                  </Grid>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </StackPanel>
+        </Border>
+
+        <Border x:Name="QuickSettings" Grid.Column="2" Classes="Card" VerticalAlignment="Stretch">
+          <StackPanel>
+            <TextBlock Text="QUICK SETTINGS" Classes="SmallCaps"/>
+            <Rectangle Classes="GoldDivider" Margin="0,11,0,16"/>
+            <TextBlock Text="Game language" Classes="RowTitle" FontSize="13.5"/>
+            <ListBox Classes="Segmented" SelectedIndex="{Binding LanguageIndex, Mode=TwoWay}" Margin="0,8,0,0">
+              <ListBoxItem Content="日本語" FontFamily="{StaticResource JapaneseFont}" IsVisible="{Binding JaAvailable}"/>
+              <ListBoxItem Content="English" IsVisible="{Binding EnAvailable}"/>
+              <ListBoxItem Content="简体中文" FontFamily="{StaticResource ChineseSimplifiedFont}" IsVisible="{Binding ZcAvailable}"/>
+              <ListBoxItem Content="繁體中文" FontFamily="{StaticResource ChineseTraditionalFont}" IsVisible="{Binding ZtAvailable}"/>
+            </ListBox>
+            <Grid ColumnDefinitions="*,Auto" Margin="0,18,0,0">
+              <StackPanel>
+                <TextBlock Text="Fullscreen" Classes="RowTitle" FontSize="13.5"/>
+                <TextBlock Text="Borderless, on your display." Classes="Muted" FontSize="12" Margin="0,1,0,0"/>
+              </StackPanel>
+              <CheckBox Grid.Column="1" Classes="Switch" IsChecked="{Binding Fullscreen, Mode=TwoWay}" VerticalAlignment="Center"/>
+            </Grid>
+            <TextBlock Text="Button prompts" Classes="RowTitle" FontSize="13.5" Margin="0,18,0,0"/>
+            <ListBox Classes="Segmented" SelectedIndex="{Binding PromptsIndex, Mode=TwoWay}" Margin="0,8,0,0">
+              <ListBoxItem Content="Auto"/>
+              <ListBoxItem Content="Keyboard"/>
+              <ListBoxItem Content="PlayStation"/>
+              <ListBoxItem Content="Xbox"/>
+            </ListBox>
+            <Grid ColumnDefinitions="*,Auto" Margin="0,18,0,0" IsVisible="{Binding ShortcutSupported}">
+              <StackPanel>
+                <TextBlock Text="Application menu" Classes="RowTitle" FontSize="13.5"/>
+                <TextBlock Text="{Binding ShortcutText}" Classes="Muted" FontSize="12" Margin="0,1,8,0"/>
+              </StackPanel>
+              <Button Grid.Column="1" Content="{Binding ShortcutLabel}" Classes="GhostButton" Command="{Binding ShortcutCommand}" Height="34" Padding="16,0" VerticalAlignment="Center"/>
+            </Grid>
+          </StackPanel>
+        </Border>
+      </Grid>
+    </StackPanel>
+  </ScrollViewer>
+</UserControl>

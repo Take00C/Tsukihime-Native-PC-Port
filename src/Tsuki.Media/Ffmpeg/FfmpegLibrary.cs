@@ -24,7 +24,7 @@ public sealed record FfmpegVersion(string Build, string Avcodec, string Avutil, 
 /// game shows it to a player in its own words (review R1). A developer fills <c>third_party/ffmpeg/bin</c> with <c>tools/setup/ffmpeg_dlls.ps1</c> (ARCHITECTURE 0.5).
 /// </summary>
 public sealed class FfmpegMissingException(string folder, IReadOnlyList<string> missingFiles)
-    : FileNotFoundException($"FFmpeg {(OperatingSystem.IsLinux() ? "shared libraries" : "DLLs")} missing from {folder}: {string.Join(", ", missingFiles)}", missingFiles.Count > 0 ? missingFiles[0] : null)
+    : FileNotFoundException($"FFmpeg {(!OperatingSystem.IsWindows() ? "shared libraries" : "DLLs")} missing from {folder}: {string.Join(", ", missingFiles)}", missingFiles.Count > 0 ? missingFiles[0] : null)
 {
     /// <summary>The folder searched.</summary>
     public string Folder { get; } = folder;
@@ -40,9 +40,15 @@ public static unsafe class FfmpegLibrary
     public const string AvcodecDll = "avcodec-63.dll";
 
     /// <summary>The platform's library names for the pinned FFmpeg ABI.</summary>
-    public static IReadOnlyList<string> RequiredDlls { get; } = OperatingSystem.IsLinux()
+    public static IReadOnlyList<string> RequiredDlls { get; } = RequiredDllsFor(
+        OperatingSystem.IsLinux() ? OSPlatform.Linux : OperatingSystem.IsMacOS() ? OSPlatform.OSX : OSPlatform.Windows);
+
+    /// <summary>The library names of one platform (the release tests check both Mac architectures without loading them).</summary>
+    public static IReadOnlyList<string> RequiredDllsFor(OSPlatform platform) => platform == OSPlatform.Linux
         ? ["libavutil.so.61", "libswresample.so.7", "libavcodec.so.63", "libavformat.so.63"]
-        : ["avutil-61.dll", "swresample-7.dll", AvcodecDll, "avformat-63.dll"];
+        : platform == OSPlatform.OSX
+            ? ["libavutil.61.dylib", "libswresample.7.dylib", "libavcodec.63.dylib", "libavformat.63.dylib"]
+            : ["avutil-61.dll", "swresample-7.dll", AvcodecDll, "avformat-63.dll"];
 
     /// <summary>The decoders the game needs: voices, SE and BGM (atrac9), movies (h264 + aac).</summary>
     public static IReadOnlyList<string> RequiredDecoders { get; } = ["atrac9", "h264", "aac"];
@@ -129,6 +135,23 @@ public static unsafe class FfmpegLibrary
     {
         EnsureLoaded();
         var names = new HashSet<string>(RequiredDlls, StringComparer.OrdinalIgnoreCase);
+        if (OperatingSystem.IsMacOS())
+        {
+            var images = new List<string>();
+            int count = _dyld_image_count();
+            for (uint i = 0; i < count; i++)
+            {
+                string? path = Marshal.PtrToStringUTF8(_dyld_get_image_name(i));
+                if (path is not null && names.Contains(Path.GetFileName(path)))
+                {
+                    images.Add(path);
+                }
+            }
+
+            images.Sort(StringComparer.OrdinalIgnoreCase);
+            return images;
+        }
+
         using var process = Process.GetCurrentProcess();
         var paths = new List<string>();
         foreach (ProcessModule m in process.Modules)
@@ -142,6 +165,12 @@ public static unsafe class FfmpegLibrary
         paths.Sort(StringComparer.OrdinalIgnoreCase);
         return paths;
     }
+
+    [DllImport("libSystem.B.dylib")]
+    private static extern int _dyld_image_count();
+
+    [DllImport("libSystem.B.dylib")]
+    private static extern IntPtr _dyld_get_image_name(uint index);
 
     private static string DefaultFolder()
     {
