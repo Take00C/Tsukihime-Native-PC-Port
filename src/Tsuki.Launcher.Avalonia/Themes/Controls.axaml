@@ -342,7 +342,8 @@
     <Setter Property="Cursor" Value="Hand"/>
     <Setter Property="Foreground" Value="{StaticResource MutedBrush}"/>
     <Setter Property="FontSize" Value="13"/>
-    <Setter Property="Padding" Value="8"/>
+    <!-- 4 px at the sides: the equal cells keep "PlayStation" whole with the wider sans fonts some Linux desktops pick (GitHub's Ubuntu: 73.3 px) -->
+    <Setter Property="Padding" Value="4,8"/>
     <Setter Property="Template">
       <ControlTemplate>
         <Border x:Name="Bd" CornerRadius="7" Padding="{TemplateBinding Padding}" BorderThickness="1" BorderBrush="Transparent" Background="Transparent">

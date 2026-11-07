@@ -476,6 +476,13 @@ public sealed class ExeIconStampTests : IDisposable
             Assert.Skip("Windows only");
         }
 
+        if (Environment.GetEnvironmentVariable("GITHUB_ACTIONS") == "true")
+        {
+            // the second WPF launcher of this test (started from programs the test has just rewritten) times out on GitHub's hosted Windows
+            // runner and never writes its report; on a Windows desktop it passes, and the release steps run it there (PUBLISHING 4.1)
+            Assert.Skip("starts a rewritten WPF launcher, which times out on GitHub's hosted Windows runner; run it on a Windows desktop");
+        }
+
         string app = Install(runnable: true);
         string game = Path.Combine(app, "Tsukihime.exe");
         string launcher = Path.Combine(app, "TsukihimeLauncher.exe");

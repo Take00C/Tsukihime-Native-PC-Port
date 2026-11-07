@@ -157,7 +157,8 @@ for lib in "${required[@]}"; do
             exit 1
         fi
         case "$dependency" in
-            @loader_path/*|/usr/lib/*) ;;
+            # macOS's own libraries and frameworks are on every Mac (libavutil links CoreFoundation); release-check allows the same
+            @loader_path/*|/usr/lib/*|/System/Library/Frameworks/*) ;;
             *) printf 'ffmpeg_macos: %s has a non-relocatable dependency: %s\n' "$lib" "$dependency" >&2; exit 1 ;;
         esac
     done < <(tail -n +2 <<<"$linkages" | awk '{print $1}')
