@@ -1,12 +1,12 @@
 # Tsukihime PC port: the player's setup guide (セットアップガイド)
 
-**This guide covers the Windows programs.** For Linux requirements, setup and running the player,
-see the [Linux guide](LINUX.md). Sections 3, 5, 6 and the appendices also explain shared player features;
-Windows launcher pages and Windows paths apply only on Windows.
+**This guide covers the player and its launcher.** The launcher's pages are the same on Windows, Linux
+and macOS. Paths are given for Windows; the [Linux guide](LINUX.md) and [macOS guide](MACOS.md) give the
+paths, requirements and notes for those systems.
 
-This guide describes version 0.1.6. Downloaded builds may differ from the current source.
+This guide describes version 0.1.7. Downloaded builds may differ from the current source.
 Windows packages include `SETUP_GUIDE.txt` beside the programs, opened by
-**Help & about > Open the setup guide**. The Markdown copy is in `docs/`.
+**Help & about > Open the setup guide**; on Linux and macOS that button opens this Markdown copy in `docs/`.
 
 To start: extract the whole program archive, run `TsukihimeLauncher.exe`, choose your extracted
 `CUSA47999` folder on **Game files**, then press **PLAY**.
@@ -140,7 +140,8 @@ starts it. This notice identifies an unknown publisher; it is not a security ass
 
 The English launcher has seven pages: **Play**, **Game files**, **Display**, **Language & sound**,
 **Controls**, **Saves**, **Help & about**. The footer has status, **Log** and **PLAY**.
-Only one launcher runs at a time; reopening it brings the existing window forward.
+Only one launcher runs at a time. On Windows, reopening it brings the existing window forward; on
+Linux and macOS a second start only says it is already open.
 
 ### 4.3 Game files
 
@@ -191,7 +192,8 @@ icons** turns that off and puts the crescent back. Explorer may show the old ico
 
 You can launch `Tsukihime.exe` directly or through its shortcut. It uses the same profile and remembered
 folder. With no folder chosen, it explains what is needed in your Windows display language and opens
-a folder dialog. Direct starts do not write `last_run.log`; use `--log` or the launcher for diagnostics.
+a folder dialog. On Windows, direct starts do not write `last_run.log`; use `--log` or the launcher for diagnostics.
+On Linux and macOS every start writes it.
 
 Press a key at the notice screen to reach the title: **CONTINUE** when a save exists, **NEW GAME**,
 **LOAD GAME**, **CONFIG**, **GALLERY** or **EXIT**. Exit asks before quitting without saving.
@@ -283,7 +285,7 @@ Paste that path into File Explorer or choose **Saves > Open folder**. Screenshot
 | `save.dat` | All 140 slots, read/unlocked progress and game config. `save.dat.bak` keeps the previous generation. A damaged save is set aside and the backup tried; if neither is usable, a new profile starts. |
 | `settings.ini` | Port settings, listed in appendix A. |
 | `game_dir.txt` | Remembered game folder. |
-| `last_run.log`, `crash.log` | Launcher-started run log and failure log. |
+| `last_run.log`, `crash.log` | Run log of PLAY (on Linux and macOS, of every start) and failure log. |
 | `backups\<date>-<time>\` | Launcher backups. |
 | `icons\tsukihime.ico` | Icon made from your own copy. |
 
@@ -368,7 +370,7 @@ The launcher uses English; game messages use the selected game language.
 | `Tsukihime.exe` is not next to the launcher | Extract the entire archive into one folder. |
 | OpenGL 3.3 unavailable or window could not be created | Install your GPU or laptop maker's driver. Avoid Remote Desktop. On a dual-GPU laptop, select a compatible GPU in **Windows Settings > System > Display > Graphics**. |
 | Game already running | Use the open game. If none is visible, check Task Manager for `Tsukihime.exe`; ending it loses unsaved progress. |
-| Launcher already open | Use the existing window, which is brought forward. |
+| Launcher already open | Use the existing window (Windows brings it forward). |
 | Save folder/file cannot be written, or `save.dat` is a folder | Free disk space, correct profile permissions or rename that directory. Saves held only in memory are lost when the game closes. |
 | Damaged save; backup used or new profile started | The message names the file set aside. Check **Saves** and restore a backup if needed. |
 | Log could not be opened | Close programs locking the file and check profile permissions. The game continues without that log. |
@@ -388,8 +390,8 @@ The launcher uses English; game messages use the selected game language.
   Failures appear at the end.
 - **`%APPDATA%\Tsuki\crash.log`** records failures however the player was started; the error box gives
   its location. A custom `--save-dir` puts it in that profile instead.
-- Direct starts and desktop shortcuts do not create `last_run.log`. Use the launcher or
-  `Tsukihime.exe --log <file>` to record one.
+- On Windows, direct starts and desktop shortcuts do not create `last_run.log`. Use the launcher or
+  `Tsukihime.exe --log <file>` to record one. On Linux and macOS every start writes it in the profile.
 
 ### 7.3 How to report a problem
 
@@ -410,13 +412,15 @@ and describe rendering problems in words. A crop showing only the port's own err
 
 ## Appendix A: settings.ini (設定ファイル)
 
-`%APPDATA%\Tsuki\settings.ini` contains `key=value` lines. Close the game and launcher before editing
-it in Notepad, then restart. A `#` starts a comment; unknown keys and bad values are ignored.
+`%APPDATA%\Tsuki\settings.ini` (Linux: `~/.config/Tsuki/settings.ini`) contains `key=value` lines. Close
+the game and launcher before editing it in Notepad, then restart. Only a line that starts with `#` is a
+comment; unknown keys and bad values are ignored.
 
 | Key | Values | Effect |
 |---|---|---|
 | `prompts` | `auto`, `keyboard`, `playstation`, `xbox` | Button prompts (Config > Controls writes it too) |
-| `fullscreen` | `on`, `off` | The launcher's choice for the next PLAY; the game stores the mode in `save.dat` and removes the line |
+| `fullscreen` | `on`, `off` | The launcher's choice for the next PLAY; the game stores the mode in `save.dat` and removes the line (on a Steam Deck the line stays and `display_mode` decides) |
+| `display_mode` | `fullscreen`, `windowed` | Linux only: the last F11, Config > Display Mode or launcher Fullscreen choice; on a Steam Deck it replaces the fullscreen default |
 | `language` | `ja`, `en`, `zc`, `zt` | The game language of the next start; applied once, then removed (Config changes it later) |
 | `window` | `1600x900` (640x360 up to 16384x16384) | The window's size when not fullscreen (default `1600x900`; clamped to 90 % of the monitor's work area) |
 | `monitor` | `x,y` | The monitor to open on, by the top-left corner of its desktop area (`0,0`, `1920,0`, `-2560,0`) |
@@ -440,8 +444,8 @@ is a windowed program, so its text output shows only through a pipe). The ones a
 |---|---|
 | `--game <folder>` | Use this game folder for this run (else the `TSUKI_GAME_DIR` environment variable, else the remembered `game_dir.txt`, else the folder dialog) |
 | `--lang ja\|en\|zc\|zt` | The language of a new profile for this run |
-| `--fullscreen`, `--windowed` | The window mode of this run (remembered for the next) |
-| `--save-dir <folder>` | Use another profile for saves, settings, remembered game folder and crash log. A run log still needs `--log` |
+| `--fullscreen`, `--windowed` | The window mode of this run (remembered for the next, except on a Steam Deck) |
+| `--save-dir <folder>` | Use another profile for saves, settings, remembered game folder and crash log. On Linux and macOS its `last_run.log` is the run log; on Windows a run log still needs `--log` |
 | `--log <file>` | Write the run's log to this file |
 | `--prompts auto\|keyboard\|playstation\|xbox` | The button prompts for this run |
 | `--screenshot-dir <folder>` | Where F12 saves for this run (default `Pictures\Tsukihime`) |

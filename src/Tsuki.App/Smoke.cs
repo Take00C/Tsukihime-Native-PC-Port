@@ -18,18 +18,25 @@ internal static class Smoke
     private const long FirstToggleFrame = 10;
     private const long SecondToggleFrame = 40;
 
-    public static int Run(bool visible, string? reportPath)
+    public static int Run(bool visible, string? reportPath, bool headless = false)
     {
         var report = new SmokeReport();
         report.Info("app", $"Tsuki.App {typeof(Smoke).Assembly.GetName().Version}; .NET {Environment.Version}; {Environment.OSVersion}; folder {AppContext.BaseDirectory}");
         CheckFfmpeg(report);
-        try
+        if (headless)
         {
-            CheckWindowAndLoop(report, visible);
+            report.Info("headless", "no GL window or renderer checks; FFmpeg and audio only");
         }
-        catch (Exception e)
+        else
         {
-            report.Check("platform", false, e.GetType().Name + ": " + e.Message);
+            try
+            {
+                CheckWindowAndLoop(report, visible);
+            }
+            catch (Exception e)
+            {
+                report.Check("platform", false, e.GetType().Name + ": " + e.Message);
+            }
         }
 
         CheckAudio(report);
@@ -51,7 +58,9 @@ internal static class Smoke
             FfmpegVersion v = FfmpegLibrary.Load();
             report.Check("ffmpeg.load", true, $"FFmpeg {v.Build}, libavcodec {v.Avcodec}, libavutil {v.Avutil}, license \"{v.License}\"");
             IReadOnlyList<string> modules = FfmpegLibrary.LoadedModulePaths();
-            bool local = modules.Count > 0 && modules.All(m => InFolder(m, FfmpegLibrary.RootPath));
+            bool local = OperatingSystem.IsMacOS()
+                ? modules.Count == FfmpegLibrary.RequiredDlls.Count && modules.All(m => InFolder(m, FfmpegLibrary.RootPath))
+                : modules.Count > 0 && modules.All(m => InFolder(m, FfmpegLibrary.RootPath));
             report.Check(OperatingSystem.IsLinux() ? "ffmpeg.library_folder" : "ffmpeg.app_folder", local, $"{modules.Count} FFmpeg modules loaded: {string.Join(", ", modules)}");
             foreach (string name in FfmpegLibrary.RequiredDecoders)
             {
@@ -81,6 +90,12 @@ internal static class Smoke
         var renders = new List<SmokeRender>();
         foreach (GlslDialect dialect in ShaderCompiler.AllDialects)
         {
+            if (OperatingSystem.IsMacOS() && dialect == GlslDialect.GlslEs300)
+            {
+                report.Info("shader.GlslEs300", "not used on macOS: Apple's OpenGL 4.1 core profile has no GLSL ES 3.00; the game uses GLSL 3.30 core");
+                continue;
+            }
+
             try
             {
                 SmokeRender r = SmokeShader.Render(device, dialect);

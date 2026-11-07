@@ -15,15 +15,12 @@ public sealed record ReleaseCheckResult(IReadOnlyList<string> Problems, IReadOnl
 /// The rules that keep a PERSONAL build (package K28: a build whose programs carry the Arcueid icon cut from the owner's copy of the game, TYPE-MOON's art) out of a
 /// release: the folder to be zipped must hold no <c>PERSONAL_BUILD.txt</c>, its programs' icon groups must be the port's crescent (<c>assets/icon/tsukihime.ico</c>),
 /// and its assemblies must carry neither the <c>TsukiPersonalBuild</c> metadata nor a <c>-personal</c> version. The folder must look like a publish of the port
-/// (<c>Tsukihime.exe</c> on Windows, <c>Tsukihime</c> on Linux) so that a wrong path fails. Package K46: neither may hold a picture or game data
-/// (<see cref="ReleaseRules.Forbidden"/>), and a Linux folder must hold the x86-64 player, SDL, the four FFmpeg 9 libraries of an LGPL build and the licences
-/// (<see cref="ReleaseRules.CheckLinuxFolder"/>).
+/// (<c>Tsukihime.exe</c> on Windows, <c>Tsukihime</c> on Linux, or <c>Tsukihime.app</c> on macOS) so that a wrong path fails. No platform may hold a picture
+/// beyond approved branding or game data (<see cref="ReleaseRules.Forbidden"/>); Linux and macOS also check their native programs, libraries and licences
+/// (<see cref="ReleaseRules.CheckLinuxFolder"/>, <see cref="ReleaseRules.CheckMacFolder"/>).
 /// </summary>
-public static class ReleaseCheck
+public static partial class ReleaseCheck
 {
-    /// <summary>The note a personal build writes beside its programs (src/Tsuki.PersonalIcon.targets).</summary>
-    public const string PersonalNote = "PERSONAL_BUILD.txt";
-
     /// <summary>The programs whose icon group and assembly marks are checked (the apphost and its managed assembly).</summary>
     public static IReadOnlyList<string> Programs { get; } = ["Tsukihime", "TsukihimeLauncher"];
 
@@ -31,7 +28,7 @@ public static class ReleaseCheck
     /// Checks <paramref name="folder"/> against <paramref name="crescentIco"/> (the bytes of the port's own icon file). <paramref name="dump"/>, when given, receives
     /// the frames of each program's icon group (for a PNG of what the executable really carries).
     /// </summary>
-    public static ReleaseCheckResult Run(string folder, byte[] crescentIco, Action<string, IReadOnlyList<IconFrame>>? dump = null)
+    public static ReleaseCheckResult Run(string folder, byte[] crescentIco, Action<string, IReadOnlyList<IconFrame>>? dump = null, byte[]? crescentIcns = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(folder);
         ArgumentNullException.ThrowIfNull(crescentIco);
@@ -43,8 +40,11 @@ public static class ReleaseCheck
             return new ReleaseCheckResult(problems, notes);
         }
 
-        bool linux = !File.Exists(Path.Combine(folder, Programs[0] + ".exe")) && File.Exists(Path.Combine(folder, Programs[0]));
-        if (!linux && !File.Exists(Path.Combine(folder, Programs[0] + ".exe")))
+        string macos = Path.Combine(folder, "Contents", "MacOS");
+        bool mac = File.Exists(Path.Combine(macos, Programs[0]));
+        bool linux = !mac && !File.Exists(Path.Combine(folder, Programs[0] + ".exe")) && File.Exists(Path.Combine(folder, Programs[0]));
+        string programFolder = mac ? macos : folder;
+        if (!linux && !mac && !File.Exists(Path.Combine(folder, Programs[0] + ".exe")))
         {
             problems.Add($"{Programs[0]}.exe is not in {folder}: not a published folder of the port");
         }
@@ -54,11 +54,15 @@ public static class ReleaseCheck
             problems.Add($"{Path.GetRelativePath(folder, note)} is there: the folder is a personal build (it says so itself)");
         }
 
-        // package K46: no picture (the README's TYPE-MOON logo, art cut from a game folder) and no game data, on either platform; a Linux folder must carry its libraries
-        problems.AddRange(ReleaseRules.ForbiddenFiles(folder));
+        problems.AddRange(ReleaseRules.ForbiddenFiles(folder, mac));
         if (linux)
         {
             ReleaseRules.CheckLinuxFolder(folder, problems, notes);
+        }
+        else if (mac)
+        {
+            crescentIcns ??= ReleaseCheckCommand.DefaultMacIcns();
+            ReleaseRules.CheckMacFolder(folder, null, crescentIcns, null, problems, notes);
         }
 
         IReadOnlyList<IconFrame> crescent = FaceIcon.DecodeIco(crescentIco);
@@ -69,11 +73,11 @@ public static class ReleaseCheck
 
         foreach (string program in Programs)
         {
-            string iconName = program + (linux ? ".dll" : ".exe");
-            string iconPath = Path.Combine(folder, iconName);
-            if (linux && program == Programs[0] && !File.Exists(iconPath))
+            string iconName = program + (linux || mac ? ".dll" : ".exe");
+            string iconPath = Path.Combine(programFolder, iconName);
+            if ((linux || mac) && !File.Exists(iconPath))
             {
-                problems.Add($"{iconName} is not in {folder}: the Linux player assembly is missing");
+                problems.Add($"{iconName} is not in {programFolder}: the {(mac ? "Mac" : "Linux")} {(program == Programs[0] ? "player" : "launcher")} assembly is missing");
             }
 
             if (File.Exists(iconPath))
@@ -98,7 +102,7 @@ public static class ReleaseCheck
                 }
             }
 
-            string dll = Path.Combine(folder, program + ".dll");
+            string dll = Path.Combine(programFolder, program + ".dll");
             if (File.Exists(dll))
             {
                 AssemblyMarks? marks = PeIcons.Marks(dll);
@@ -127,47 +131,6 @@ public static class ReleaseCheck
         return new ReleaseCheckResult(problems, notes);
     }
 
-    /// <summary>
-    /// Null when the program <paramref name="exe"/> carries the port's crescent (<paramref name="crescent"/>, the frames of <c>assets/icon/tsukihime.ico</c>),
-    /// else what it carries instead, for a REFUSED line (release-sums checks the programs inside the zip with it: package K43, review).
-    /// </summary>
-    public static string? IconProblem(string exe, IReadOnlyList<IconFrame> crescent)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(exe);
-        ArgumentNullException.ThrowIfNull(crescent);
-        if (crescent.Count == 0)
-        {
-            return "cannot be compared: the crescent icon file could not be read";
-        }
-
-        if (PeIcons.IconGroup(exe) is not { } group)
-        {
-            return $"carries no application icon group (id {PeIcons.ApplicationIconGroup})";
-        }
-
-        IReadOnlyList<IconFrame> frames = FaceIcon.DecodeIco(group);
-        return SameFrames(crescent, frames)
-            ? null
-            : $"carries an icon that is not the port's crescent ({frames.Count} frames, {string.Join(", ", frames.Select(f => f.Size))} px): a personal build, or a folder whose launcher wrote Arcueid into its programs (package K43)";
-    }
-
-    private static bool SameFrames(IReadOnlyList<IconFrame> a, IReadOnlyList<IconFrame> b)
-    {
-        if (a.Count != b.Count)
-        {
-            return false;
-        }
-
-        for (int i = 0; i < a.Count; i++)
-        {
-            if (a[i].Size != b[i].Size || !a[i].Rgba.AsSpan().SequenceEqual(b[i].Rgba))
-            {
-                return false;
-            }
-        }
-
-        return true;
-    }
 }
 
 /// <summary>
@@ -181,7 +144,7 @@ public sealed class ReleaseCheckCommand : ICliCommand
     public string Name => "release-check";
 
     /// <inheritdoc/>
-    public string Summary => "refuse a folder that must not be released (a personal build, a picture or game data, a Linux folder without its libraries or licences); release-check FOLDER [--icon FILE] [--dump DIR]";
+    public string Summary => "refuse a personal or incomplete Windows, Linux or macOS release folder; release-check FOLDER [--icon FILE] [--dump DIR]";
 
     /// <inheritdoc/>
     public int Run(string[] args, TextWriter output, TextWriter error)
@@ -239,7 +202,7 @@ public sealed class ReleaseCheckCommand : ICliCommand
             };
         }
 
-        ReleaseCheckResult result = ReleaseCheck.Run(folder, File.ReadAllBytes(icon), dump);
+        ReleaseCheckResult result = ReleaseCheck.Run(folder, File.ReadAllBytes(icon), dump, DefaultMacIcns(icon));
         foreach (string note in result.Notes)
         {
             output.WriteLine("ok      " + note);
@@ -256,6 +219,32 @@ public sealed class ReleaseCheckCommand : ICliCommand
 
     /// <summary><c>assets/icon/tsukihime.ico</c> of the repository the tool runs from (release-check's and release-sums' default <c>--icon</c>), or null.</summary>
     internal static string? DefaultIcon() => FindRoot() is { } root ? Path.Combine(root, "assets", "icon", "tsukihime.ico") : null;
+
+    /// <summary>
+    /// The ICNS that package_macos.py makes from the PNGs beside <paramref name="iconPath"/>, or null if they are unavailable (missing, unreadable or not the
+    /// crescent's sizes): release-check and release-sums make it for every folder and file, so it must never stop a Windows or Linux check.
+    /// </summary>
+    internal static byte[]? DefaultMacIcns(string? iconPath = null)
+    {
+        iconPath ??= DefaultIcon();
+        if (iconPath is null)
+        {
+            return null;
+        }
+
+        try
+        {
+            string? folder = Path.GetDirectoryName(Path.GetFullPath(iconPath));
+            return folder is null ? null : ReleaseRules.MakeMacIcns(
+                File.ReadAllBytes(Path.Combine(folder, "tsukihime_16.png")),
+                File.ReadAllBytes(Path.Combine(folder, "tsukihime_32.png")),
+                File.ReadAllBytes(Path.Combine(folder, "tsukihime_256.png")));
+        }
+        catch (Exception e) when (e is IOException or InvalidDataException or UnauthorizedAccessException)
+        {
+            return null;
+        }
+    }
 
     private static string? FindRoot()
     {

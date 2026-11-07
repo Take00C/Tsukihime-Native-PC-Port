@@ -117,7 +117,22 @@ public static class GameLayoutResolver
     /// <summary>The folders inside a game folder a player may pick by mistake; the game is their parent.</summary>
     private static readonly string[] InsideFolders = ["image", "data", "sce_sys", "sce_module"];
 
-    /// <summary>Resolves <paramref name="path"/> (a folder, a file, quotes allowed).</summary>
+    /// <summary>
+    /// A leading <c>~</c> or <c>~/</c> as <paramref name="home"/> (Linux and macOS: Steam's Launch Options and a quoted path in a shell leave it as typed); any other
+    /// path, and any path when there is no home folder, as it is.
+    /// </summary>
+    public static string ExpandHome(string path, string? home)
+    {
+        ArgumentNullException.ThrowIfNull(path);
+        if (string.IsNullOrEmpty(home))
+        {
+            return path;
+        }
+
+        return path == "~" ? home : path.StartsWith("~/", StringComparison.Ordinal) ? Path.Combine(home, path[2..]) : path;
+    }
+
+    /// <summary>Resolves <paramref name="path"/> (a folder, a file, quotes allowed; off Windows a leading <c>~/</c> is the home folder).</summary>
     public static GameLayout Resolve(string? path)
     {
         if (string.IsNullOrWhiteSpace(path))
@@ -126,6 +141,11 @@ public static class GameLayoutResolver
         }
 
         string chosen = path.Trim().Trim('"');
+        if (!OperatingSystem.IsWindows())
+        {
+            chosen = ExpandHome(chosen, Environment.GetFolderPath(Environment.SpecialFolder.UserProfile, Environment.SpecialFolderOption.DoNotVerify));
+        }
+
         bool unixRoot = !OperatingSystem.IsWindows() && chosen == "/";
         if (chosen.Length == 0 || (!unixRoot && chosen.All(c => c is '\\' or '/')))
         {
@@ -186,7 +206,7 @@ public static class GameLayoutResolver
             return Classify(chosen, chosen);
         }
 
-        if (OperatingSystem.IsLinux() && chosen == Path.GetPathRoot(chosen))
+        if (!OperatingSystem.IsWindows() && chosen == Path.GetPathRoot(chosen))
         {
             return new GameLayout(chosen, GameLayoutKind.NoGame);
         }

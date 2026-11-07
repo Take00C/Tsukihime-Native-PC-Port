@@ -1,13 +1,13 @@
 # Third-party code
 
 The port's own code, everything the sections below do not list, is under the Mozilla Public License 2.0: `LICENSE` at the
-repository root, published as `licenses\LICENSE.txt` beside the programs. This file lists the code and the libraries of others
-that the repository or the release download carries, each with the notice its licence asks for. The licence texts travel with the
-programs in the `licenses\` folder (`FFmpeg-LGPL.txt`, `FFmpeg-GPL-3.0.txt`, `FFmpeg-SOURCE.txt`, `knife-MPL-2.0.txt`, `SDL3-zlib.txt`,
-`LICENSE.txt`, and this file as `THIRD_PARTY.md`); the copies the build takes are tracked in `src/Tsuki.Launcher/Licenses/`.
+repository root, published as `licenses\LICENSE.txt`. This file lists the code and the libraries of others that the repository or
+a release download carries, each with the notice its licence asks for. The texts travel in each package's `licenses` folder
+(`Contents/Resources/licenses` on macOS), including the FFmpeg source and licence notices, `knife-MPL-2.0.txt`, `SDL3-zlib.txt`,
+`LICENSE.txt`, and this file as `THIRD_PARTY.md`; the copies the build takes are tracked in `src/Tsuki.Launcher/Licenses/`.
 
-The Linux archive includes the player, SDL, FFmpeg and the .NET runtime with the same notices below; it does not include
-the WPF launcher. Both downloads carry `licenses/dotnet-LICENSE.txt` and `licenses/dotnet-THIRD-PARTY-NOTICES.txt`, copied
+The Linux and macOS packages include the player, the Avalonia launcher, SDL, FFmpeg and the .NET runtime with the same notices below;
+they do not include the WPF launcher. Every package carries `licenses/dotnet-LICENSE.txt` and `licenses/dotnet-THIRD-PARTY-NOTICES.txt`, copied
 unmodified from the resolved `Microsoft.NETCore.App.Runtime.<rid>` NuGet package, so they match the runtime being shipped.
 For runtime 10.0.13, the upstream originals are
 https://github.com/dotnet/runtime/blob/v10.0.13/LICENSE.TXT and
@@ -61,13 +61,22 @@ The Linux archive bundles the same four libraries as `libavcodec.so.63`, `libavf
 `libswresample.so.7`, unmodified from BtbN's `linux64-lgpl-shared-9.0` build; `tools/setup/ffmpeg_linux.py` copies them into
 `third_party/ffmpeg/linux` and writes the archive's `licenses/FFmpeg-SOURCE.txt`, which names that exact build and its source.
 
-The build is configured with `--enable-version3`, so the libraries are under the **GNU Lesser General Public License, version 3 or later**: `avcodec_license()` answers
-"LGPL version 3 or later" (`Tsukihime.exe --smoke` prints it) and the package's `LICENSE.txt` is the LGPL v3 text (ARCHITECTURE 0.5). The release ships that text
+The Windows and Linux builds are configured with `--enable-version3`, so their libraries are under the **GNU Lesser General Public License, version 3 or later**: `avcodec_license()` answers
+"LGPL version 3 or later" (`Tsukihime.exe --smoke` prints it) and the package's `LICENSE.txt` is the LGPL v3 text (ARCHITECTURE 0.5). Those releases ship that text
 as `licenses\FFmpeg-LGPL.txt` and, because the LGPL v3 is a set of additional permissions on top of the GNU General Public License v3 and incorporates its terms, the
-GPL v3 text as `licenses\FFmpeg-GPL-3.0.txt` next to it (both tracked in `src/Tsuki.Launcher/Licenses/`). No GPL component is in the build (there is no `postproc`
-DLL): the GPL text is there as the document the LGPL refers to, not because any shipped library is GPL-licensed. Tsuki does not link against FFmpeg: `src/Tsuki.Media/Ffmpeg/FfmpegLibrary.cs` loads the DLLs from the application folder at run time
-through the `FFmpeg.AutoGen` 9.0.1.1 bindings (https://github.com/Ruslan-B/FFmpeg.AutoGen, MIT), so a user can replace them with another build of the same major
-versions, as the LGPL asks.
+GPL v3 text as `licenses\FFmpeg-GPL-3.0.txt` next to it (both tracked in `src/Tsuki.Launcher/Licenses/`). No GPL component is in either build: the GPL text is there as
+the document the LGPL refers to, not because any shipped library is GPL-licensed.
+
+On every platform, `src/Tsuki.Media/Ffmpeg/FfmpegLibrary.cs` loads the libraries dynamically through the `FFmpeg.AutoGen` 9.0.1.1
+bindings (https://github.com/Ruslan-B/FFmpeg.AutoGen, MIT), so a user can replace them with another build of the same major versions,
+as the LGPL asks.
+
+## macOS FFmpeg (LGPL 2.1 or later)
+
+The macOS app instead carries our minimal shared build of official FFmpeg 9 source (default ref `n9.0.2`), made by
+`tools/setup/ffmpeg_macos.sh` with no GPL, nonfree, version-3, external-library or network component. These four dylibs are under
+the **GNU Lesser General Public License, version 2.1 or later**. The app carries `FFmpeg-LICENSE.md`, `FFmpeg-LGPL-2.1.txt` and
+`FFmpeg-SOURCE.txt`; the last names the exact source commit, source archive and configure command.
 
 ## SDL3 (zlib)
 
@@ -174,6 +183,42 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR
 ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+## Avalonia, SkiaSharp, HarfBuzzSharp, MicroCom and Tmds.DBus (MIT)
+
+The Unix launcher uses Avalonia 11.3.22 (https://github.com/AvaloniaUI/Avalonia), including its Fluent theme and headless test support.
+Avalonia's exact notice is in `licenses/Avalonia-MIT.txt` (source:
+https://github.com/AvaloniaUI/Avalonia/blob/627ae9ef921621e27e7aa58df2796fbadb50af88/licence.md).
+SkiaSharp 2.88.9 and HarfBuzzSharp 8.3.1.1 render and shape its text. Their MIT notices are in
+`licenses/SkiaSharp-LICENSE.txt` and `licenses/HarfBuzzSharp-LICENSE.txt`; the native libraries' additional notices are in
+`licenses/SkiaSharp-THIRD-PARTY-NOTICES.txt`, copied from the restored SkiaSharp 2.88.9 NuGet package. The Windows launcher does not include them.
+
+MicroCom.Runtime 0.11.0 (https://github.com/kekekeks/MicroCom) is MIT, Copyright (c) 2021 Nikita Tsukanov.
+Tmds.DBus.Protocol 0.21.3 (https://github.com/tmds/Tmds.DBus) is MIT, Copyright 2006 Alp Toker; Copyright 2010 Other Contributors; Copyright 2016 Tom Deseyn.
+Their exact notices are in `licenses/MicroCom-MIT.txt` and `licenses/Tmds-DBus-MIT.txt`.
+
+The MIT License (MIT)
+
+Copyright (c) AvaloniaUI OÜ
+All Rights Reserved
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal in
+the Software without restriction, including without limitation the rights to use,
+copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the
+Software, and to permit persons to whom the Software is furnished to do so,
+subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
 
 ## Research references (no code copied)
 

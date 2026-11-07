@@ -1,7 +1,7 @@
 # Linux
 
-The SDL player runs natively on Linux. The separate WPF launcher remains Windows only.
-The player has its own game folder picker on first launch and settings in the pause menu.
+The SDL player and its Avalonia launcher run natively on Linux. The WPF launcher remains Windows only.
+The launcher has the Windows version's pages, game settings, backup browser and update button; the player can still be started directly.
 
 ## Requirements
 
@@ -18,12 +18,15 @@ The player has its own game folder picker on first launch and settings in the pa
 - Your own extracted PS4 game folder. The tested source edition is `CUSA47999`, update 1.01.
   No game data is included with this program.
 
-The release archive includes .NET, SDL and FFmpeg. OpenSSL, the C++ runtime and the graphics
-driver remain external dependencies.
-These ABI requirements do not establish compatibility with distributions we have not tested.
+The release archive includes .NET, SDL, FFmpeg, Skia and HarfBuzz. OpenSSL, the C++ runtime and the graphics
+driver remain external dependencies. `ldd` on the published launcher's bundled `libSkiaSharp.so` also requires
+system `libfontconfig.so.1` and `libfreetype.so.6`, which bring in Expat, zlib, bzip2, PNG and Brotli.
+Install the distribution's fontconfig and FreeType packages if they are absent. The launcher's 日本語, 简体中文 and 繁體中文
+buttons need a CJK font such as Noto Sans CJK; most desktops have one. These ABI requirements do not
+establish compatibility with SteamOS or other distributions we have not tested.
 
 In the extracted program folder, `docs/SETUP_GUIDE.md` covers game/update layouts,
-controls, saves and dictionary outputs. Its Windows launcher pages and Windows paths do not apply here.
+controls, saves and dictionary outputs. Its launcher pages are the same here; its Windows paths do not apply.
 Native Windows text hooks are unavailable; clipboard and loopback WebSocket output use the player settings.
 
 ## Run a release archive
@@ -34,13 +37,29 @@ Extract the Linux archive into a folder you can write to, then open a terminal i
 ```sh
 tar -xzf /path/to/Tsukihime-vX.Y.Z-linux-x64.tar.gz
 cd Tsukihime-vX.Y.Z-linux-x64
-./Tsukihime
+./TsukihimeLauncher
 ```
 
 Keep the entire extracted folder together, including its libraries and `licenses/`.
-The game folder is separate and can be selected on first launch. Without a desktop file chooser
-(xdg-desktop-portal or zenity), start it with `./Tsukihime --game /path/to/CUSA47999` or set `TSUKI_GAME_DIR`.
+Choose the game folder on the launcher's **Game files** page. Alternatively, start the player directly with
+`./Tsukihime --game /path/to/CUSA47999` or set `TSUKI_GAME_DIR`.
+Close the game before using the launcher's update button; it verifies, installs and restarts into the new release.
+**Add Tsukihime to the application menu** on **Game files** (or **Create** in Play's quick settings) adds an entry that starts the game.
 No .NET SDK is needed to run a self-contained release.
+
+## Steam Deck
+
+Same Linux download. Not yet tested on a real Deck: please report how it goes.
+
+1. In Desktop Mode, extract the archive into a folder you can write to.
+2. Start `TsukihimeLauncher`, pick your game folder on **Game files** (a microSD card is under `/run/media/deck/`) and press **Add Tsukihime to the application menu**.
+3. In Steam, choose **Games > Add a Non-Steam Game to My Library…** and tick **Tsukihime** (it starts the game, not the launcher). If it is not listed, use **Browse…** and pick `Tsukihime` in the extracted folder (file type **All Files**).
+
+- The game starts fullscreen; change it in **Config > System > Display Mode** or with the launcher's **Fullscreen** switch. If Game Mode still opens a window, add `--fullscreen` to its **Launch Options**.
+- Use the launcher in Desktop Mode for backups and updates; the Steam entry keeps working after an update.
+- From v0.1.6: extract into a new folder and add the new `Tsukihime` to Steam again.
+- Steam Cloud does not cover non-Steam games: copy `~/.config/Tsuki` to a microSD card or USB stick now and then.
+- Problems? Attach `last_run.log` and `crash.log` from `~/.config/Tsuki` (Ctrl+H shows hidden folders in Dolphin).
 
 ## Build and run
 
@@ -49,7 +68,7 @@ Install the .NET 10 SDK, then run from the repository root:
 ```sh
 dotnet build src/Tsuki.Linux.slnx -c Release
 bash tools/setup/publish_linux.sh
-./artifacts/linux-x64/Tsukihime
+./artifacts/linux-x64/TsukihimeLauncher
 ```
 
 The script accepts an optional output folder, followed by additional `dotnet publish` options.
@@ -67,16 +86,15 @@ an encrypted package or a console installation package.
 
 Settings and saves keep the existing `Tsuki` profile name, normally `~/.config/Tsuki` or
 `$XDG_CONFIG_HOME/Tsuki`. The folder is created if needed. A relative `XDG_CONFIG_HOME`
-is ignored in favour of `~/.config`. Use `--save-dir /path/to/saves` for a separate profile.
-The crash log is written there when possible. `F12` takes a screenshot, `F11` toggles
+is ignored in favour of `~/.config`. Use `--save-dir /path/to/saves` for a separate profile (the launcher takes `--data`).
+The crash log is written there when possible. The launcher writes `launcher.log` and `launcher_crash.log` there and holds
+`launcher.lock` while it runs, so a second launcher only says it is already open. `F12` takes a screenshot, `F11` toggles
 fullscreen and `Escape` opens the pause menu.
 
-Close the player before backing up the profile. Copy `save.dat` and `settings.ini` to a separate backup
-folder. To restore, first copy the current files aside, then replace `save.dat` with the backup; restore
-`settings.ini` only if you also want the old settings. Automatic recovery tries `save.dat.bak` after
-setting a damaged save aside. The Windows launcher’s backup browser and PS4 import UI are unavailable
-on Linux. An existing port `save.dat` can be copied into the Linux profile while the player is closed.
-For a run log, launch `./Tsukihime --log /tmp/tsuki-run.log` from the extracted folder.
+Close the player before backing up or restoring the profile. The launcher's **Saves** page backs up,
+restores and imports PS4 images; it backs up the current save before replacing it. Automatic recovery tries
+`save.dat.bak` after setting a damaged save aside. An existing port `save.dat` can be copied into the Linux profile while the player is closed.
+Every start writes the run log `last_run.log` in the profile; `./Tsukihime --log FILE` writes it elsewhere.
 
 ## Checks without game files
 
@@ -90,8 +108,12 @@ export TSUKI_GAME_DIR=/nonexistent
 dotnet test tests/Tsuki.Tests.Synthetic -c Release
 dotnet test tests/Tsuki.Tests.Render -c Release
 dotnet test tests/Tsuki.Tests.Data -c Release
+dotnet test tests/Tsuki.Tests.Avalonia -c Release
 PYTHONPATH=tools .venv/bin/python -m pytest tools/tests -q
 ./artifacts/linux-x64/Tsukihime --smoke --report /tmp/tsuki-smoke.txt
+./artifacts/linux-x64/TsukihimeLauncher --render /tmp/tsuki-launcher-pages --data /tmp/tsuki-profile --game /nonexistent
+TSUKI_K48_LINUX_PUBLISH=$PWD/artifacts/linux-x64 dotnet test tests/Tsuki.Tests.Avalonia --filter LinuxUpdateEndToEndTests
+python3 -I tools/tests/update_e2e.py artifacts/Tsukihime-vX.Y.Z-linux-x64.tar.gz --work /tmp/tsuki-update-e2e
 ```
 
 Rendering tests need a display with hardware OpenGL. Xvfb's software renderer has different
@@ -102,5 +124,5 @@ For a headless smoke check, prefix the smoke command with
 `SDL_VIDEODRIVER=offscreen SDL_AUDIODRIVER=dummy`. This does not replace desktop rendering checks.
 
 Tests that need retail data report a skip unless `TSUKI_GAME_DIR` names your extracted folder.
-Windows COM shortcut tests also skip on Linux. These skips do not establish gameplay
-compatibility. A complete play test still needs the retail files.
+Windows COM shortcut tests and the Windows-apphost release fixtures also skip on Linux. These skips
+do not establish gameplay compatibility. A complete play test still needs the retail files.

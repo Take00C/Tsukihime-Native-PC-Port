@@ -8,27 +8,31 @@
     <None Include="$(TsukiRepoRoot)CONTRIBUTING.md" Link="CONTRIBUTING.md" CopyToPublishDirectory="PreserveNewest" Visible="false" />
     <None Include="$(TsukiRepoRoot)LICENSE" Link="LICENSE" CopyToPublishDirectory="PreserveNewest" Visible="false" />
     <None Include="$(TsukiRepoRoot)assets/branding/tsukihime-logo.png" Link="assets/branding/tsukihime-logo.png" CopyToPublishDirectory="PreserveNewest" Visible="false" />
-    <None Include="$(TsukiRepoRoot)docs/SETUP_GUIDE.md;$(TsukiRepoRoot)docs/LINUX.md;$(TsukiRepoRoot)docs/THIRD_PARTY.md"
+    <None Include="$(TsukiRepoRoot)docs/SETUP_GUIDE.md;$(TsukiRepoRoot)docs/THIRD_PARTY.md;$(TsukiRepoRoot)docs/LINUX.md;$(TsukiRepoRoot)docs/MACOS.md"
           Link="docs/%(Filename)%(Extension)" CopyToPublishDirectory="PreserveNewest" Visible="false" />
   </ItemGroup>
 
   <!--
-    A Linux publish of the player (K46; tools/setup/publish_linux.sh, docs/PUBLISHING.md): the licence texts the Windows launcher's publish carries (src/Tsuki.Launcher/Licenses,
-    the same names under licenses/) and docs/LINUX.md beside the program. The FFmpeg libraries and their source notice come from Directory.Build.props.
+    A Unix publish carries the launcher's third-party notices and the self-contained runtime's notices, without compiler XML files.
+    FFmpeg itself comes from Directory.Build.props: Linux uses the BtbN LGPL 3 build; macOS uses our minimal LGPL 2.1-or-later build.
   -->
-  <PropertyGroup Condition="$([System.String]::Copy('$(RuntimeIdentifier)').StartsWith('linux-'))">
-    <!-- the XML doc files are for the compiler, not the player (package R1; the Windows launcher's publish deletes them) -->
+  <PropertyGroup Condition="$([System.String]::Copy('$(RuntimeIdentifier)').StartsWith('linux-')) or $([System.String]::Copy('$(RuntimeIdentifier)').StartsWith('osx-'))">
     <PublishDocumentationFile>false</PublishDocumentationFile>
     <PublishReferencesDocumentationFiles>false</PublishReferencesDocumentationFiles>
   </PropertyGroup>
-  <ItemGroup Condition="$([System.String]::Copy('$(RuntimeIdentifier)').StartsWith('linux-'))">
-    <None Include="$(TsukiRepoRoot)src/Tsuki.Launcher/Licenses/LGPL-3.0.txt" Link="licenses/FFmpeg-LGPL.txt" CopyToPublishDirectory="PreserveNewest" Visible="false" />
-    <None Include="$(TsukiRepoRoot)src/Tsuki.Launcher/Licenses/GPL-3.0.txt" Link="licenses/FFmpeg-GPL-3.0.txt" CopyToPublishDirectory="PreserveNewest" Visible="false" />
+  <ItemGroup Condition="$([System.String]::Copy('$(RuntimeIdentifier)').StartsWith('linux-')) or $([System.String]::Copy('$(RuntimeIdentifier)').StartsWith('osx-'))">
     <None Include="$(TsukiRepoRoot)src/Tsuki.Launcher/Licenses/MPL-2.0.txt" Link="licenses/knife-MPL-2.0.txt" CopyToPublishDirectory="PreserveNewest" Visible="false" />
     <None Include="$(TsukiRepoRoot)src/Tsuki.Launcher/Licenses/SDL3-zlib.txt" Link="licenses/SDL3-zlib.txt" CopyToPublishDirectory="PreserveNewest" Visible="false" />
     <None Include="$(TsukiRepoRoot)LICENSE" Link="licenses/LICENSE.txt" CopyToPublishDirectory="PreserveNewest" Visible="false" />
     <None Include="$(TsukiRepoRoot)docs/THIRD_PARTY.md" Link="licenses/THIRD_PARTY.md" CopyToPublishDirectory="PreserveNewest" Visible="false" />
+  </ItemGroup>
+  <ItemGroup Condition="$([System.String]::Copy('$(RuntimeIdentifier)').StartsWith('linux-'))">
+    <None Include="$(TsukiRepoRoot)src/Tsuki.Launcher/Licenses/LGPL-3.0.txt" Link="licenses/FFmpeg-LGPL.txt" CopyToPublishDirectory="PreserveNewest" Visible="false" />
+    <None Include="$(TsukiRepoRoot)src/Tsuki.Launcher/Licenses/GPL-3.0.txt" Link="licenses/FFmpeg-GPL-3.0.txt" CopyToPublishDirectory="PreserveNewest" Visible="false" />
     <None Include="$(TsukiRepoRoot)docs/LINUX.md" Link="LINUX.md" CopyToPublishDirectory="PreserveNewest" Visible="false" />
+  </ItemGroup>
+  <ItemGroup Condition="$([System.String]::Copy('$(RuntimeIdentifier)').StartsWith('osx-'))">
+    <None Include="$(TsukiRepoRoot)docs/MACOS.md" Link="MACOS.md" CopyToPublishDirectory="PreserveNewest" Visible="false" />
   </ItemGroup>
 
   <Target Name="TsukiIncludeRuntimeNotices" BeforeTargets="ComputeFilesToPublish" DependsOnTargets="ResolveFrameworkReferences"

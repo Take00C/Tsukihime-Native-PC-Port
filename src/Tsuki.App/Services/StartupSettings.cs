@@ -61,6 +61,33 @@ internal sealed class StartupSettings
         return new(title, w, h, Hidden: true, SwapInterval: Data.VSync == false ? 0 : 1);
     }
 
+    /// <summary>
+    /// The window mode of this start, decided once (the app and the tests call this). Elsewhere it is the command line, then the remembered config block byte, as
+    /// in v0.1.6. On the Steam Deck (Linux with <c>SteamDeck=1</c>, which Steam sets for the games it starts there) it is the command line, then the player's display_mode choice, then
+    /// fullscreen; the byte is not used there.
+    /// </summary>
+    /// <param name="args">The command line.</param>
+    /// <param name="config">The config block of the save file; its window-mode byte is the remembered mode.</param>
+    /// <param name="steamDeck">The <c>SteamDeck</c> variable; null reads the environment.</param>
+    /// <param name="linux">Whether this is Linux; null asks the OS.</param>
+    public StartWindowMode DecideWindowMode(AppArgs args, ConfigBlock config, string? steamDeck = null, bool? linux = null)
+    {
+        ArgumentNullException.ThrowIfNull(args);
+        ArgumentNullException.ThrowIfNull(config);
+        bool deck = (linux ?? OperatingSystem.IsLinux()) && (steamDeck ?? Environment.GetEnvironmentVariable("SteamDeck")) == "1";
+        if (args.WindowModeChoice is { } choice)
+        {
+            return new(choice, StartWindowSource.CommandLine, deck);
+        }
+
+        if (!deck)
+        {
+            return new(config.Bytes[WindowModeOffset] == 1, StartWindowSource.Remembered, deck);
+        }
+
+        return Data.RememberedFullscreen is { } remembered ? new(remembered, StartWindowSource.Remembered, deck) : new(true, StartWindowSource.SteamDeckDefault, deck);
+    }
+
     /// <summary>Sizes the window (clamped to the work area) and centres it on the chosen monitor, else on the one it is on; see <see cref="WindowPlacement.Place"/>.</summary>
     public Placement PlaceWindow(GameWindow window) => WindowPlacement.Place(window, Data.Monitor?.X, Data.Monitor?.Y, Data.WindowWidth, Data.WindowHeight);
 
@@ -101,5 +128,46 @@ internal sealed class StartupSettings
 
         bool applied = language || windowChanged;
         return applied;
+    }
+}
+
+/// <summary>Where the window mode of a start comes from.</summary>
+internal enum StartWindowSource
+{
+    /// <summary><c>--fullscreen</c> or <c>--windowed</c>.</summary>
+    CommandLine,
+
+    /// <summary>The remembered mode: the config block byte, or the display_mode choice on the Steam Deck.</summary>
+    Remembered,
+
+    /// <summary>The Steam Deck and no choice yet: fullscreen.</summary>
+    SteamDeckDefault,
+}
+
+/// <summary>The window mode of a start (<see cref="StartupSettings.DecideWindowMode"/>).</summary>
+/// <param name="Fullscreen">True for borderless fullscreen.</param>
+/// <param name="Source">Where it comes from.</param>
+/// <param name="SteamDeck">The Steam Deck rules decided it.</param>
+internal readonly record struct StartWindowMode(bool Fullscreen, StartWindowSource Source, bool SteamDeck)
+{
+    /// <summary>Fullscreen is asked for as soon as the window is shown: on the Steam Deck, and elsewhere for <c>--fullscreen</c> (as in v0.1.6).</summary>
+    public bool FullscreenAtShow => Fullscreen && (SteamDeck || Source == StartWindowSource.CommandLine);
+
+    /// <summary>Fullscreen is asked for once the game is set up: the remembered mode and <c>--fullscreen</c> again, as in v0.1.6; never on the Steam Deck.</summary>
+    public bool FullscreenAfterSetUp => Fullscreen && !SteamDeck;
+
+    /// <summary>The start-up log line; outside the Steam Deck it is v0.1.6's text.</summary>
+    public string LogLine
+    {
+        get
+        {
+            string mode = Fullscreen ? "fullscreen" : "windowed";
+            return Source switch
+            {
+                StartWindowSource.CommandLine => SteamDeck ? $"window mode: {mode} (command line)" : $"window mode: {mode} (command line, remembered)",
+                StartWindowSource.SteamDeckDefault => $"window mode: {mode} (Steam Deck default)",
+                _ => $"window mode: {mode} (remembered)",
+            };
+        }
     }
 }

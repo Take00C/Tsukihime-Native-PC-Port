@@ -27,16 +27,16 @@ every attachment yourself.
 
 ## 2. How to build
 
-Linux: see [the native Linux guide](docs/LINUX.md). Build `src/Tsuki.Linux.slnx` to exclude
-the Windows WPF launcher and Windows development spikes. The same synthetic, rendering and
-data test programs are included. The build commands below use Windows PowerShell from the repository root.
+Linux and macOS: see [the Linux guide](docs/LINUX.md) and [the macOS guide](docs/MACOS.md). There, build
+`src/Tsuki.Linux.slnx`: it leaves out the Windows WPF launcher and the Windows spikes and adds the Unix launcher
+and its tests (`tests/Tsuki.Tests.Avalonia`). The build commands below use Windows PowerShell from the repository root.
 
 - Windows 10 or 11 (64-bit), the **.NET 10 SDK** (`winget install Microsoft.DotNet.SDK.10`), Git.
 - The FFmpeg 9 LGPL libraries, once: `tools\setup\ffmpeg_dlls.ps1` copies the FFmpeg 9 LGPL DLLs from the
   installed winget package `BtbN.FFmpeg.LGPL.Shared.9.0` into the git-ignored `third_party\ffmpeg\bin` (if the
   package is missing it prints the `winget install` command and stops; it never installs or downloads anything
   itself; the build stops with `TSUKI001` without the DLLs).
-- `dotnet build src\Tsuki.slnx -c Release` builds everything; warnings are errors
+- `dotnet build src\Tsuki.slnx -c Release` builds the Windows programs and their tests; warnings are errors
   (`Directory.Build.props`), so `-warnaserror` is the normal state, not an option.
 - The release folder: `dotnet publish src\Tsuki.Launcher -c Release -r win-x64 --self-contained -o <folder>`
   (one folder with `TsukihimeLauncher.exe`, `Tsukihime.exe`, the runtime, the libraries and `licenses\`).
@@ -44,6 +44,9 @@ data test programs are included. The build commands below use Windows PowerShell
 - Tests: `dotnet test tests\Tsuki.Tests.Synthetic` needs no game. `tests\Tsuki.Tests.Data` and
   `tests\Tsuki.Tests.Render` run against your own copy and skip, with the reason, when the environment
   variable `TSUKI_GAME_DIR` does not name the `CUSA47999` folder; the Render tests open a hidden window.
+  `dotnet test tests\Tsuki.Tests.Avalonia` checks the Unix launcher headlessly and also runs on Windows.
+  Avalonia builds send no build telemetry: the root `Directory.Build.targets` switches it off, and CI also
+  sets `AVALONIA_TELEMETRY_OPTOUT=1`.
 - For Python readers, dependency checks and tests, see [Python tools](#python-tools) below.
 
 Nothing in the build, the tools or the tests writes into the game folder. Keep it that way.
@@ -172,8 +175,8 @@ Include:
 - Small pull requests, one subject each, with a test (the Synthetic test program for anything that needs no
   game; a real-data test skips cleanly without `TSUKI_GAME_DIR`). Tests use **synthetic data only**:
   no fixture may embed game content, not even a line of text or a glyph.
-- The build must stay warning-free (`dotnet build src\Tsuki.slnx -c Release`), and the three test
-  programs and the Python tests must pass.
+- The build must stay warning-free (`dotnet build src\Tsuki.slnx -c Release`), and the test programs
+  and the Python tests must pass.
 - Facts about the game's engine (addresses, table layouts, command behaviour) go into `docs/formats/`
   with the evidence that backs them (the documents use `[E]` read from the engine code, `[V]` verified on
   the retail data with counts, `[H]` hypothesis).

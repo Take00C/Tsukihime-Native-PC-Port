@@ -1,6 +1,7 @@
 // The command line of Tsukihime.exe, project Tsuki.App (package K6 extends the H1 skeleton's): the game itself, the verification mode for agents, and the old skeleton / smoke /
 // folder-dialog modes.
 using System.Globalization;
+using Tsuki.Data.IO;
 
 namespace Tsuki.App;
 
@@ -28,16 +29,18 @@ internal sealed class AppArgs
         "                     [--script \"60:Enter;120:Esc+Down;200:click=960,540;300:shot=name;400:log\" | --script @file] [--shot-at f,f,...] [--shot-dir DIR]\n" +
         "                     [--shot-on-choice] [--exit-after FRAMES] [--no-save] [--mem-log SECONDS]\n" +
         "                     [--screenshot-dir DIR]   (where F12 saves; default %USERPROFILE%\\Pictures\\Tsukihime)   [--clipboard-file FILE]   (the copied text goes there, not to the clipboard)\n" +
-        "       other:        --skeleton [--seconds N] | --smoke [--visible] [--report FILE] | --pick-folder [--timeout S]";
+        "       other:        --skeleton [--seconds N] | --smoke [--visible] [--report FILE] | --smoke-headless [--report FILE] | --pick-folder [--timeout S]";
 
     public AppMode Mode { get; private set; } = AppMode.Play;
 
     public bool Visible { get; private set; }
 
-    /// <summary><c>--fullscreen</c>: start in borderless fullscreen (and remember it).</summary>
+    public bool HeadlessSmoke { get; private set; }
+
+    /// <summary><c>--fullscreen</c>: start in borderless fullscreen (and remember it; on the Steam Deck it holds for this start only).</summary>
     public bool Fullscreen { get; private set; }
 
-    /// <summary><c>--windowed</c> (package K18): start in a window even when the remembered window mode is fullscreen (and remember it). The launcher passes one of the two on every PLAY.</summary>
+    /// <summary><c>--windowed</c> (package K18): start in a window even when the remembered window mode is fullscreen (and remember it; on the Steam Deck it holds for this start only). The launcher passes one of the two on every PLAY.</summary>
     public bool Windowed { get; private set; }
 
     /// <summary>The window mode this command line asks for (true = fullscreen, false = windowed); null when it says nothing, so that the remembered one is used.</summary>
@@ -125,18 +128,40 @@ internal sealed class AppArgs
     /// <summary>The sweep stops taking shots after this many.</summary>
     public int SweepMax { get; private set; } = 200_000;
 
-    public static bool TryParse(string[] args, out AppArgs? result, out string? error)
+    internal static bool IsIgnoredLaunchArgument(string arg, bool macOS) => macOS && arg.StartsWith("-psn_", StringComparison.Ordinal);
+
+    /// <summary>
+    /// The folder a leading <c>~</c> of a path option stands for: on Linux and macOS the home folder (Steam's Launch Options pass <c>~</c> as typed, and a <c>~</c>
+    /// folder would be made in the install folder); null on Windows, where every path is kept as typed, as in v0.1.6.
+    /// </summary>
+    internal static string? TildeHome() =>
+        OperatingSystem.IsWindows() ? null : Environment.GetFolderPath(Environment.SpecialFolder.UserProfile, Environment.SpecialFolderOption.DoNotVerify);
+
+    public static bool TryParse(string[] args, out AppArgs? result, out string? error) => TryParse(args, TildeHome(), out result, out error);
+
+    /// <summary>Reads <paramref name="args"/>; a path option's leading <c>~</c> or <c>~/</c> is <paramref name="home"/> (null: kept as typed).</summary>
+    internal static bool TryParse(string[] args, string? home, out AppArgs? result, out string? error)
     {
+        string PathArg(string value) => GameLayoutResolver.ExpandHome(value, home);
         var a = new AppArgs();
         result = null;
         error = null;
         for (int i = 0; i < args.Length; i++)
         {
             string arg = args[i];
+            if (IsIgnoredLaunchArgument(arg, OperatingSystem.IsMacOS()))
+            {
+                continue;
+            }
+
             switch (arg)
             {
                 case "--smoke":
                     a.Mode = AppMode.Smoke;
+                    break;
+                case "--smoke-headless":
+                    a.Mode = AppMode.Smoke;
+                    a.HeadlessSmoke = true;
                     break;
                 case "--skeleton":
                     a.Mode = AppMode.Skeleton;
@@ -179,34 +204,35 @@ internal sealed class AppArgs
 
                     break;
                 case "--report" when i + 1 < args.Length:
-                    a.ReportPath = args[++i];
+                    a.ReportPath = PathArg(args[++i]);
                     break;
                 case "--log" when i + 1 < args.Length:
-                    a.LogFile = args[++i];
+                    a.LogFile = PathArg(args[++i]);
                     break;
                 case "--game" when i + 1 < args.Length:
                     a.GameDir = args[++i];
                     break;
                 case "--save-dir" when i + 1 < args.Length:
-                    a.SaveDir = args[++i];
+                    a.SaveDir = PathArg(args[++i]);
                     break;
                 case "--shot-dir" when i + 1 < args.Length:
-                    a.ShotDir = args[++i];
+                    a.ShotDir = PathArg(args[++i]);
                     break;
                 case "--screenshot-dir" when i + 1 < args.Length:
-                    a.ScreenshotDir = args[++i];
+                    a.ScreenshotDir = PathArg(args[++i]);
                     break;
                 case "--clipboard-file" when i + 1 < args.Length:
-                    a.ClipboardFile = args[++i];
+                    a.ClipboardFile = PathArg(args[++i]);
                     break;
                 case "--choices" when i + 1 < args.Length:
                     a.Choices = args[++i];
                     break;
                 case "--script" when i + 1 < args.Length:
-                    a.Script = args[++i];
+                    string script = args[++i];
+                    a.Script = script.StartsWith('@') ? "@" + PathArg(script[1..]) : script;
                     break;
                 case "--sweep-dir" when i + 1 < args.Length:
-                    a.SweepDir = args[++i];
+                    a.SweepDir = PathArg(args[++i]);
                     break;
                 case "--sweep-every" when i + 1 < args.Length && int.TryParse(args[i + 1], NumberStyles.Integer, CultureInfo.InvariantCulture, out int se):
                     a.SweepEvery = se;
@@ -225,7 +251,7 @@ internal sealed class AppArgs
                     i++;
                     break;
                 case "--sweep-tour" when i + 1 < args.Length:
-                    a.SweepTour = args[++i];
+                    a.SweepTour = PathArg(args[++i]);
                     break;
                 case "--tour-end":
                     a.TourUntilEnd = true;

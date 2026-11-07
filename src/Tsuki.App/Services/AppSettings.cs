@@ -37,6 +37,7 @@ public readonly record struct MonitorOrigin(int X, int Y)
 /// <see cref="DefaultTextWebSocketOrigin"/>, texthooker-ui's page (v0.1.5 and earlier let every page in). Clients with no Origin, or with the server's own
 /// (<c>http://127.0.0.1:port</c>, <c>http://localhost:port</c>, which native libraries such as Python's websocket-client send), always connect; every other page,
 /// <c>file://</c> pages (Origin null) and browser extensions included, is refused, and the game log names it once (K46).</param>
+/// <param name="RememberedFullscreen"><c>display_mode=</c>: the player's explicit F11 or Config Display Mode choice; absent means no choice was made.</param>
 public readonly record struct AppSettingsData(
     PromptSetting Prompts = PromptSetting.Auto,
     bool? Fullscreen = null,
@@ -53,7 +54,8 @@ public readonly record struct AppSettingsData(
     bool? ScreenshotNotice = null,
     bool? UpdateCheck = null,
     bool? ArcueidIcon = null,
-    string? TextWebSocketOrigin = null)
+    string? TextWebSocketOrigin = null,
+    bool? RememberedFullscreen = null)
 {
     /// <summary>The WebSocket port when the file names none (texthooker-ui's default).</summary>
     public const int DefaultTextWebSocketPort = 6677;
@@ -214,6 +216,12 @@ public static class AppSettings
                 case "fullscreen" when TryParseSwitch(value, out bool full):
                     data = data with { Fullscreen = full };
                     break;
+                case "display_mode" when value.Equals("fullscreen", StringComparison.OrdinalIgnoreCase):
+                    data = data with { RememberedFullscreen = true };
+                    break;
+                case "display_mode" when value.Equals("windowed", StringComparison.OrdinalIgnoreCase):
+                    data = data with { RememberedFullscreen = false };
+                    break;
                 case "vsync" when TryParseSwitch(value, out bool vsync):
                     data = data with { VSync = vsync };
                     break;
@@ -270,6 +278,12 @@ public static class AppSettings
         {
             text.Append("# fullscreen: on or off, for the next start only (then Alt+Enter / F11 and the game's own memory take over)\n");
             text.Append(CultureInfo.InvariantCulture, $"fullscreen={(full ? "on" : "off")}\n");
+        }
+
+        if (data.RememberedFullscreen is { } remembered)
+        {
+            text.Append("# display_mode: the player's explicit F11 or Config Display Mode choice\n");
+            text.Append(CultureInfo.InvariantCulture, $"display_mode={(remembered ? "fullscreen" : "windowed")}\n");
         }
 
         if (data.WindowSize is { } size)

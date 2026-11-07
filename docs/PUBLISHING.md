@@ -1,8 +1,8 @@
 # Publishing
 
-This guide covers source publication and Windows/Linux release archives. Build prerequisites and
+This guide covers source publication and Windows/Linux/macOS release archives. Build prerequisites and
 Python tooling are in [CONTRIBUTING.md](../CONTRIBUTING.md#2-how-to-build).
-Run commands from the repository root, using PowerShell on Windows and Bash on Linux.
+Run commands from the repository root, using PowerShell on Windows and Bash on Linux or macOS.
 
 ## 0. The short version
 
@@ -28,21 +28,22 @@ an instruction to recreate or rewrite the repository for every release.
 ### 1.2 The player download
 
 Keep the full published folder together. The publish definitions are
-`src/Tsuki.Distribution.targets`, `src/Tsuki.Launcher/Tsuki.Launcher.csproj` and
-`tools/setup/publish_linux.sh`.
+`src/Tsuki.Distribution.targets`, `src/Tsuki.Launcher/Tsuki.Launcher.csproj`,
+`tools/setup/publish_linux.sh` and `tools/setup/package_macos.py`.
 
 | Package | Required contents |
 |---|---|
-| Both platforms | Player and managed libraries, self-contained .NET runtime, SDL3 and bindings, `README.md` with its logo, `CONTRIBUTING.md`, `LICENSE`, `docs/SETUP_GUIDE.md`, `docs/LINUX.md`, `docs/THIRD_PARTY.md`, and `licenses/` |
+| Shared | Player and managed libraries, self-contained .NET runtime, SDL3 and bindings, `README.md` with its logo, `CONTRIBUTING.md`, `LICENSE`, `docs/SETUP_GUIDE.md`, `docs/LINUX.md`, `docs/MACOS.md`, `docs/THIRD_PARTY.md`, and `licenses/` |
 | Windows | `Tsukihime.exe`, `TsukihimeLauncher.exe`, their managed assemblies and WPF runtime, `SETUP_GUIDE.txt`, `avutil-61.dll`, `swresample-7.dll`, `avcodec-63.dll`, `avformat-63.dll` |
-| Linux | `Tsukihime`, `Tsukihime.dll`, `libSDL3.so`, `libavutil.so.61`, `libswresample.so.7`, `libavcodec.so.63`, `libavformat.so.63` and root `LINUX.md`. No WPF launcher. |
+| Linux | `TsukihimeLauncher` and `Tsukihime` with their managed assemblies, the Avalonia runtime, `libSDL3.so`, `libavutil.so.61`, `libswresample.so.7`, `libavcodec.so.63`, `libavformat.so.63`, and root `LINUX.md`. No WPF launcher. |
+| macOS | One `Tsukihime.app` whose `CFBundleExecutable` is `TsukihimeLauncher`, with `Tsukihime` beside it: programs and dylibs under `Contents/MacOS`, documents, logo, crescent ICNS and licences under `Contents/Resources`, plus `Contents/Info.plist`. Include the Avalonia runtime, `libSDL3.dylib` and the four FFmpeg 9 dylibs. No WPF launcher. |
 
-Local player-document links must resolve inside the archive, so both archives carry the README's logo
-(`assets/branding/tsukihime-logo.png`); `release-check` and `release-sums` refuse any other picture or game data. Developer links to
+Local player-document links must resolve inside every archive, so each carries the README's logo
+(`assets/branding/tsukihime-logo.png`, below `Contents/Resources` on macOS); `release-check` and `release-sums` refuse any other picture or game data, apart from the Mac crescent ICNS. Developer links to
 unbundled references use full repository URLs. Do not move essential offline instructions to such a link.
 Check both copies of the setup guide when changing player instructions.
 
-Current source versions are **0.1.1** for player and launcher. Recent self-contained evaluation resolved
+Current source versions are **0.1.7** for the player and both launchers. Recent self-contained evaluation resolved
 **.NET 10.0.13** and **SDL 3.5.0**; check the actual resolved versions for each release.
 Check [Releases](https://github.com/Take00C/Tsukihime-Native-PC-Port/releases) for published downloads.
 Source builds and fork releases may differ from the published packages.
@@ -75,8 +76,8 @@ must never leave the owner's machine. Omit the property and use a fresh output f
 
 Personal builds carry `PERSONAL_BUILD.txt`, assembly metadata `TsukiPersonalBuild=true`, a version
 containing `-personal`, and an executable icon different from `assets/icon/tsukihime.ico`.
-The checker inspects these marks and the actual icon group. On Linux it checks the icon in the managed
-player assembly. A wrong path or missing player is a failure.
+The checker inspects these marks and the actual icon group. On Linux and macOS it checks the icons in both
+managed assemblies. A wrong path or missing player is a failure.
 
 ```powershell
 dotnet run --project src/Tsuki.Cli -c Release -- release-check artifacts/release-win-x64
@@ -94,14 +95,16 @@ Before building a distributable candidate:
    credentials and accidental large files. Check approved images and their embedded metadata.
    Keep audit reports outside the repository. Do not replace format evidence or licence notices with
    shortened summaries. Do not include story lines in synthetic tests.
-2. Confirm the destination repository, public commit identity and version. Both player and launcher
-   versions must agree. Preserve existing history unless a specific correction requires otherwise.
+2. Confirm the destination repository, public commit identity and version. Set the same `<Version>` in
+   `src/Tsuki.App`, `src/Tsuki.Launcher` and `src/Tsuki.Launcher.Avalonia`, and in the version lines of README,
+   section 1.2 and both setup guides; `ProjectRulesTests` checks that they agree. Preserve existing history
+   unless a specific correction requires otherwise.
 3. Review `LICENSE`, `docs/THIRD_PARTY.md`, translated-file headers and dependency provenance.
    Verify packaged notices come from tracked files and the runtime packs actually resolved by the SDK.
 4. Follow the build and Python prerequisites in CONTRIBUTING. Use an isolated supported Python
    environment, pinned binary wheels, the security gate and a fresh dependency audit. Do not install
    research tools into the system interpreter.
-5. Build warning-free and run the Synthetic, Data, Render and Python test programs. Data/GPU checks
+5. Build warning-free and run the Synthetic, Data, Render, Avalonia and Python test programs. Data/GPU checks
    need their documented inputs; record missing-input and platform skips separately from passes.
    Use `TSUKI_GAME_DIR=/nonexistent` for checks intended to exclude retail data.
 6. Finish the intended source commit before the final publish. Record that commit outside the source
@@ -131,7 +134,7 @@ If absent, it prints the `winget install` command and stops. Its `-CheckOnly` op
 installed package with the local DLL copies without copying. `-PackageDir` selects a package explicitly;
 `-Prune` removes stale destination DLLs, so use it only after reviewing those files.
 
-Keep FFmpeg dynamically replaceable and include:
+Keep FFmpeg dynamically replaceable. For Windows and Linux, include:
 
 - `licenses/FFmpeg-LGPL.txt` and `licenses/FFmpeg-GPL-3.0.txt`. LGPL v3 incorporates the GPL v3 terms;
   including both texts does not mean the selected libraries contain GPL-only components.
@@ -147,7 +150,16 @@ For Linux, extract BtbN's `ffmpeg-n9.0-latest-linux64-lgpl-shared-9.0.tar.xz` to
 the build (LGPL only, the library names, the three decoders through `bin/ffmpeg`, on Windows through WSL)
 and copies the four libraries, `LICENSE.txt` and a generated `FFmpeg-SOURCE.txt` naming that build into
 `third_party/ffmpeg/linux/`. A linux-x64 publish bundles them and stops with `TSUKI002` without them.
-Do not copy Windows provenance into a Linux package.
+Linux alone supports `-p:TsukiBundleFFmpeg=false` for a system FFmpeg 9. Do not copy Windows provenance into a Linux package.
+
+For macOS, run `bash tools/setup/ffmpeg_macos.sh arm64` or `x64` on the matching Mac architecture; Intel also needs `nasm`.
+The script fetches `https://git.ffmpeg.org/ffmpeg.git` at depth 1 for `TSUKI_FFMPEG_REF` (default `n9.0.2`, commit
+`946fcce07b6dcd0331c8cc609192aeff5e1924f8`) and builds that exact commit from a fresh `git archive` extraction. It makes
+a minimal macOS 15 build: shared LGPL 2.1-or-later libraries, pthreads, `mov`/`file`, H.264/AAC parsers and ATRAC9/H.264/AAC
+decoders, with no GPL, nonfree, network or external codec libraries. It checks the decoder list, thin Mach-O architecture,
+`@loader_path` install names and absence of Homebrew dependencies. `third_party/ffmpeg/macos-ARCH/` receives the four dylibs,
+FFmpeg licence, LGPL text and source notice with a neutral configure command, no builder home paths and pre-signing hashes;
+an osx publish stops with `TSUKI003` if they are absent. macOS always uses these bundled dylibs.
 
 ### 3.4 SDL3, bindings and .NET
 
@@ -157,6 +169,12 @@ For self-contained publishes, `Tsuki.Distribution.targets` takes `licenses/dotne
 `licenses/dotnet-THIRD-PARTY-NOTICES.txt` from the **resolved Microsoft.NETCore.App runtime pack**.
 Windows WPF runtime notices must also remain in the published folder. Check the actual pack version and
 contents; the binding notices alone do not replace runtime dependency notices.
+
+Unix publishes also include Avalonia's MIT notice, the SkiaSharp, HarfBuzzSharp, MicroCom and Tmds.DBus MIT notices, and
+`licenses/SkiaSharp-THIRD-PARTY-NOTICES.txt` from the restored SkiaSharp 2.88.9 package. The Windows launcher does not use Avalonia.
+
+With the ReadyToRun publish of section 4.2, the launcher adds about 13.5 MB to the Linux tar.gz (about 33 MB unpacked).
+Windows has no Avalonia dependency.
 
 ### 3.5 Disclaimer and public documentation
 
@@ -170,7 +188,8 @@ reachable. Do not attach game files, saves, story text or game screenshots to re
 
 Use fresh candidate and verification folders. If the example paths already contain an earlier build,
 choose new names rather than mixing outputs. Wait for publish to finish before inspecting it.
-Never set `TsukiPersonalIcon` for these commands.
+Never set `TsukiPersonalIcon` for these commands. Publish from a fresh clone or worktree: an older checkout can
+keep CRLF copies of the licence texts, which the Python checks report with the command that refreshes them.
 
 ### 4.1 Windows
 
@@ -181,23 +200,26 @@ Run the Python checks from [Python tools](../CONTRIBUTING.md#python-tools) as we
 $env:TSUKI_GAME_DIR = "/nonexistent"
 dotnet build src\Tsuki.slnx -c Release
 dotnet test tests\Tsuki.Tests.Synthetic -c Release
-dotnet test tests\Tsuki.Tests.Data -c Release
 dotnet test tests\Tsuki.Tests.Render -c Release
+dotnet test tests\Tsuki.Tests.Avalonia -c Release -p:TsukiUsesFFmpeg=false
+$env:TSUKI_GAME_DIR = "D:\path\to\CUSA47999"
+dotnet test tests\Tsuki.Tests.Data -c Release
 New-Item -ItemType Directory -Force artifacts | Out-Null
-dotnet publish src\Tsuki.Launcher -c Release -r win-x64 --self-contained true -o artifacts\release-win-x64
+dotnet publish src\Tsuki.Launcher -c Release -r win-x64 --self-contained true -p:PublishReadyToRun=true -o artifacts\release-win-x64
 dotnet run --project src\Tsuki.Cli -c Release -- release-check artifacts/release-win-x64
 ```
 
-Warnings are errors by default. Release publishes suppress debug symbols. `-p:PublishReadyToRun=true`
-is optional; validate that candidate too if used. A Windows cross-publish still needs the real DLLs;
+The Data run only reads your game folder; it must show 0 failed and 0 skipped, because only its game tests see
+Windows window-mode and log changes. Warnings are errors by default. Releases are ReadyToRun builds, as v0.1.6 was.
+A Release publish already leaves out debug symbols, so `-p:DebugType=none` is not needed. A Windows cross-publish still needs the real DLLs;
 `TSUKI001` means prerequisites are missing, not that substituting placeholders is acceptable.
 
 Inspect the package and licences in sections 1 and 3, including no personal markers or stale `.pdb`/
 program XML documentation. Then archive and extract:
 
 ```powershell
-Compress-Archive -Path artifacts\release-win-x64\* -DestinationPath artifacts\Tsukihime-v0.1.1-win-x64.zip -CompressionLevel Optimal
-Expand-Archive -Path artifacts\Tsukihime-v0.1.1-win-x64.zip -DestinationPath artifacts\verify-win-x64
+Compress-Archive -Path artifacts\release-win-x64\* -DestinationPath artifacts\Tsukihime-vX.Y.Z-win-x64.zip -CompressionLevel Optimal
+Expand-Archive -Path artifacts\Tsukihime-vX.Y.Z-win-x64.zip -DestinationPath artifacts\verify-win-x64
 dotnet run --project src\Tsuki.Cli -c Release -- release-check artifacts/verify-win-x64
 ```
 
@@ -209,33 +231,81 @@ which checks were performed. A cross-build alone does not verify Windows runtime
 ### 4.2 Linux
 
 Prepare FFmpeg as in section 3.3. The archive can be cross-published from Windows (on Linux,
-`bash tools/setup/publish_linux.sh <folder>` does the publish). The first linux-x64 restore downloads the
-`Microsoft.NETCore.App.Runtime.linux-x64` and `Microsoft.NETCore.App.Host.linux-x64` packages.
+`bash tools/setup/publish_linux.sh <folder>` does the publish). The first linux-x64 restore downloads the .NET
+runtime, apphost and ReadyToRun compiler packs for linux-x64, plus the launcher's Avalonia, SkiaSharp and HarfBuzzSharp packages.
 
 ```powershell
-dotnet publish src\Tsuki.App -c Release -r linux-x64 --self-contained -p:PublishReadyToRun=true -o artifacts\release-linux-x64
+dotnet publish src\Tsuki.Launcher.Avalonia -c Release -r linux-x64 --self-contained -p:PublishReadyToRun=true -o artifacts\release-linux-x64
 dotnet run --project src\Tsuki.Cli -c Release -- release-check artifacts/release-linux-x64
-python -I tools\setup\package_linux.py artifacts\release-linux-x64 --version 0.1.1 --out artifacts
+python -I tools\setup\package_linux.py artifacts\release-linux-x64 --version X.Y.Z --out artifacts
 ```
 
-`package_linux.py` writes `Tsukihime-v0.1.1-linux-x64.tar.gz` with one `Tsukihime-v0.1.1-linux-x64/` folder
-and Unix modes (0755 for `Tsukihime` and the `.so` files). Extract it on Linux or in WSL and run
+`package_linux.py` writes `Tsukihime-vX.Y.Z-linux-x64.tar.gz` with one `Tsukihime-vX.Y.Z-linux-x64/` folder
+and Unix modes (0755 for `TsukihimeLauncher`, `Tsukihime` and the `.so` files). Extract it on Linux or in WSL and run
 `SDL_VIDEODRIVER=offscreen SDL_AUDIODRIVER=dummy ./Tsukihime --smoke --report /tmp/tsuki-smoke.txt`;
-its FFmpeg rows must pass. Compare extracted files and executable permissions with the publish folder. Check all required library
+its FFmpeg rows must pass. Then `python3 -I tools/tests/update_e2e.py <the tar.gz> --work /tmp/tsuki-update-e2e`
+must end with `UPDATE E2E PASS`: the archive's own launcher updates itself from a loopback copy of GitHub and restarts.
+Compare extracted files and executable permissions with the publish folder. Check all required library
 names and decoders against the actual loaded dependencies, not just an installed `ffmpeg` executable.
 Verify offline documentation and the native folder picker/settings on a supported desktop when available.
 Keep skipped display or retail checks explicit.
 
-### 4.3 Checksums
+### 4.3 macOS
+
+Prepare the architecture's FFmpeg build as in section 3.3, then publish and package on that Mac architecture.
+`package_macos.py` verifies the thin apphost, assembles `Tsukihime.app`, generates the crescent ICNS from the tracked
+PNGs, ad-hoc signs with `codesign --force --deep --prefix io.github.take00c.tsukihime. -s -` (so the game host's identifier
+is `io.github.take00c.tsukihime.Tsukihime`, the one the release rules demand), and verifies the signature. `--zip` uses
+`ditto -c -k --sequesterRsrc --keepParent`, so signatures kept in extended attributes travel as `__MACOSX/` entries;
+it is deliberately macOS-only.
+
+```sh
+dotnet publish src/Tsuki.Launcher.Avalonia -c Release -r osx-arm64 --self-contained true \
+  -p:PublishReadyToRun=true -o artifacts/release-osx-arm64 --nologo
+python3 -I tools/setup/package_macos.py artifacts/release-osx-arm64 \
+  --version X.Y.Z --arch arm64 --out artifacts/package-macos-arm64 --zip
+dotnet run --project src/Tsuki.Cli -c Release -- \
+  release-check artifacts/package-macos-arm64/Tsukihime.app
+```
+
+For Intel, use `osx-x64` and `x64`; the two ZIPs are distinct thin builds, not a universal app. Check the extracted app,
+native smoke report, documents and licences. Test rendering, sound-device changes, sleep/resume and Gatekeeper on real Macs;
+ad-hoc signing is not notarization.
+
+Without a Mac:
+
+1. Put the reviewed, version-bumped source on `main` (section 5's push, or GitHub's upload page); **Run workflow**
+   appears only for workflows on `main`. Then open **Actions > macOS experimental downloads > Run workflow** on `main`.
+   No tag exists yet: the release in section 5 creates it on that commit.
+2. Read each job's summary. A good run starts with the version and ZIP name, and shows the release commit as
+   `Source commit`, `Tsukihime signature: Identifier=io.github.take00c.tsukihime.Tsukihime`, signature-attribute and
+   `__MACOSX` counts in the hundreds (0 means the signatures were not stored), `SELFTEST PASS`, `SMOKE PASS`,
+   `UPDATE E2E PASS` and the ZIP's SHA-256. The two macOS 26 jobs must pass too; both window smokes are informational.
+   A failed job leaves `mac-diagnostics-ARCH-not-for-release` (macOS 26: `mac26-diagnostics-ARCH-not-for-release`), which is
+   never attached. The updater check runs after the uploads, so a run that failed only there still has its ZIPs: read why
+   (its summary ends with the launcher's logs) before deciding to release them.
+3. Download both ZIPs within three days. In PowerShell, `(Get-FileHash -Algorithm SHA256 <zip>).Hash` must equal the
+   summary's SHA-256 (ignoring case).
+4. Run `release-sums` once with the Windows ZIP, Linux tar.gz and both Mac ZIPs.
+5. Attach all four archives and `SHA256SUMS.txt` to the release. The workflow does not push or create a GitHub release.
+
+For structural validation of a cross-publish on another OS, omit `--zip` and pass `--no-sign`. This intentionally
+produces an unsigned app for inspection only. It neither compiles Mach-O FFmpeg libraries nor substitutes for the
+Mac signing and runtime checks above.
+
+### 4.4 Checksums
 
 ```powershell
-dotnet run --project src\Tsuki.Cli -c Release -- release-sums artifacts\Tsukihime-v0.1.1-win-x64.zip artifacts\Tsukihime-v0.1.1-linux-x64.tar.gz
+dotnet run --project src\Tsuki.Cli -c Release -- release-sums artifacts\Tsukihime-vX.Y.Z-win-x64.zip artifacts\Tsukihime-vX.Y.Z-linux-x64.tar.gz artifacts\Tsukihime-vX.Y.Z-macos-arm64.zip artifacts\Tsukihime-vX.Y.Z-macos-x64.zip
 ```
 
 It writes `SHA256SUMS.txt` (one line per file) beside them and refuses an archive the launcher or these rules
-would refuse. The launcher's **Update** button needs the tag `vX.Y.Z`, the zip named
-`Tsukihime-vX.Y.Z-win-x64.zip` and that file. Zip a fresh publish folder, never one the launcher ran in: it writes
-Arcueid into its programs, and the release programs must carry the crescent.
+would refuse. Mac ZIPs must hold one `Tsukihime.app`, plus only the `__MACOSX/` entries that carry its signature
+attributes, with safe paths, ordinary files, correct Unix modes and the matching thin architecture. Each launcher
+selects only its own asset: Windows `win-x64.zip`, Linux `linux-x64.tar.gz`, or Mac `macos-arm64.zip`/`macos-x64.zip`
+from the process architecture (x64 under Rosetta). Its own `SHA256SUMS.txt` line must match; none of the four assets
+replaces another platform's. Zip a fresh Windows publish folder, never one the launcher ran in: it writes Arcueid into
+its programs, and release programs must carry the crescent.
 
 ## 5. Publish the reviewed candidate
 
@@ -260,7 +330,7 @@ In the intended repository's **Releases > Draft a new release**:
 
 1. Select the intended tag and commit, and a title matching the version.
 2. Add release notes and mark a prerelease if appropriate to the build's status.
-3. Attach the reviewed Windows ZIP, the Linux archive and `SHA256SUMS.txt`, plus matching dependency source where needed.
+3. Attach the reviewed Windows ZIP, Linux archive, both macOS ZIPs and `SHA256SUMS.txt`, plus matching dependency source where needed.
    Wait for uploads to complete and check the filenames and package contents.
 4. Review the draft, then publish when release publication is authorized. Verify the README download
    destination and the uploaded assets. A private repository's release remains private until visibility changes.

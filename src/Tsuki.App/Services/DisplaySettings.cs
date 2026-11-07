@@ -1,7 +1,6 @@
 // The display settings of the running game (package K19): what the config screen's System tab shows and changes (the window mode, the windowed size), what
-// Alt+Enter / F11 report, and what is remembered: the window mode in the config block byte the launcher's switch reads (AppSettings.WindowModeOffset, the byte
-// --fullscreen / --windowed store at start) and the windowed size in settings.ini, which the launcher's Display page reads. The window is behind a small
-// interface so that the logic runs in tests without SDL.
+// Alt+Enter / F11 report, and what is remembered: the config block byte for existing saves, the explicit display_mode choice on Linux, and the windowed size
+// in settings.ini. The window is behind a small interface so that the logic runs in tests without SDL.
 using Tsuki.Engine.Contracts;
 using Tsuki.Platform;
 using Tsuki.Ui;
@@ -38,6 +37,8 @@ public sealed class DisplaySettings : IUiDisplaySettings
     private readonly Action _commit;
     private readonly string? _settingsPath;
     private readonly Action<string>? _log;
+    private readonly bool _linux;
+    private readonly bool _macOS;
     private (int Width, int Height) _windowed;
     private (int Width, int Height) _reference;
 
@@ -48,7 +49,9 @@ public sealed class DisplaySettings : IUiDisplaySettings
     /// <param name="settingsPath">settings.ini, or null when nothing is written (<c>--no-save</c>).</param>
     /// <param name="windowedSize">The windowed size the window was placed at, before any fullscreen request (the size to go back to).</param>
     /// <param name="log">Where to say what was remembered.</param>
-    public DisplaySettings(IDisplayWindow window, ConfigBlock config, Action commit, string? settingsPath, (int Width, int Height) windowedSize, Action<string>? log = null)
+    /// <param name="linux">Whether to persist the explicit display_mode key; tests can select either platform.</param>
+    /// <param name="macOS">Whether SDL's fullscreen events are remembered (<see cref="NoteFullscreenEvent"/>); tests can select either platform.</param>
+    public DisplaySettings(IDisplayWindow window, ConfigBlock config, Action commit, string? settingsPath, (int Width, int Height) windowedSize, Action<string>? log = null, bool? linux = null, bool? macOS = null)
     {
         ArgumentNullException.ThrowIfNull(window);
         ArgumentNullException.ThrowIfNull(config);
@@ -58,6 +61,8 @@ public sealed class DisplaySettings : IUiDisplaySettings
         _commit = commit;
         _settingsPath = settingsPath;
         _log = log;
+        _linux = linux ?? OperatingSystem.IsLinux();
+        _macOS = macOS ?? OperatingSystem.IsMacOS();
         _windowed = windowedSize;
         _reference = windowedSize;
     }
@@ -70,6 +75,12 @@ public sealed class DisplaySettings : IUiDisplaySettings
         {
             if (_window.Fullscreen == value)
             {
+                if (_linux)
+                {
+                    // the mode already shown, chosen on purpose (a Steam Deck start with --windowed in Launch Options): it is the choice the Deck keeps
+                    Remember(value);
+                }
+
                 return;
             }
 
@@ -116,6 +127,18 @@ public sealed class DisplaySettings : IUiDisplaySettings
     /// <summary>Alt+Enter or F11 switched the window (the event pump did that): the state is remembered the way the row's choice is.</summary>
     public void NoteFullscreen(bool fullscreen) => Remember(fullscreen);
 
+    /// <summary>
+    /// SDL says the window entered or left fullscreen. On macOS the green button and the system's fullscreen do that without the app asking, so the mode is
+    /// remembered as F11's is; elsewhere only the app switches the window and these events change nothing (as in v0.1.6).
+    /// </summary>
+    public void NoteFullscreenEvent(PlatformEvent e)
+    {
+        if (_macOS && e.Kind is PlatformEventKind.EnteredFullscreen or PlatformEventKind.LeftFullscreen)
+        {
+            Remember(e.Kind == PlatformEventKind.EnteredFullscreen);
+        }
+    }
+
     /// <summary>The window's size changed: the size of a window that is neither fullscreen nor maximized is the windowed size to remember (the player dragged an edge).</summary>
     public void NoteResized()
     {
@@ -160,14 +183,23 @@ public sealed class DisplaySettings : IUiDisplaySettings
     private void Remember(bool fullscreen)
     {
         byte wanted = (byte)(fullscreen ? 1 : 0);
-        if (_config.Bytes[AppSettings.WindowModeOffset] == wanted)
+        bool changed = _config.Bytes[AppSettings.WindowModeOffset] != wanted;
+        if (changed)
         {
-            return;
+            _config.Bytes[AppSettings.WindowModeOffset] = wanted;
+            _commit();
         }
 
-        _config.Bytes[AppSettings.WindowModeOffset] = wanted;
-        _commit();
-        _log?.Invoke($"window mode: {(fullscreen ? "fullscreen" : "windowed")} (remembered)");
+        bool remembered = _linux && _settingsPath is not null && AppSettings.Load(_settingsPath).RememberedFullscreen != fullscreen;
+        if (remembered && !AppSettings.Update(_settingsPath, s => s with { RememberedFullscreen = fullscreen }))
+        {
+            _log?.Invoke("settings.ini not written (window mode)");
+        }
+
+        if (changed || remembered)
+        {
+            _log?.Invoke($"window mode: {(fullscreen ? "fullscreen" : "windowed")} (remembered)");
+        }
     }
 }
 
@@ -175,7 +207,7 @@ public sealed class DisplaySettings : IUiDisplaySettings
 internal sealed class SdlDisplayWindow(GameWindow window) : IDisplayWindow
 {
     /// <inheritdoc/>
-    public bool Fullscreen => window.FullscreenRequested;
+    public bool Fullscreen => OperatingSystem.IsMacOS() ? window.IsFullscreen || window.FullscreenRequested : window.FullscreenRequested;
 
     /// <inheritdoc/>
     public (int Width, int Height) Size => window.WindowSize;

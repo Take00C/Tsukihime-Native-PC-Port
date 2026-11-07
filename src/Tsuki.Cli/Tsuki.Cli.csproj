@@ -5,6 +5,9 @@
     <TsukiUsesFFmpeg>true</TsukiUsesFFmpeg>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="..\Tsuki.Launcher\Core\ReleaseCheck.Shared.cs" Link="Commands\ReleaseCheck.Shared.cs" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="..\Tsuki.Data\Tsuki.Data.csproj" />
     <ProjectReference Include="..\Tsuki.Engine\Tsuki.Engine.csproj" />
     <ProjectReference Include="..\Tsuki.Media\Tsuki.Media.csproj" />

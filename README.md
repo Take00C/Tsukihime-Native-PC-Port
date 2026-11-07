@@ -2,7 +2,7 @@
 
 <p align="center"><img width="520" alt="Tsukihime logo" src="assets/branding/tsukihime-logo.png" /></p>
 
-A native Windows and Linux port of *TSUKIHIME -A piece of blue glass moon-*. It plays your own extracted PS4 game files directly, without converting them.
+A native Windows and Linux port of *TSUKIHIME -A piece of blue glass moon-*, with an experimental macOS build. It plays your own extracted PS4 game files directly, without converting them.
 
 The **[setup guide](docs/SETUP_GUIDE.md)** covers everything in detail. Windows downloads include it as `SETUP_GUIDE.txt`, also on the launcher's Help & about page.
 
@@ -12,7 +12,7 @@ First get your game files: dump your own copy from your PS4, or extract your own
 
 ### Windows
 
-1. Download `Tsukihime-vX.Y.Z-win-x64.zip` from [Releases](https://github.com/Take00C/Tsukihime-Native-PC-Port/releases) and unzip it anywhere.
+1. Download `Tsukihime-vX.Y.Z-win-x64.zip` from [Releases](https://github.com/Take00C/Tsukihime-Native-PC-Port/releases) and unzip it into a folder you can write to (not Program Files).
 2. Start `TsukihimeLauncher.exe`.
 3. On **Game files**, click **Browse…** and pick your game folder. The Ready check should turn all green.
 4. Optional: choose your language, windowed or fullscreen, and create a desktop shortcut.
@@ -22,26 +22,36 @@ Everything it needs is included: no .NET, Python or emulator to install.
 
 ### Linux
 
-1. Download `Tsukihime-vX.Y.Z-linux-x64.tar.gz` from [Releases](https://github.com/Take00C/Tsukihime-Native-PC-Port/releases) (v0.1.6 and newer).
-2. Extract it and run `./Tsukihime` in the extracted folder.
-3. Pick your game folder when it asks. If no folder window opens (no xdg-desktop-portal or zenity), run `./Tsukihime --game /path/to/CUSA47999` instead.
+1. Download `Tsukihime-vX.Y.Z-linux-x64.tar.gz` from [Releases](https://github.com/Take00C/Tsukihime-Native-PC-Port/releases).
+2. Extract it and run `./TsukihimeLauncher` in the extracted folder.
+3. On **Game files**, click **Browse…** and pick your game folder, then press **PLAY**. (Or run `./Tsukihime --game /path/to/CUSA47999`.)
 
-.NET, SDL and FFmpeg are included. There is no launcher on Linux; settings are in the pause menu. The **[Linux guide](docs/LINUX.md)** covers requirements and building from source.
+.NET, SDL and FFmpeg are included. Steam Deck uses the same download: see the **Steam Deck** section of the [Linux guide](docs/LINUX.md).
+
+### macOS (experimental)
+
+1. Download the Apple silicon (`macos-arm64`) or Intel (`macos-x64`) ZIP from [Releases](https://github.com/Take00C/Tsukihime-Native-PC-Port/releases). **About This Mac** says **Chip** on Apple silicon, **Processor** on Intel.
+2. Safari unzips it; otherwise double-click it in Finder. Move `Tsukihime.app` to Applications.
+3. Open it. When macOS says it was not opened, click **Done**, then within an hour use **System Settings > Privacy & Security > Open Anyway**.
+4. On **Game files**, pick your game folder and press **PLAY**.
+
+It has not been tested on a real Mac yet: please [report problems in Issues](https://github.com/Take00C/Tsukihime-Native-PC-Port/issues). Details: [macOS guide](docs/MACOS.md).
 
 ### Updating
 
-- **Windows:** press **Update to vX.Y.Z** at the bottom of the launcher (v0.1.3 and newer). From older versions, extract the new ZIP over your old folder.
-- **Linux:** close the game, extract the new archive and run `./Tsukihime` in its new folder. Then delete the old folder.
+- Press **Update to vX.Y.Z** at the bottom of the launcher (Windows, Linux and macOS).
+- **Windows before v0.1.3:** extract the new ZIP over your old folder.
+- **Linux from v0.1.6** (it had no launcher): extract the new archive into a new folder and delete the old one. If you added the old `Tsukihime` to Steam, add the new one again.
 
-Saves, settings and your game folder are kept: `%APPDATA%\Tsuki` on Windows, `~/.config/Tsuki` on Linux.
+Saves, settings and your game folder are kept: `%APPDATA%\Tsuki` (Windows), `~/.config/Tsuki` (Linux), `~/Library/Application Support/Tsuki` (macOS).
 
 ## Requirements
 
-- Windows 10 or 11, 64-bit, or Linux x86-64.
+- Windows 10 or 11, 64-bit, Linux x86-64, or macOS 15 or newer (experimental).
 - A graphics driver supporting OpenGL 3.3. Integrated graphics are supported.
 - Your own extracted PS4 game files (`CUSA47999`, about 44 GB).
 - About 260 MB for the Windows port, separate from the game files.
-- On Linux, glibc 2.34 or newer. A source build also needs FFmpeg 9 shared libraries; the Linux guide lists them.
+- On Linux, glibc 2.34 or newer; the launcher also needs fontconfig and FreeType. A source build also needs FFmpeg 9 shared libraries; the Linux guide lists them.
 
 The game files are only read, never changed. The setup guide explains the supported folder layouts, including separate base-game and update folders.
 
@@ -68,7 +78,7 @@ The game files are only read, never changed. The setup guide explains the suppor
 
 ## Status and support
 
-The port was developed against **CUSA47999, update 1.01**. Other builds are checked at startup and may be refused if required tables or files cannot be found. Only languages present in your game files are offered. Current source version is **0.1.6**. The Linux download is newer and less tested than the Windows one.
+The port was developed against **CUSA47999, update 1.01**. Other builds are checked at startup and may be refused if required tables or files cannot be found. Only languages present in your game files are offered. Current source version is **0.1.7**. The Linux download is newer and less tested than the Windows one.
 
 Report problems through Issues with reproduction steps and the relevant log. Include the build information and your operating system, graphics card and driver. See [CONTRIBUTING.md](CONTRIBUTING.md) for details. Do not attach game files, saves, story text or screenshots of the game.
 
@@ -76,13 +86,14 @@ Report problems through Issues with reproduction steps and the relevant log. Inc
 
 - [Setup guide](docs/SETUP_GUIDE.md): game folders, controls, saves, settings, dictionary tools and troubleshooting.
 - [Linux guide](docs/LINUX.md): dependencies, building, running and platform-specific checks.
+- [macOS guide](docs/MACOS.md): installation, Gatekeeper, profiles and native app builds.
 - [Contributing](CONTRIBUTING.md): building from source, Python tools, tests and reporting problems.
 - [Architecture](https://github.com/Take00C/Tsukihime-Native-PC-Port/blob/main/docs/ARCHITECTURE.md) and [format reference](https://github.com/Take00C/Tsukihime-Native-PC-Port/blob/main/docs/FORMATS.md): runtime components and engine research.
 - [Publishing](https://github.com/Take00C/Tsukihime-Native-PC-Port/blob/main/docs/PUBLISHING.md): release preparation and personal icon builds.
 
 ## Credits and licence
 
-Linux support and the shorter guides are by **CateDesu**. Menu code and effects include translations from [knife](https://github.com/AuroraWright/knife) by AuroraWright. The program uses FFmpeg, SDL3, .NET, Silk.NET, SDL3-CS and FFmpeg.AutoGen. Their credits, licences and translated-file notices are in [THIRD_PARTY.md](docs/THIRD_PARTY.md).
+Linux support and the shorter guides are by **CateDesu**. Menu code and effects include translations from [knife](https://github.com/AuroraWright/knife) by AuroraWright. The program uses FFmpeg, SDL3, .NET, Silk.NET, SDL3-CS, FFmpeg.AutoGen and, in the Unix launcher, Avalonia. Their credits, licences and translated-file notices are in [THIRD_PARTY.md](docs/THIRD_PARTY.md).
 
 Source code is licensed under **MPL-2.0**. See [LICENSE](LICENSE).
 

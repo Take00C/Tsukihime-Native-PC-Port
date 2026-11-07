@@ -10,6 +10,7 @@
 using System.Globalization;
 using Tsuki.App.Play;
 using Tsuki.App.Services;
+using Tsuki.Data.IO;
 using Tsuki.Media.Ffmpeg;
 using Tsuki.Platform;
 using Tsuki.Render.Gl;
@@ -42,6 +43,7 @@ internal static class Program
             {
                 Console.Error.WriteLine(error);
                 Console.Error.WriteLine(AppArgs.Usage);
+                RefuseCommandLine(args, error ?? "?", hidden, OperatingSystem.IsWindows());
                 return ExitUsage;
             }
 
@@ -62,7 +64,7 @@ internal static class Program
 
             return parsed.Mode switch
             {
-                AppMode.Smoke => Smoke.Run(parsed.Visible, parsed.ReportPath),
+                AppMode.Smoke => Smoke.Run(parsed.Visible, parsed.ReportPath, parsed.HeadlessSmoke),
                 AppMode.PickFolder => PickFolder(parsed.TimeoutSeconds),
                 AppMode.Skeleton => RunSkeleton(parsed),
                 _ => GameApp.Run(parsed),
@@ -79,6 +81,38 @@ internal static class Program
             Sdl.Shutdown();
         }
     }
+
+    /// <summary>
+    /// Linux and macOS: a command line the game cannot read (a typo in Steam's Launch Options, where the console is not seen) is also written to crash.log of the
+    /// profile it names (else the user's) and, unless the run is hidden, shown in a box; returns the crash.log written. Windows only writes to the console, as v0.1.6 did.
+    /// </summary>
+    internal static string? RefuseCommandLine(string[] args, string error, bool hidden, bool windows) => RefuseCommandLine(args, error, hidden, windows, AppArgs.TildeHome());
+
+    /// <summary>The same, with <paramref name="home"/> as the folder a leading <c>~</c> of <c>--save-dir</c> and <c>--log</c> stands for (as <see cref="AppArgs.TryParse(string[], string?, out AppArgs?, out string?)"/> reads them).</summary>
+    internal static string? RefuseCommandLine(string[] args, string error, bool hidden, bool windows, string? home)
+    {
+        if (windows)
+        {
+            return null;
+        }
+
+        string? saveDir = HomePath(OptionValue(args, "--save-dir"), home);
+        string? crash = CrashLog.Append(saveDir, HomePath(OptionValue(args, "--log"), home), $"the command line could not be read: {error} (arguments: {string.Join(' ', args.Select(x => '"' + x + '"'))})");
+        if (!hidden)
+        {
+            MessageBox.ShowError(AppIdentity.ProductName, error + Environment.NewLine + Environment.NewLine + AppArgs.Usage.Split('\n')[0] + (crash is null ? string.Empty : Environment.NewLine + Environment.NewLine + "Details: " + crash));
+        }
+
+        return crash;
+    }
+
+    private static string? OptionValue(string[] args, string option)
+    {
+        int i = Array.IndexOf(args, option);
+        return i >= 0 && i + 1 < args.Length ? args[i + 1] : null;
+    }
+
+    private static string? HomePath(string? path, string? home) => path is null ? null : GameLayoutResolver.ExpandHome(path, home);
 
     /// <summary>The last word on a failure the game itself did not report: crash.log, and the message box unless the run is hidden.</summary>
     private static void ReportFatal(Exception e, string? dataDirectory, string? logFile, bool hidden)

@@ -67,22 +67,82 @@ internal static class CrashLog
 
 /// <summary>
 /// One game per profile: two games on the same save folder would die on the shared log file or, worse, each hold every slot in memory and overwrite the other's
-/// <c>save.dat</c> at quit. The guard is a named mutex derived from the profile folder, so verification runs on their own <c>--save-dir</c> never collide.
+/// <c>save.dat</c> at quit. The guard is a named mutex derived from the profile folder, so verification runs on their own <c>--save-dir</c> never collide. On Linux
+/// and macOS such a mutex only reaches the games of one session (a terminal tab, a Steam start and a start from the file manager can be three), so the profile's
+/// <see cref="LockFileName"/> is locked as well: that lock holds across sessions and ends with the process, even a killed one.
 /// </summary>
 internal static class SingleInstance
 {
-    /// <summary>Takes the profile's mutex; null when another game holds it. Dispose the result when the run ends.</summary>
-    public static Mutex? TryAcquire(string dataDirectory)
+    /// <summary>The lock file in the profile folder (Linux and macOS).</summary>
+    public const string LockFileName = "game.lock";
+
+    /// <summary>Takes the profile's mutex (and off Windows its lock file); null when another game holds either. Dispose the result when the run ends.</summary>
+    public static IDisposable? TryAcquire(string dataDirectory)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(dataDirectory);
         var mutex = new Mutex(true, MutexName(dataDirectory), out bool createdNew);
-        if (createdNew)
+        if (!createdNew)
+        {
+            mutex.Dispose();
+            return null;
+        }
+
+        if (OperatingSystem.IsWindows())
         {
             return mutex;
         }
 
-        mutex.Dispose();
-        return null;
+        if (!TryLockFile(dataDirectory, out FileStream? lockFile))
+        {
+            mutex.ReleaseMutex();
+            mutex.Dispose();
+            return null;
+        }
+
+        return new Held(mutex, lockFile);
+    }
+
+    /// <summary>
+    /// Locks <see cref="LockFileName"/> in the profile folder for the run (an exclusive advisory lock, which .NET takes for <see cref="FileShare.None"/> off Windows);
+    /// false when another process holds it. A profile where the file cannot be made is not locked here (<paramref name="lockFile"/> is null): the mutex still guards it.
+    /// </summary>
+    internal static bool TryLockFile(string dataDirectory, out FileStream? lockFile)
+    {
+        string path = Path.Combine(dataDirectory, LockFileName);
+        try
+        {
+            Directory.CreateDirectory(dataDirectory);
+            lockFile = new FileStream(path, FileMode.OpenOrCreate, FileAccess.Read, FileShare.None);
+            return true;
+        }
+        catch (IOException) when (File.Exists(path))
+        {
+            lockFile = null;
+            return false;                                   // another game holds the lock
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            lockFile = null;
+            return true;                                    // a read-only or foreign profile: no lock file, the mutex alone
+        }
+    }
+
+    private sealed class Held(Mutex mutex, FileStream? lockFile) : IDisposable
+    {
+        public void Dispose()
+        {
+            lockFile?.Dispose();
+            try
+            {
+                mutex.ReleaseMutex();
+            }
+            catch (ApplicationException)
+            {
+                // not the thread that took it: closing it below gives it up as well
+            }
+
+            mutex.Dispose();
+        }
     }
 
     /// <summary>The mutex name of a profile folder (the same folder spelt differently gives the same name).</summary>

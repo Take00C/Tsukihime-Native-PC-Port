@@ -108,4 +108,27 @@
     <Error Code="TSUKI002"
            Text="FFmpeg 9 shared libraries for Linux not found in $(TsukiFFmpegLinuxDir) (libavutil.so.61, libswresample.so.7, libavcodec.so.63, libavformat.so.63 and FFmpeg-SOURCE.txt). Extract BtbN's ffmpeg-n9.0-latest-linux64-lgpl-shared-9.0.tar.xz to third_party/ffmpeg/linux-src/ and run tools/setup/ffmpeg_linux.py (docs/PUBLISHING.md), or publish with -p:TsukiBundleFFmpeg=false to use the system's FFmpeg 9." />
   </Target>
+
+  <!--
+    The macOS release (K47): tools/setup/ffmpeg_macos.sh compiles the same four FFmpeg 9 interfaces for one architecture,
+    with @loader_path install names and no GPL/nonfree or external codec dependencies. Its exact source commit and LGPL 2.1
+    notice travel with the dylibs, and a publish without them stops clearly. The system-FFmpeg opt-out above is Linux-only.
+  -->
+  <PropertyGroup>
+    <TsukiFFmpegMacDir Condition="'$(RuntimeIdentifier)' == 'osx-arm64'">$(MSBuildThisFileDirectory)third_party\ffmpeg\macos-arm64\</TsukiFFmpegMacDir>
+    <TsukiFFmpegMacDir Condition="'$(RuntimeIdentifier)' == 'osx-x64'">$(MSBuildThisFileDirectory)third_party\ffmpeg\macos-x64\</TsukiFFmpegMacDir>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(TsukiUsesFFmpeg)' == 'true' and $([System.String]::Copy('$(RuntimeIdentifier)').StartsWith('osx-'))">
+    <None Include="$(TsukiFFmpegMacDir)libavutil.61.dylib;$(TsukiFFmpegMacDir)libswresample.7.dylib;$(TsukiFFmpegMacDir)libavcodec.63.dylib;$(TsukiFFmpegMacDir)libavformat.63.dylib"
+          Link="%(Filename)%(Extension)" CopyToPublishDirectory="PreserveNewest" Visible="false" />
+    <None Include="$(TsukiFFmpegMacDir)FFmpeg-SOURCE.txt" Link="licenses/FFmpeg-SOURCE.txt" CopyToPublishDirectory="PreserveNewest" Visible="false" />
+    <None Include="$(TsukiFFmpegMacDir)FFmpeg-LICENSE.md" Link="licenses/FFmpeg-LICENSE.md" CopyToPublishDirectory="PreserveNewest" Visible="false" />
+    <None Include="$(TsukiFFmpegMacDir)FFmpeg-LGPL-2.1.txt" Link="licenses/FFmpeg-LGPL-2.1.txt" CopyToPublishDirectory="PreserveNewest" Visible="false" />
+  </ItemGroup>
+  <Target Name="TsukiCheckFFmpegMac"
+          BeforeTargets="PrepareForPublish"
+          Condition="'$(TsukiUsesFFmpeg)' == 'true' and $([System.String]::Copy('$(RuntimeIdentifier)').StartsWith('osx-')) and (!Exists('$(TsukiFFmpegMacDir)libavutil.61.dylib') or !Exists('$(TsukiFFmpegMacDir)libswresample.7.dylib') or !Exists('$(TsukiFFmpegMacDir)libavcodec.63.dylib') or !Exists('$(TsukiFFmpegMacDir)libavformat.63.dylib') or !Exists('$(TsukiFFmpegMacDir)FFmpeg-SOURCE.txt') or !Exists('$(TsukiFFmpegMacDir)FFmpeg-LICENSE.md') or !Exists('$(TsukiFFmpegMacDir)FFmpeg-LGPL-2.1.txt'))">
+    <Error Code="TSUKI003"
+           Text="FFmpeg 9 shared libraries for $(RuntimeIdentifier) not found in $(TsukiFFmpegMacDir). On the matching Mac, run bash tools/setup/ffmpeg_macos.sh arm64 (or x64); see docs/PUBLISHING.md. macOS requires the bundled dylibs." />
+  </Target>
 </Project>

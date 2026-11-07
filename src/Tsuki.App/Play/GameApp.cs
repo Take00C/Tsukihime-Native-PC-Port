@@ -145,6 +145,7 @@ internal sealed class GameApp : IDisposable
     private bool _mute;
     private GameWindow _window = null!;
     private Placement? _placement;
+    private StartWindowMode _startMode;
     private DisplaySettings? _display;
     private GlDevice _device = null!;
     private GpuCompositor _compositor = null!;
@@ -223,7 +224,7 @@ internal sealed class GameApp : IDisposable
         string dataDir = StartupSettings.DataDirectory(args);
         // the language of the messages before the game is open: --lang, the launcher's pending line, else the Windows display language (package K20)
         Language early = AppIdentity.StartupLanguage(args, AppSettings.Load(args.NoSave ? null : Path.Combine(dataDir, AppSettings.FileName)), null);
-        using Mutex? instance = SingleInstance.TryAcquire(dataDir);
+        using IDisposable? instance = SingleInstance.TryAcquire(dataDir);
         if (instance is null)
         {
             // a second game on the same profile would die on the shared log file or, at its quit, overwrite the first one's save.dat with its own copy of the slots
@@ -243,11 +244,24 @@ internal sealed class GameApp : IDisposable
         {
             try
             {
-                log = new StreamWriter(path, false, new UTF8Encoding(false)) { AutoFlush = true };
+                log = LogFileWriter(new StreamWriter(path, false, new UTF8Encoding(false)) { AutoFlush = true }, path, OperatingSystem.IsWindows(), Console.Out);
             }
             catch (Exception e) when (e is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
             {
                 logFailure = $"the log file {path} could not be opened: {e.Message}";
+            }
+        }
+        else if (DefaultLogFile(args, dataDir, OperatingSystem.IsWindows()) is { } lastRun)
+        {
+            // Linux and macOS: a start without --log (from Steam, the file manager) still leaves its log in the profile, under the name the launcher's --log uses;
+            // the console gets the lines too. It is opened after the guard, so a second game never empties the first one's log. A write the disk refuses drops the file.
+            try
+            {
+                log = new TeeWriter(Console.Out, new StreamWriter(lastRun, false, new UTF8Encoding(false)) { AutoFlush = true }, lastRun);
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+            {
+                Console.Out.WriteLine($"the log file {lastRun} could not be opened: {e.Message}; the log goes to the console only");
             }
         }
 
@@ -292,16 +306,84 @@ internal sealed class GameApp : IDisposable
     internal static string PlayerMessage(Exception e, Language language = Language.En) => e switch
     {
         StartupFailure s => s.Message,
-        FfmpegMissingException f => PortText.Format(OperatingSystem.IsLinux() ? PortString.LinuxFfmpegMissing : PortString.FfmpegMissing, language, string.Join(", ", f.MissingFiles)),
+        FfmpegMissingException f => PortText.Format(OperatingSystem.IsLinux() ? PortString.LinuxFfmpegMissing : OperatingSystem.IsMacOS() ? PortString.MacFfmpegMissing : PortString.FfmpegMissing, language, string.Join(", ", f.MissingFiles)),
         _ => e.Message,
     };
 
+    /// <summary>
+    /// The log file of a start without <c>--log</c>: on Linux and macOS <c>last_run.log</c> in the profile (the file the launcher's PLAY names with <c>--log</c>, so the
+    /// two never write different files), unless the run writes nothing there (<c>--no-save</c>); on Windows none, as in v0.1.6.
+    /// </summary>
+    internal static string? DefaultLogFile(AppArgs args, string dataDirectory, bool windows)
+    {
+        ArgumentNullException.ThrowIfNull(args);
+        return windows || args.LogFile is not null || args.NoSave ? null : Path.Combine(dataDirectory, LastRunLogName);
+    }
+
+    /// <summary>
+    /// The writer of a <c>--log</c> file: on Windows the file itself, as in v0.1.6; on Linux and macOS the file with the console behind it, so that a write the disk
+    /// refuses (a full Steam Deck, a quota) drops the file and the game goes on.
+    /// </summary>
+    internal static TextWriter LogFileWriter(TextWriter file, string path, bool windows, TextWriter console) =>
+        windows ? file : new TeeWriter(console, file, path, echo: false);
+
+    /// <summary>The run log's name in the profile (the launcher's <c>LauncherPaths.LastRunLog</c>).</summary>
+    internal const string LastRunLogName = "last_run.log";
+
     /// <summary>K46: the box for a folder dialog the system could not open: SDL's words and the command line (or TSUKI_GAME_DIR) that names the folder instead.</summary>
-    internal static string FolderDialogFailedMessage(string? error, Language language = Language.En) => PortText.Format(
+    internal static string FolderDialogFailedMessage(string? error, Language language = Language.En, bool? steamDeck = null) => PortText.Format(
         PortString.FolderDialogUnavailable,
         language,
         string.IsNullOrWhiteSpace(error) ? "?" : error.Trim(),
-        OperatingSystem.IsWindows() ? @"Tsukihime.exe --game ""D:\Games\CUSA47999""" : "./Tsukihime --game /path/to/CUSA47999");
+        FolderCommandExample(language, steamDeck));
+
+    /// <summary>
+    /// How to name the game folder without the dialog: the command line on Windows and Linux, the game program inside the bundle on macOS, and on a Steam Deck
+    /// (Linux with <c>SteamDeck=1</c>, which <paramref name="steamDeck"/> overrides) the game's Launch Options in Steam, where a player can type it.
+    /// </summary>
+    internal static string FolderCommandExample(Language language, bool? steamDeck = null)
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return @"Tsukihime.exe --game ""D:\Games\CUSA47999""";
+        }
+
+        if (OperatingSystem.IsMacOS())
+        {
+            return @"Tsukihime.app/Contents/MacOS/Tsukihime --game ""/path/to/CUSA47999""";
+        }
+
+        if (steamDeck ?? Environment.GetEnvironmentVariable("SteamDeck") == "1")
+        {
+            string where = language switch
+            {
+                Language.Ja => "Steam のゲームのプロパティ > 一般 > 起動オプション:",
+                Language.Zc => "Steam 中该游戏的 属性 > 通用 > 启动选项:",
+                Language.Zt => "Steam 中該遊戲的 內容 > 一般 > 啟動選項:",
+                _ => "In Steam, the game's Properties > General > Launch Options:",
+            };
+            return where + "\n" + @"--game ""/home/deck/Games/CUSA47999""";
+        }
+
+        return "./Tsukihime --game /path/to/CUSA47999";
+    }
+
+    /// <summary>
+    /// Linux and macOS: the box for a <c>--game</c> path that holds no game (a typo in Steam's Launch Options); the game then tries the other folders it knows. The path
+    /// is given as typed and as it was read (<c>~</c> is the home folder).
+    /// </summary>
+    internal static string CommandLineFolderMessage(string gameDir, GameLayout layout, Language language = Language.En)
+    {
+        ArgumentNullException.ThrowIfNull(layout);
+        string chosen = layout.Chosen ?? gameDir;
+        string sentence = layout.Kind switch
+        {
+            GameLayoutKind.Missing or GameLayoutKind.NotSet => PortText.Format(PortString.FolderGone, language, chosen),
+            GameLayoutKind.PkgFile or GameLayoutKind.UpdateOnly or GameLayoutKind.Several => GameFolderMessage(chosen, new GameLayoutException(layout), language),
+            _ => PortText.Format(PortString.FolderNoGameInside, language, chosen),
+        };
+        return $"--game \"{gameDir}\"\n\n{sentence}";
+    }
 
     /// <summary>The sentence for a window that <see cref="GameWindow.Create"/> could not make: SDL names the call that failed, and the GL 3.3 context is the one a player's machine refuses.</summary>
     internal static string WindowMessage(PlatformException e, Language language = Language.En) => e.Message.StartsWith("SDL_GL_", StringComparison.Ordinal)
@@ -344,6 +426,11 @@ internal sealed class GameApp : IDisposable
     {
         FfmpegVersion ff = FfmpegLibrary.Load();
         _log.WriteLine($"{AppIdentity.ProductName} {AppIdentity.Version}; FFmpeg {ff.Build} from {FfmpegLibrary.RootPath}");
+        if (OperatingSystem.IsLinux())
+        {
+            _log.WriteLine(RunReport.Steam(Environment.GetEnvironmentVariable));   // the Steam Deck rules hang on SteamDeck=1: a report shows what Steam gave
+        }
+
         if (AppIdentity.IsPersonalBuild)
         {
             _log.WriteLine("personal build: the executable carries the Arcueid icon cut from the owner's copy of the game (package K28); this build must not be shared");
@@ -351,6 +438,7 @@ internal sealed class GameApp : IDisposable
 
         // the save file is read before the game folder is looked for: its config block says which language the first-run prompt and the start-up errors use (package K20)
         OpenSaveStore();
+        _startMode = _startup.DecideWindowMode(_args, _store.SystemData.Config);
         string title = AppIdentity.WindowTitle(null, _lang);
         // the hidden window of the verification mode is 1280 x 720 unless settings.ini names a window size (package K28: a screenshot of the hidden window then
         // shows the frame letterboxed into the size the player would see)
@@ -372,19 +460,32 @@ internal sealed class GameApp : IDisposable
             throw new StartupFailure(WindowMessage(e, _lang), e);
         }
 
+        if (RunReport.Enabled)
+        {
+            _log.WriteLine(RunReport.Sdl(Sdl.Version, Sdl.LibraryPath, Sdl.VideoDriver));
+        }
+
         ApplyWindowIcon();
         if (!_hidden)
         {
             // the launcher's monitor and window size (package K17), kept inside the monitor's work area and centred (package K19); the window is shown once it is
-            // placed, and --fullscreen is asked for after that, because borderless fullscreen takes the display the window is on
+            // placed, and fullscreen (--fullscreen, the Steam Deck) is asked for after that, because borderless fullscreen takes the display the window is on
             Placement placed = _startup.PlaceWindow(_window);
             _placement = placed;
             (int rw, int rh) = _startup.RequestedWindowSize;
             _log.WriteLine($"window: {placed}{(placed.Clamped ? $" (settings asked for {rw} x {rh})" : string.Empty)}{(!placed.MonitorMatched && _startup.Data.Monitor is { } m ? $"; monitor {m} of settings.ini is not attached" : string.Empty)}");
             _window.Show();
-            if (_args.Fullscreen)
+            if (_startMode.FullscreenAtShow)
             {
-                _window.SetFullscreen(true);
+                bool accepted = _window.SetFullscreen(true);
+                if (_startMode.Source == StartWindowSource.SteamDeckDefault)
+                {
+                    _log.WriteLine("window: Steam Deck default fullscreen" + (accepted ? string.Empty : $" (SDL refused it: {Sdl.LastError})"));
+                }
+                else if (!accepted && RunReport.Enabled)
+                {
+                    _log.WriteLine($"window: fullscreen refused by SDL ({Sdl.LastError})");
+                }
             }
         }
 
@@ -488,6 +589,18 @@ internal sealed class GameApp : IDisposable
     {
         string remembered = RememberedFolderFile;
         string? env = Environment.GetEnvironmentVariable("TSUKI_GAME_DIR");
+        if (!OperatingSystem.IsWindows() && !string.IsNullOrWhiteSpace(_args.GameDir) && LocateGame(_args.GameDir) is null)
+        {
+            // Linux and macOS: a --game path that holds no game (a typo in Steam's Launch Options, where the console is not seen) is named before the other folders
+            // are tried; Windows goes on to them without a word, as in v0.1.6
+            GameLayout given = GameLayoutResolver.Resolve(_args.GameDir);
+            _log.WriteLine($"the --game folder {_args.GameDir} holds no game ({given.Describe()})");
+            if (!_hidden)
+            {
+                MessageBox.ShowError(AppIdentity.ProductName, CommandLineFolderMessage(_args.GameDir, given, _lang), _window);
+            }
+        }
+
         foreach (string? candidate in new[] { _args.GameDir, env, File.Exists(remembered) ? File.ReadAllText(remembered).Trim() : null })
         {
             if (LocateGame(candidate) is { } found)
@@ -785,9 +898,7 @@ internal sealed class GameApp : IDisposable
 
         // the launcher's language (once, package K17) and the window mode of this command line, which becomes the remembered one (package K18)
         bool startupApplied = _startup.ApplyToConfig(store.SystemData.Block.Config, _args.Language is not null, _args.WindowModeChoice);
-        _log.WriteLine(_args.WindowModeChoice is { } choice
-            ? $"window mode: {(choice ? "fullscreen" : "windowed")} (command line, remembered)"
-            : $"window mode: {(ReadWindowMode(store.SystemData.Block.Config) ? "fullscreen" : "windowed")} (remembered)");
+        _log.WriteLine(_startMode.LogLine);
 
         _services = new AppServices(parts);
         if (startupApplied)
@@ -1113,14 +1224,16 @@ internal sealed class GameApp : IDisposable
             _padsPending = true;
         }
 
-        // the window mode of the last run
-        if (!_hidden && ReadWindowMode(_services.Config))
+        // the window mode of the last run (decided at start; the Steam Deck's was asked for when the window was shown)
+        if (!_hidden && _startMode.FullscreenAfterSetUp)
         {
-            _window.SetFullscreen(true);
+            bool accepted = _window.SetFullscreen(true);
+            if (!accepted && RunReport.Enabled)
+            {
+                _log.WriteLine($"window: fullscreen refused by SDL ({Sdl.LastError})");
+            }
         }
     }
-
-    private static bool ReadWindowMode(ConfigBlock config) => config.Bytes[WindowModeOffset] == 1;
 
     private const int WindowModeOffset = StartupSettings.WindowModeOffset;
 
@@ -1143,6 +1256,10 @@ internal sealed class GameApp : IDisposable
         long frame = 0;
         long limit = _args.Seconds > 0 ? start + (long)(_args.Seconds * Stopwatch.Frequency) : long.MaxValue;
         string stop = "";
+        _terminate = TerminationSignal.Listen();         // Linux and macOS: from here a SIGTERM (Steam's Exit Game) ends the run the way a quit does, saved
+        var audioWatch = new AudioCallbackWatch(Stopwatch.Frequency);
+        var presentWatch = new PresentRateWatch(Stopwatch.Frequency);
+        bool reportSize = RunReport.Enabled;            // the drawable size after a start or a fullscreen change goes to the log once (Linux and macOS)
         while (running)
         {
             events.Clear();
@@ -1175,12 +1292,48 @@ internal sealed class GameApp : IDisposable
                     case PlatformEventKind.MouseWheel:
                         _pcInput?.AddWheel(e.Wheel);
                         break;
+                    case PlatformEventKind.EnteredFullscreen:
+                    case PlatformEventKind.LeftFullscreen:
+                        // macOS: the green button and the system's fullscreen switch the window without Alt+Enter; the display settings remember that there only
+                        _display?.NoteFullscreenEvent(e);
+                        if (RunReport.Enabled)
+                        {
+                            Say(e.Kind == PlatformEventKind.EnteredFullscreen ? "window: entered fullscreen" : "window: left fullscreen");
+                            reportSize = true;
+                        }
+
+                        break;
                     case PlatformEventKind.FullscreenToggled:
                         // Alt+Enter / F11: the pump switched the window; the state is remembered the way the config screen's row remembers it (package K19)
                         _display?.NoteFullscreen(e.Fullscreen);
+                        if (RunReport.Enabled)
+                        {
+                            reportSize = true;
+                            if (!e.Accepted)
+                            {
+                                Say($"window mode: SDL refused {(e.Fullscreen ? "fullscreen" : "windowed")} ({Sdl.LastError})");
+                            }
+                        }
+
                         break;
                     case PlatformEventKind.PixelSizeChanged:
                         _display?.NoteResized();
+                        if (reportSize)
+                        {
+                            reportSize = false;
+                            Say($"window: {e.Width} x {e.Height} pixels, fullscreen {(_window.IsFullscreen ? "on" : "off")}");
+                        }
+
+                        break;
+                    case PlatformEventKind.AudioDeviceAdded:
+                    case PlatformEventKind.AudioDeviceRemoved:
+                    case PlatformEventKind.AudioDeviceFormatChanged:
+                        // Linux and macOS only (the pump passes them there): a Steam Deck's sleep, a headset, a dock
+                        if (RunReport.AudioDevice(e, AudioOutput.DeviceNameOf(e.Device), _output?.DeviceId ?? 0) is { } audioLine)
+                        {
+                            Say(audioLine);
+                        }
+
                         break;
                     case PlatformEventKind.GamepadAdded:
                         Say($"gamepad added: {e.Gamepad!.Name} ({e.Gamepad.Type})");
@@ -1224,6 +1377,11 @@ internal sealed class GameApp : IDisposable
             {
                 _firstFrameLogged = true;
                 Say($"first frame presented at {_wall.ElapsedMilliseconds} ms");
+                if (RunReport.Enabled && !_hidden)
+                {
+                    // what the window became, not what was asked for (a Steam Deck start asked for fullscreen before the first event pump of the loop)
+                    Say(RunReport.WindowState(_window.PixelSize, _window.IsFullscreen, WindowPlacement.DisplayOf(_window)));
+                }
             }
 
             if (running && _padsPending)
@@ -1235,6 +1393,27 @@ internal sealed class GameApp : IDisposable
                 pump.Gamepads = _pads;
                 _pcInput!.Pads = _pads;
                 Say($"gamepads: {_pads.Connected.Count} connected, subsystem ready in {Stopwatch.GetElapsedTime(tp).TotalMilliseconds:F0} ms");
+                if (RunReport.Enabled)
+                {
+                    foreach (GamepadInfo pad in _pads.Connected)
+                    {
+                        Say(RunReport.PadAtStart(pad));
+                    }
+                }
+            }
+
+            if (RunReport.Enabled)
+            {
+                long nowWatch = Stopwatch.GetTimestamp();
+                if (_output is { } output && !_mute && audioWatch.Note(output.Callbacks, nowWatch) is { } stallLine)
+                {
+                    Say(stallLine);
+                }
+
+                if (presentWatch.Note(_presents, nowWatch, !_args.Fast && _window.VsyncPaced) is { } vsyncLine)
+                {
+                    Say(vsyncLine);
+                }
             }
 
             if (_args.MemLogSeconds > 0 && _wall.Elapsed.TotalSeconds >= _nextMemLog)
@@ -1268,6 +1447,12 @@ internal sealed class GameApp : IDisposable
                 stop = _runtime.CloseConfirmed ? "quit requested (the window's close, confirmed)" : "quit requested (EXIT on the title)";
             }
 
+            if (running && _terminate.Requested)
+            {
+                running = false;
+                stop = "SIGTERM";
+            }
+
             if (running && _args.ExitAfter > 0 && _runtime.Frame >= _args.ExitAfter)
             {
                 running = false;
@@ -1299,6 +1484,7 @@ internal sealed class GameApp : IDisposable
 
         _display?.SaveWindowSize();             // a size the player dragged the window to is the next start's (package K19)
         _services.Commit();
+        _terminate.Dispose();                   // saved: a SIGTERM from here ends the process at once again
         if (!_screenshots.WaitAll(ShutdownWait))
         {
             _log.WriteLine($"shutdown: {_screenshots.Pending} screenshot(s) still being written");
@@ -1321,6 +1507,7 @@ internal sealed class GameApp : IDisposable
     private AllocationSampler? _alloc;
     private bool _padsPending;
     private bool _firstFrameLogged;
+    private TerminationSignal _terminate = null!;
 
     /// <summary>F12 (package K21; Print Screen is Windows' own since K24): the next fresh frame is read back after it is presented; the toast stays hidden until then, so it is never in the picture.</summary>
     private void RequestScreenshot(string key)
@@ -1397,6 +1584,7 @@ internal sealed class GameApp : IDisposable
     private double _renderMsTotal;
     private double _renderMsMax;
     private long _renderCount;
+    private long _presents;
     private long _slowFrames;
 
     private void StepOnce(LogicTick tick, DisplayList list)
@@ -1444,7 +1632,7 @@ internal sealed class GameApp : IDisposable
             Say($"audio failure {f.Bank}#{f.Entry}: {f.Error.GetType().Name}: {f.Error.Message}");
         }
 
-        if (_hidden || _args.LogFile is not null)
+        if (_hidden || _args.LogFile is not null || _log is TeeWriter)
         {
             _runtime.Host.SlowStatement ??= (name, script, offset, ms) => Say($"slow statement _{name} {ms:F0} ms (script {script}, offset {offset})");
         }
@@ -1618,6 +1806,7 @@ internal sealed class GameApp : IDisposable
             (int w, int h) = _window.PixelSize;
             _compositor.Present(w, h);
             _window.Swap();
+            _presents++;
             return !_quit;
         }
 
@@ -1642,6 +1831,7 @@ internal sealed class GameApp : IDisposable
                 (int hw, int hh) = _window.PixelSize;
                 _compositor.Present(hw, hh);
                 _window.Swap();
+                _presents++;
             }
 
             return !_quit;
@@ -1696,6 +1886,7 @@ internal sealed class GameApp : IDisposable
         }
 
         _window.Swap();
+        _presents++;
         _frameExecMs = (te1 - te0) * 1000.0 / Stopwatch.Frequency;
         _framePresentMs = Stopwatch.GetElapsedTime(te1).TotalMilliseconds;
 
@@ -1917,6 +2108,7 @@ internal sealed class GameApp : IDisposable
             _log.WriteLine($"shutdown: warm-up thread stopped {prewarmDone}, clip decodes stopped {audioDone}, trim thread stopped {trimDone}, icon build stopped {iconDone}; the archives stay mapped until the process exits");
         }
 
+        _terminate?.Dispose();
         _window?.Dispose();
         if (_log != Console.Out)
         {

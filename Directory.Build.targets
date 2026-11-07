@@ -1,0 +1,9 @@
+<Project>
+  <!--
+    Avalonia's build services package, restored with the Unix launcher, defines an AvaloniaStats target that runs a
+    build-time usage report before every compile of the launcher and its tests. This empty target replaces it, so a
+    build sends nothing: this file is imported after the NuGet package targets, and the last definition of a target
+    wins. The CI workflows also set AVALONIA_TELEMETRY_OPTOUT=1. ProjectRulesTests checks this file.
+  -->
+  <Target Name="AvaloniaStats" />
+</Project>

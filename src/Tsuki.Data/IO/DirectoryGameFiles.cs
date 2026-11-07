@@ -59,6 +59,11 @@ public sealed class DirectoryGameFiles : IGameFiles
     }
 
     /// <inheritdoc />
+    /// <remarks>
+    /// Off Windows the files macOS leaves beside others on drives without Mac metadata (exFAT, FAT32, some network shares) are not listed: the AppleDouble
+    /// <c>._NAME</c> files and <c>.DS_Store</c> (see <see cref="IsMacMetadata"/>). A PS4 dump never holds such names, and counting them doubled the movies the
+    /// folder check found.
+    /// </remarks>
     public IReadOnlyList<string> ListFiles(string relativeDirectory)
     {
         string? dir = ResolveDirectory(relativeDirectory);
@@ -67,14 +72,26 @@ public sealed class DirectoryGameFiles : IGameFiles
             return [];
         }
 
+        bool skipMacMetadata = !OperatingSystem.IsWindows();
         var names = new List<string>();
         foreach (string f in Directory.EnumerateFiles(dir))
         {
-            names.Add(Path.GetFileName(f));
+            string name = Path.GetFileName(f);
+            if (!(skipMacMetadata && IsMacMetadata(name)))
+            {
+                names.Add(name);
+            }
         }
 
         names.Sort(StringComparer.OrdinalIgnoreCase);
         return names;
+    }
+
+    /// <summary>True for a name macOS writes as metadata: an AppleDouble file (<c>._</c> and the name of the file it belongs to) or <c>.DS_Store</c>.</summary>
+    public static bool IsMacMetadata(string fileName)
+    {
+        ArgumentNullException.ThrowIfNull(fileName);
+        return fileName.StartsWith("._", StringComparison.Ordinal) || string.Equals(fileName, ".DS_Store", StringComparison.Ordinal);
     }
 
     private string Require(string relativePath) =>
