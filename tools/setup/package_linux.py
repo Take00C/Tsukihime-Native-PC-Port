@@ -3,7 +3,7 @@
     python -I tools/setup/package_linux.py PUBLISH_DIR --version X.Y.Z [--out DIR]
 
 The archive holds one folder, Tsukihime-vX.Y.Z-linux-x64/, with the publish folder's files. Unix modes are
-set here, so the archive is right when it is made on Windows: 0755 for the player (Tsukihime), createdump and
+set here, so the archive is right when it is made on Windows: 0755 for both programs (TsukihimeLauncher and Tsukihime), createdump and
 every shared object (*.so, *.so.N), 0644 for the other files, 0755 for folders; owner root, no user names, one
 time stamp (SOURCE_DATE_EPOCH when set, else the newest file's), gzip without a name or time, so the same folder
 gives the same bytes. Links and other special files are refused. Run `Tsuki.Cli release-check PUBLISH_DIR` first
@@ -21,8 +21,9 @@ import sys
 import tarfile
 from pathlib import Path
 
-EXECUTABLES = {"Tsukihime", "createdump"}
+EXECUTABLES = {"Tsukihime", "TsukihimeLauncher", "createdump"}
 SHARED_OBJECT = re.compile(r"\.so(\.\d+)*$")
+REQUIRED_NATIVE = ("libSDL3.so", "libSkiaSharp.so", "libHarfBuzzSharp.so", "libavutil.so.61", "libswresample.so.7", "libavcodec.so.63", "libavformat.so.63")
 
 
 def mode_of(name: str) -> int:
@@ -32,8 +33,9 @@ def mode_of(name: str) -> int:
 def build(folder: Path, version: str, out_dir: Path) -> Path:
     if not re.fullmatch(r"\d{1,5}\.\d{1,5}\.\d{1,5}", version):
         raise ValueError(f"the version must be X.Y.Z, not {version!r}")
-    if not (folder / "Tsukihime").is_file():
-        raise ValueError(f"{folder} holds no Tsukihime: not a Linux publish folder")
+    missing = [name for name in ("Tsukihime", "Tsukihime.dll", "TsukihimeLauncher", "TsukihimeLauncher.dll", *REQUIRED_NATIVE) if not (folder / name).is_file()]
+    if missing:
+        raise ValueError(f"{folder} is missing {', '.join(missing)}: not a Linux launcher publish")
     files: list[Path] = []
     dirs: list[Path] = []
     for path in sorted(folder.rglob("*"), key=lambda p: p.relative_to(folder).as_posix()):

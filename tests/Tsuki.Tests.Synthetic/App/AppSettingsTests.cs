@@ -45,6 +45,25 @@ public sealed class AppSettingsTests : IDisposable
     }
 
     [Fact]
+    public void MacProcessSerialNumberArgumentsAreIgnored()
+    {
+        Assert.True(AppArgs.IsIgnoredLaunchArgument("-psn_0_12345", macOS: true));
+        Assert.False(AppArgs.IsIgnoredLaunchArgument("-psn_0_12345", macOS: false));
+        Assert.False(AppArgs.IsIgnoredLaunchArgument("--game", macOS: true));
+    }
+
+    [Fact]
+    public void HeadlessSmokeHasItsOwnModeWithoutChangingTheFullSmoke()
+    {
+        Assert.True(AppArgs.TryParse(["--smoke-headless", "--report", "smoke.txt"], out AppArgs? headless, out _));
+        Assert.Equal(AppMode.Smoke, headless!.Mode);
+        Assert.True(headless.HeadlessSmoke);
+        Assert.Equal("smoke.txt", headless.ReportPath);
+        Assert.True(AppArgs.TryParse(["--smoke"], out AppArgs? full, out _));
+        Assert.False(full!.HeadlessSmoke);
+    }
+
+    [Fact]
     public void ASettingIsSavedWhenItChangesAndReadBackOnTheNextRun()
     {
         string path = Path.Combine(_dir, AppSettings.FileName);

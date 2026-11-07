@@ -49,7 +49,9 @@ public sealed class UpdateInstallerTests : IDisposable
 
     private string[] OldFiles() => Directory.GetFiles(_app, "*.old", SearchOption.AllDirectories);
 
-    [Fact]
+    public static bool IsWindows => OperatingSystem.IsWindows();
+
+    [Fact(Skip = "These assertions require Windows rename/delete sharing semantics.", SkipUnless = nameof(IsWindows))]
     public void FilesInUseAreRenamedAndReplacedAndTheNextStartDeletesTheOldOnes()
     {
         StagedRelease release = Stage();
@@ -89,7 +91,7 @@ public sealed class UpdateInstallerTests : IDisposable
         Assert.Equal(0, UpdateInstaller.Cleanup(_app));         // nothing to do the next time
     }
 
-    [Fact]
+    [Fact(Skip = "These assertions require Windows rename/delete sharing semantics.", SkipUnless = nameof(IsWindows))]
     public void AFileThatCannotBeRenamedRollsEverythingBack()
     {
         StagedRelease release = Stage();
@@ -189,7 +191,7 @@ public sealed class UpdateInstallerTests : IDisposable
     /// repairs it. The files the rollback had already put back (their .old copy is gone because it IS the file again) must stay: they are the old version, not files
     /// the release added.
     /// </summary>
-    [Fact]
+    [Fact(Skip = "These assertions require Windows rename/delete sharing semantics.", SkipUnless = nameof(IsWindows))]
     public void AnIncompleteRollbackIsFinishedAtTheNextStartAndKeepsTheFilesItHadPutBack()
     {
         StagedRelease staged = Stage();
@@ -240,7 +242,7 @@ public sealed class UpdateInstallerTests : IDisposable
     /// Review K41: when the repair of an interrupted apply cannot put a file back (it is in use), the .old copy is that file's only old version: the cleanup must not
     /// delete it, or the next start has nothing to put back.
     /// </summary>
-    [Fact]
+    [Fact(Skip = "These assertions require Windows rename/delete sharing semantics.", SkipUnless = nameof(IsWindows))]
     public void ARepairThatCannotFinishKeepsTheOldCopiesForTheNextStart()
     {
         StagedRelease release = Stage();
@@ -285,6 +287,65 @@ public sealed class UpdateInstallerTests : IDisposable
         Assert.Equal("the original folder's new file", File.ReadAllText(added));
         Assert.Equal("launcher old", Read("TsukihimeLauncher.exe"));
         Assert.False(Directory.Exists(_staging.Root));
+    }
+
+    /// <summary>
+    /// Review K48: the macOS/Linux updater undoes a finished apply when the new launcher cannot start (Rollback). It writes the outcome after "done", and a
+    /// "rollback incomplete" there makes the next start repair, not delete the .old copies that are the only old version left.
+    /// </summary>
+    [Fact]
+    public void ARestartRollbackWritesItsOutcomeAndAnIncompleteOneIsRepairedAtTheNextStart()
+    {
+        StagedRelease release = Stage();
+        Assert.True(UpdateInstaller.Apply(_app, release, _staging.Journal).Applied);
+        Assert.True(UpdateInstaller.Rollback(_staging.Journal));
+        Assert.Equal(["done", "rolled back"], File.ReadAllLines(_staging.Journal)[^2..]);
+        Assert.Equal("launcher old", Read("TsukihimeLauncher.exe"));
+        Assert.Equal("game old", Read("Tsukihime.exe"));
+        Assert.Equal(0, UpdateInstaller.Cleanup(_app));
+        Assert.Equal("game old", Read("Tsukihime.exe"));
+        Assert.False(Directory.Exists(_staging.Root));
+
+        // a rollback that left the new game in place (it could not be deleted then): its .old copy is put back at the next start
+        string game = Path.Combine(_app, "Tsukihime.exe");
+        File.Move(game, game + ".old");
+        File.WriteAllText(game, "game new");
+        Directory.CreateDirectory(_staging.Root);
+        File.WriteAllLines(_staging.Journal, ["old\t" + game, "new\t" + game, "done", "rollback incomplete"]);
+        Assert.Equal(0, UpdateInstaller.Cleanup(_app));
+        Assert.Equal("game old", Read("Tsukihime.exe"));
+        Assert.Empty(OldFiles());
+        Assert.False(Directory.Exists(_staging.Root));
+    }
+
+    [Fact]
+    public void AFinishedApplyKeepsTheNewVersionAndOnlyItsOldCopiesGo()
+    {
+        // the Windows updater's journals never carry a rollback after "done": they keep their meaning
+        string game = Path.Combine(_app, "Tsukihime.exe");
+        File.Move(game, game + ".old");
+        File.WriteAllText(game, "game new");
+        Directory.CreateDirectory(_staging.Root);
+        File.WriteAllLines(_staging.Journal, ["old\t" + game, "new\t" + game, "done"]);
+        Assert.Equal(0, UpdateInstaller.Cleanup(_app));
+        Assert.Equal("game new", Read("Tsukihime.exe"));
+        Assert.Empty(OldFiles());
+    }
+
+    [Theory]
+    [InlineData("TsukihimeLauncher", true)]
+    [InlineData(null, false)]
+    public void TheCleanupKnowsTheLauncherItWasToldOf(string? launcherFileName, bool counted)
+    {
+        // review K48 -16: the Linux launcher has no .exe; an apply cut off after it moved counts as done only when the cleanup knows its name
+        string launcher = Path.Combine(_app, "TsukihimeLauncher");
+        File.WriteAllText(launcher + ".old", "unix launcher old");
+        File.WriteAllText(launcher, "unix launcher new");
+        Directory.CreateDirectory(_staging.Root);
+        File.WriteAllLines(_staging.Journal, ["old\t" + launcher, "new\t" + launcher]);
+        Assert.Equal(0, UpdateInstaller.Cleanup(_app, launcherFileName));
+        Assert.Equal(counted ? "unix launcher new" : "unix launcher old", File.ReadAllText(launcher));
+        Assert.Empty(OldFiles());
     }
 
     [Fact]

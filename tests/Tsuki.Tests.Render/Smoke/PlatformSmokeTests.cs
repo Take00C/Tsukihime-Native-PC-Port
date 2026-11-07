@@ -91,6 +91,15 @@ public sealed class PlatformSmokeTests
     }
 
     [Theory]
+    [InlineData(0.2f, 1, true, 1)]
+    [InlineData(-0.2f, -1, true, -1)]
+    [InlineData(0.6f, 0, false, 1)]
+    public void MacTrackpadUsesIntegerWheelSteps(float y, int integerY, bool macOS, int expected)
+    {
+        Assert.Equal(expected, EventPump.WheelSteps(y, integerY, macOS));
+    }
+
+    [Theory]
     [InlineData(SDL_Keycode.SDLK_F12, false, true)]
     [InlineData(SDL_Keycode.SDLK_PRINTSCREEN, false, false)]
     [InlineData(SDL_Keycode.SDLK_F12, true, false)]

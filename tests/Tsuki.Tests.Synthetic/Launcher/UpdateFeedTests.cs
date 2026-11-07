@@ -116,6 +116,27 @@ public sealed class UpdateFeedTests : IDisposable
     }
 
     [Fact]
+    public void OtherPlatformAssetsNeverReplaceTheExactWindowsZip()
+    {
+        const string tag = "v0.1.10";
+        string json = JsonSerializer.Serialize(new[]
+        {
+            Rel(tag, assets:
+            [
+                Asset($"Tsukihime-{tag}-macos-arm64.zip"),
+                Asset($"Tsukihime-{tag}-macos-x64.zip"),
+                Asset($"Tsukihime-{tag}-linux-x64.tar.gz"),
+                Asset($"Tsukihime-{tag}-win-x64.zip"),
+                Asset(UpdateSource.SumsAssetName),
+            ]),
+        });
+        ReleaseInfo? pick = UpdateFeed.Pick(UpdateFeed.Parse(json), new ReleaseVersion(0, 1, 9));
+        Assert.NotNull(pick);
+        Assert.Equal($"Tsukihime-{tag}-win-x64.zip", pick.Zip.Name);
+        Assert.Equal(UpdateSource.SumsAssetName, pick.Sums.Name);
+    }
+
+    [Fact]
     public void TheAssetNamesMustMatchExactly()
     {
         string json = JsonSerializer.Serialize(new object[]

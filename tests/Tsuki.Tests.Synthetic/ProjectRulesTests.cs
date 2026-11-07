@@ -20,10 +20,12 @@ public sealed partial class ProjectRulesTests
     private const string App = "Tsuki.App";
     private const string Cli = "Tsuki.Cli";
     private const string Launcher = "Tsuki.Launcher";
+    private const string UnixLauncher = "Tsuki.Launcher.Avalonia";
+    private const string AvaloniaTests = "Tsuki.Tests.Avalonia";
 
     private static readonly string[] Libraries = [Data, Engine, Media, Render, Platform, Ui, DevBridge];
     private static readonly string[] Shells = [Render, Media, Platform];
-    private static readonly string[] Tests = ["Tsuki.Tests.Synthetic", "Tsuki.Tests.Data", "Tsuki.Tests.Render"];
+    private static readonly string[] Tests = ["Tsuki.Tests.Synthetic", "Tsuki.Tests.Data", "Tsuki.Tests.Render", AvaloniaTests];
     private static readonly string[] Spikes = ["S1.AudioLoop", "S2.MovieSync", "S3.Blend1080", "S4.BigPicture"];
 
     /// <summary>
@@ -67,10 +69,50 @@ public sealed partial class ProjectRulesTests
         var inSolution = xml.Descendants("Project")
             .Select(e => Path.GetFullPath(Path.Combine(Repo.Src, (string)e.Attribute("Path")!)))
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var notInSolution = Repo.Projects().Where(p => !inSolution.Contains(Path.GetFullPath(p.Path))).Select(p => Repo.Relative(p.Path)).ToList();
+        var notInSolution = Repo.Projects().Where(p => p.Name is not UnixLauncher and not AvaloniaTests && !inSolution.Contains(Path.GetFullPath(p.Path))).Select(p => Repo.Relative(p.Path)).ToList();
         var stale = inSolution.Where(p => !File.Exists(p)).Select(Repo.Relative).ToList();
+        Assert.DoesNotContain(inSolution, path => path.Contains(UnixLauncher, StringComparison.OrdinalIgnoreCase) || path.Contains(AvaloniaTests, StringComparison.OrdinalIgnoreCase));
         Assert.True(notInSolution.Count == 0, "projects missing from src/Tsuki.slnx: " + string.Join(", ", notInSolution));
         Assert.True(stale.Count == 0, "src/Tsuki.slnx lists missing projects: " + string.Join(", ", stale));
+    }
+
+    [Fact]
+    public void EveryUnixProjectIsInTheLinuxSolution()
+    {
+        // src/Tsuki.Linux.slnx is what Linux and macOS build (CI included): everything but the WPF launcher and the Windows spikes
+        string solution = Path.Combine(Repo.Src, "Tsuki.Linux.slnx");
+        var inSolution = XDocument.Load(solution).Descendants("Project")
+            .Select(e => Path.GetFullPath(Path.Combine(Repo.Src, (string)e.Attribute("Path")!)))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        bool WindowsOnly(string name) => name == Launcher || Spikes.Contains(name, StringComparer.Ordinal);
+        var notInSolution = Repo.Projects().Where(p => !WindowsOnly(p.Name) && !inSolution.Contains(Path.GetFullPath(p.Path))).Select(p => Repo.Relative(p.Path)).ToList();
+        var windowsOnly = inSolution.Where(p => WindowsOnly(Path.GetFileNameWithoutExtension(p))).Select(Repo.Relative).ToList();
+        var stale = inSolution.Where(p => !File.Exists(p)).Select(Repo.Relative).ToList();
+        Assert.True(notInSolution.Count == 0, "projects missing from src/Tsuki.Linux.slnx: " + string.Join(", ", notInSolution));
+        Assert.True(windowsOnly.Count == 0, "Windows-only projects in src/Tsuki.Linux.slnx: " + string.Join(", ", windowsOnly));
+        Assert.True(stale.Count == 0, "src/Tsuki.Linux.slnx lists missing projects: " + string.Join(", ", stale));
+    }
+
+    [Fact]
+    public void AvaloniaBuildTelemetryIsSwitchedOff()
+    {
+        // Avalonia.BuildServices, restored with Avalonia, runs a build-time usage report in its AvaloniaStats target before every compile of the Unix launcher and its
+        // tests. Directory.Build.targets is imported after the package targets, so its empty AvaloniaStats replaces that target.
+        XDocument targets = XDocument.Load(Path.Combine(Repo.Root, "Directory.Build.targets"));
+        XElement stats = Assert.Single(targets.Root!.Elements("Target"), t => (string?)t.Attribute("Name") == "AvaloniaStats");
+        Assert.Empty(stats.Elements());
+        Assert.Equal(["Name"], stats.Attributes().Select(a => a.Name.LocalName));
+
+        // where the package is restored (CI builds the launcher before these tests), its target still has the name this override replaces
+        string packages = Environment.GetEnvironmentVariable("NUGET_PACKAGES") is { Length: > 0 } custom
+            ? custom
+            : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".nuget", "packages");
+        string services = Path.Combine(packages, "avalonia.buildservices");
+        foreach (string file in Directory.Exists(services) ? Directory.EnumerateFiles(services, "*.targets", SearchOption.AllDirectories) : [])
+        {
+            var names = XDocument.Load(file).Descendants().Where(e => e.Name.LocalName == "Target").Select(e => (string?)e.Attribute("Name")).ToList();
+            Assert.True(names.All(n => n == "AvaloniaStats"), $"{file} defines {string.Join(", ", names)}: replace each of its targets in Directory.Build.targets");
+        }
     }
 
     [Fact]
@@ -160,6 +202,25 @@ public sealed partial class ProjectRulesTests
     }
 
     [Fact]
+    public void ThePlayerAndBothLaunchersHaveOneVersionAndTheDocsNameIt()
+    {
+        // release-sums and the updaters refuse a release whose player and launcher assemblies disagree, and the Mac workflow names its ZIPs after this
+        // version (review ci-tests-docs-6, mac-ci-7): the bump commit sets all three projects and these doc lines together
+        var projects = Repo.Projects().ToDictionary(p => p.Name, StringComparer.Ordinal);
+        var versions = new[] { App, Launcher, UnixLauncher }.Select(name => $"{name} {string.Join(",", projects[name].Property("Version"))}").ToList();
+        var distinct = new[] { App, Launcher, UnixLauncher }.SelectMany(name => projects[name].Property("Version")).Distinct(StringComparer.Ordinal).ToList();
+        Assert.True(distinct.Count == 1 && versions.All(v => v.Split(' ')[1] == distinct[0]), "set one <Version> in all three projects: " + string.Join("; ", versions));
+        string version = distinct[0];
+        Assert.Matches(@"^\d+\.\d+\.\d+$", version);
+        Assert.Contains($"Current source version is **{version}**.", File.ReadAllText(Path.Combine(Repo.Root, "README.md")), StringComparison.Ordinal);
+        Assert.Contains($"Current source versions are **{version}**", File.ReadAllText(Path.Combine(Repo.Root, "docs", "PUBLISHING.md")), StringComparison.Ordinal);
+        foreach (string guide in new[] { "SETUP_GUIDE.md", "SETUP_GUIDE.txt" })
+        {
+            Assert.Contains($"This guide describes version {version}.", File.ReadAllText(Path.Combine(Repo.Root, "docs", guide)), StringComparison.Ordinal);
+        }
+    }
+
+    [Fact]
     public void TheCheckerCatchesForbiddenReferencesAndPackages()
     {
         // A synthetic project set that breaks every rule once, so the tests above cannot pass vacuously.
@@ -239,10 +300,11 @@ public sealed partial class ProjectRulesTests
             [Cli] = appRefs,
             // package K17: the launcher reads the game folder and the save format; it builds Tsuki.App first (no assembly reference) and never references SDL / OpenGL / FFmpeg
             [Launcher] = [Data, Engine, Ui, App],
+            [UnixLauncher] = [Data, Engine, Ui, App],
         };
         foreach (string t in Tests)
         {
-            map[t] = testRefs;
+            map[t] = t == AvaloniaTests ? [.. testRefs, UnixLauncher] : testRefs;
         }
 
         foreach (string s in Spikes)

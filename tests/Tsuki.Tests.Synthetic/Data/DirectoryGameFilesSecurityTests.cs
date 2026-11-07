@@ -58,8 +58,7 @@ public sealed class DirectoryGameFilesSecurityTests : IDisposable
     {
         Assert.Equal([1, 2, 3], _files.ReadAll(path));
         Assert.Equal(3, _files.Length(path));
-        Assert.Equal(Path.Combine(_files.Root, "Image", "Movie", "Intro.MP4"), _files.ResolveFile(path),
-            OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
+        Assert.Equal(Path.Combine(_files.Root, "Image", "Movie", "Intro.MP4"), _files.ResolveFile(path), VolumeCase.PathComparer(_dir));
         Assert.Equal(["Intro.MP4"], _files.ListFiles("image/movie"));
         Assert.Empty(_files.ListFiles("missing"));
         Assert.Empty(_files.ListFiles(""));

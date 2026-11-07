@@ -64,7 +64,7 @@ public sealed partial class ThirdPartyNoticesTests
     {
         int at = Notices.IndexOf("## MIT libraries (", StringComparison.Ordinal);
         Assert.True(at >= 0, "THIRD_PARTY.md has no MIT section");
-        string mit = Notices[at..];
+        string mit = Notices[at..Notices.IndexOf("## Avalonia,", at, StringComparison.Ordinal)];
         foreach (string name in new[] { ".NET runtime and WPF", "Silk.NET", "SDL3-CS", "FFmpeg.AutoGen" })
         {
             Assert.Contains("### " + name, mit, StringComparison.Ordinal);
@@ -84,6 +84,24 @@ public sealed partial class ThirdPartyNoticesTests
         {
             Assert.Contains((string)pv.Attribute("Version")!, mit, StringComparison.Ordinal);
         }
+    }
+
+    [Fact]
+    public void TheUnixLauncherHasItsOwnNotices()
+    {
+        Assert.Contains("## Avalonia, SkiaSharp, HarfBuzzSharp, MicroCom and Tmds.DBus (MIT)", Notices, StringComparison.Ordinal);
+        Assert.Contains("11.3.22", Notices, StringComparison.Ordinal);
+        Assert.Contains("Copyright (c) AvaloniaUI OÜ", Notices, StringComparison.Ordinal);
+        Assert.Contains("Copyright (c) 2021 Nikita Tsukanov", Notices, StringComparison.Ordinal);
+        Assert.Contains("Copyright 2016 Tom Deseyn", Notices, StringComparison.Ordinal);
+        foreach (string file in new[] { "Avalonia-MIT.txt", "SkiaSharp-LICENSE.txt", "HarfBuzzSharp-LICENSE.txt", "MicroCom-MIT.txt", "Tmds-DBus-MIT.txt" })
+        {
+            Assert.True(File.Exists(Path.Combine(Repo.Src, "Tsuki.Launcher.Avalonia", "Licenses", file)), file);
+        }
+
+        string project = File.ReadAllText(Path.Combine(Repo.Src, "Tsuki.Launcher.Avalonia", "Tsuki.Launcher.Avalonia.csproj"));
+        Assert.Contains("SkiaSharp-THIRD-PARTY-NOTICES.txt", project, StringComparison.Ordinal);
+        Assert.Contains("skiasharp/2.88.9", project, StringComparison.Ordinal);
     }
 
     /// <summary>Finding 5: the licence texts the publish ships are tracked copies under src/Tsuki.Launcher/Licenses, copied unconditionally; the root LICENSE is the same MPL-2.0 text.</summary>

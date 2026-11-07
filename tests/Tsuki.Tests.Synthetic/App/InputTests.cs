@@ -100,6 +100,7 @@ public sealed class InputTests
     [Theory]
     [InlineData(1920, 1080, 0, 0, 1920, 1080)]
     [InlineData(1280, 720, 0, 0, 1280, 720)]
+    [InlineData(1280, 800, 0, 40, 1280, 720)] // Steam Deck: 40-pixel bars, no stretch or crop
     [InlineData(1920, 1200, 0, 60, 1920, 1080)]
     [InlineData(1000, 1000, 0, 219, 999, 562)]
     [InlineData(3440, 1440, 440, 0, 2560, 1440)]

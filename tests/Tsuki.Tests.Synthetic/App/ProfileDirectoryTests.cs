@@ -19,6 +19,8 @@ public sealed class ProfileDirectoryTests : IDisposable
 
     public static bool IsWindows => OperatingSystem.IsWindows();
 
+    public static bool IsMacOS => OperatingSystem.IsMacOS();
+
     public ProfileDirectoryTests()
     {
         Directory.CreateDirectory(_root);
@@ -87,6 +89,12 @@ public sealed class ProfileDirectoryTests : IDisposable
         Assert.Equal("relative-profile", StartupSettings.DataDirectory(args!));
         string explicitDirectory = Path.Combine(_root, "explicit");
         Assert.Equal(Path.Combine(explicitDirectory, CrashLog.FileName), CrashLog.Append(explicitDirectory, null, "explicit test"));
+    }
+
+    [Fact(Skip = "The macOS profile path can only be checked on macOS.", SkipUnless = nameof(IsMacOS))]
+    public void MacUsesApplicationSupportNotTheLinuxConfigFolder()
+    {
+        Assert.EndsWith("Library/Application Support/Tsuki", ProfileDirectory.ForUser().Replace('\\', '/'));
     }
 
     [Fact(Skip = "Windows uses its existing roaming profile.", SkipUnless = nameof(IsWindows))]

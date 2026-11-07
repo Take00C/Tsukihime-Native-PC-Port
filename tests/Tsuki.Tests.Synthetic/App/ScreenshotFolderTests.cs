@@ -14,6 +14,8 @@ public sealed class ScreenshotFolderTests : IDisposable
 
     public static bool IsWindows => OperatingSystem.IsWindows();
 
+    public static bool IsMac => OperatingSystem.IsMacOS();
+
     public ScreenshotFolderTests()
     {
         Directory.CreateDirectory(_root);
@@ -86,6 +88,13 @@ public sealed class ScreenshotFolderTests : IDisposable
         IOException error = Assert.Throws<IOException>(() => ScreenshotWriter.DefaultFolder);
         Assert.Contains("--screenshot-dir", error.Message, StringComparison.Ordinal);
         Assert.False(Directory.Exists(Path.Combine(_root, "relative-home")));
+    }
+
+    [Fact(Skip = "macOS Pictures lookup.", SkipUnless = nameof(IsMac))]
+    public void MacUsesTheUsersPicturesFolder()
+    {
+        string home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile, Environment.SpecialFolderOption.DoNotVerify);
+        Assert.Equal(Path.Combine(home, "Pictures", "Tsukihime"), ScreenshotWriter.DefaultFolder);
     }
 
     [Fact(Skip = "Windows Pictures lookup.", SkipUnless = nameof(IsWindows))]

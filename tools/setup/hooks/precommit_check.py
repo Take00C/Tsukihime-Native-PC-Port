@@ -17,12 +17,16 @@ ALLOWED_PREFIXES = (
 )
 ALLOWED_ROOT_FILES = {
     ".gitignore", ".gitattributes", ".editorconfig", "README.md", "LICENSE", "CONTRIBUTING.md",
-    "Directory.Build.props", "Directory.Packages.props", "global.json",
+    "Directory.Build.props", "Directory.Build.targets", "Directory.Packages.props", "global.json",
     "NuGet.config", "nuget.config",
     "requirements.in", "requirements.txt", "requirements-dev.in", "requirements-dev.txt",
     ".python-version",
 }
 ALLOWED_ROOT_SUFFIXES = (".sln", ".slnx")
+# the CI workflows, named one by one (python-security from GitHub PR #4; the platform builds and the Mac downloads from K47/K48)
+ALLOWED_WORKFLOWS = {
+    ".github/workflows/python-security.yml", ".github/workflows/platforms.yml", ".github/workflows/macos-release.yml",
+}
 BLOCKED_PREFIXES = ("samples/", "scratch/", "ref/", "third_party/", ".venv/")
 GAME_DATA_EXT = {
     ".mrg", ".hed", ".nam", ".mzp", ".mzx", ".at9", ".vag", ".mp4", ".sfo",
@@ -54,7 +58,7 @@ def main() -> int:
             continue
         top_level = "/" not in path
         if not (path.startswith(ALLOWED_PREFIXES) or path in ALLOWED_ROOT_FILES
-                or path == ".github/workflows/python-security.yml"
+                or path in ALLOWED_WORKFLOWS
                 or (top_level and path.endswith(ALLOWED_ROOT_SUFFIXES))):
             problems.append(f"{path}: not in the allow-list (docs/, tools/, src/, tests/, .claude/ or a known root file)")
             continue

@@ -64,13 +64,14 @@ public sealed class DisplaySettingsTests : IDisposable
         }
     }
 
-    private (DisplaySettings Settings, FakeWindow Window, ConfigBlock Config, List<string> Log, Counter Commits) Make(string? path, (int, int)? placed = null)
+    // linux and macOS: null is the platform the tests run on, as in the app
+    private (DisplaySettings Settings, FakeWindow Window, ConfigBlock Config, List<string> Log, Counter Commits) Make(string? path, (int, int)? placed = null, bool? linux = null, bool? macOS = null)
     {
         var window = new FakeWindow();
         ConfigBlock config = ConfigBlock.CreateBootDefaults();
         var log = new List<string>();
         var commits = new Counter();
-        var settings = new DisplaySettings(window, config, () => commits.Count++, path, placed ?? (1600, 900), log.Add);
+        var settings = new DisplaySettings(window, config, () => commits.Count++, path, placed ?? (1600, 900), log.Add, linux, macOS);
         return (settings, window, config, log, commits);
     }
 
@@ -79,10 +80,12 @@ public sealed class DisplaySettingsTests : IDisposable
         public int Count { get; set; }
     }
 
-    [Fact]
-    public void TheRowSwitchesTheWindowAndRemembersTheModeInTheConfigByteOnce()
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void TheRowSwitchesTheWindowAndRemembersTheModeInTheConfigByteOnce(bool linux)
     {
-        (DisplaySettings s, FakeWindow w, ConfigBlock c, List<string> log, Counter commits) = Make(SettingsPath);
+        (DisplaySettings s, FakeWindow w, ConfigBlock c, List<string> log, Counter commits) = Make(SettingsPath, linux: linux);
         Assert.False(s.Fullscreen);
         Assert.False(s.Remembered);
 
@@ -91,22 +94,89 @@ public sealed class DisplaySettingsTests : IDisposable
         Assert.Equal(["fullscreen True"], w.Calls);
         Assert.Equal(1, c.Bytes[AppSettings.WindowModeOffset]);
         Assert.Equal(1, commits.Count);
-        Assert.Contains("window mode: fullscreen (remembered)", log);
+        Assert.Equal(["window mode: fullscreen (remembered)"], log);
+        Assert.Equal(linux ? true : null, AppSettings.Load(SettingsPath).RememberedFullscreen);      // display_mode= is written on Linux only
 
         s.Fullscreen = true;                                            // the same choice again: nothing to do, nothing to save
         Assert.Single(w.Calls);
         Assert.Equal(1, commits.Count);
+        Assert.Single(log);
 
         s.Fullscreen = false;
         Assert.Equal(0, c.Bytes[AppSettings.WindowModeOffset]);
         Assert.Equal(2, commits.Count);
+        Assert.Equal(2, log.Count);
+        Assert.Equal(linux ? false : null, AppSettings.Load(SettingsPath).RememberedFullscreen);
         Assert.Equal((1600, 900), s.WindowSize);                        // the windowed size the run started with
     }
 
-    [Fact]
-    public void AltEnterIsRememberedTheSameWayAndTheRowShowsIt()
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void ChoosingTheModeTheWindowAlreadyShowsIsRecordedOnLinuxOnly(bool linux)
     {
-        (DisplaySettings s, FakeWindow w, ConfigBlock c, _, Counter commits) = Make(SettingsPath);
+        // a Steam Deck start with --windowed in Launch Options: the window is windowed, nothing was chosen yet; the player picks Windowed to keep it
+        (DisplaySettings s, FakeWindow w, _, List<string> log, Counter commits) = Make(SettingsPath, linux: linux);
+        s.Fullscreen = false;
+        Assert.Empty(w.Calls);                                          // the window is not asked again
+        Assert.Equal(0, commits.Count);                                 // the byte was 0 already
+        Assert.Equal(linux ? false : null, AppSettings.Load(SettingsPath).RememberedFullscreen);
+        Assert.Equal(linux ? ["window mode: windowed (remembered)"] : [], log);
+
+        // the Steam Deck default (fullscreen with the byte at 0), and the player picks Fullscreen: on Linux that is the choice, byte and display_mode
+        (DisplaySettings d, FakeWindow dw, ConfigBlock dc, List<string> dlog, Counter dcommits) = Make(Path.Combine(_dir, "deck.ini"), linux: linux);
+        dw.Fullscreen = true;
+        d.Fullscreen = true;
+        Assert.Empty(dw.Calls);
+        Assert.Equal(linux ? 1 : 0, dc.Bytes[AppSettings.WindowModeOffset]);
+        Assert.Equal(linux ? 1 : 0, dcommits.Count);
+        Assert.Equal(linux ? true : null, AppSettings.Load(Path.Combine(_dir, "deck.ini")).RememberedFullscreen);
+        Assert.Equal(linux ? ["window mode: fullscreen (remembered)"] : [], dlog);
+    }
+
+    [Fact]
+    public void AnExplicitWindowedChoiceIsWrittenOnLinuxEvenWhenTheConfigByteWasAlreadyZero()
+    {
+        (DisplaySettings s, FakeWindow w, ConfigBlock c, List<string> log, Counter commits) = Make(SettingsPath, linux: true);
+        w.SetFullscreen(true);                                          // the Steam Deck default: fullscreen with the byte at 0
+        s.NoteFullscreen(false);
+        Assert.Equal(0, c.Bytes[AppSettings.WindowModeOffset]);
+        Assert.Equal(0, commits.Count);
+        Assert.False(AppSettings.Load(SettingsPath).RememberedFullscreen);
+        Assert.Equal(["window mode: windowed (remembered)"], log);
+    }
+
+    [Fact]
+    public void WindowsRemembersOnlyTheByteAndLogsOnlyAChangeAsV016Did()
+    {
+        (DisplaySettings s, FakeWindow w, ConfigBlock c, List<string> log, Counter commits) = Make(SettingsPath, linux: false);
+        w.SetFullscreen(true);
+        s.NoteFullscreen(false);                                        // the byte is already 0: nothing to save, nothing to say
+        Assert.Empty(log);
+        Assert.Equal(0, commits.Count);
+
+        s.NoteFullscreen(true);
+        s.NoteFullscreen(true);
+        Assert.Equal(["window mode: fullscreen (remembered)"], log);
+        Assert.Equal(1, commits.Count);
+        Assert.Equal(1, c.Bytes[AppSettings.WindowModeOffset]);
+        Assert.False(File.Exists(SettingsPath));                        // no display_mode=: settings.ini is not even created
+    }
+
+    [Fact]
+    public void ThePlatformDecidesWhetherTheDisplayModeKeyIsWritten()
+    {
+        (DisplaySettings s, _, _, _, _) = Make(SettingsPath);           // what the app builds: no platform given
+        s.NoteFullscreen(true);
+        Assert.Equal(OperatingSystem.IsLinux() ? true : null, AppSettings.Load(SettingsPath).RememberedFullscreen);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void AltEnterIsRememberedTheSameWayAndTheRowShowsIt(bool linux)
+    {
+        (DisplaySettings s, FakeWindow w, ConfigBlock c, List<string> log, Counter commits) = Make(SettingsPath, linux: linux);
         w.SetFullscreen(true);                                          // the event pump toggled the window on Alt+Enter
         s.NoteFullscreen(true);                                         // the app passes the FullscreenToggled event on
         Assert.True(s.Fullscreen);                                      // the row reads the window, so it is in sync
@@ -114,11 +184,63 @@ public sealed class DisplaySettingsTests : IDisposable
         Assert.Equal(1, commits.Count);
         s.NoteFullscreen(true);
         Assert.Equal(1, commits.Count);
+        Assert.Single(log);
 
         w.SetFullscreen(false);
         s.NoteFullscreen(false);
         Assert.False(s.Fullscreen);
         Assert.Equal(0, c.Bytes[AppSettings.WindowModeOffset]);
+        Assert.Equal(2, log.Count);
+    }
+
+    [Fact]
+    public void OnMacOSTheGreenButtonIsRememberedAsF11Is()
+    {
+        (DisplaySettings s, FakeWindow w, ConfigBlock c, List<string> log, Counter commits) = Make(SettingsPath, linux: false, macOS: true);
+        w.Fullscreen = true;                                            // the green button: the system switched the window, the app asked for nothing
+        s.NoteFullscreenEvent(new PlatformEvent(PlatformEventKind.EnteredFullscreen, Fullscreen: true));
+        Assert.Equal(1, c.Bytes[AppSettings.WindowModeOffset]);
+        Assert.Equal(1, commits.Count);
+        Assert.Equal(["window mode: fullscreen (remembered)"], log);
+
+        w.Fullscreen = false;
+        s.NoteFullscreenEvent(new PlatformEvent(PlatformEventKind.LeftFullscreen));
+        Assert.Equal(0, c.Bytes[AppSettings.WindowModeOffset]);
+        Assert.Equal(2, commits.Count);
+        Assert.Equal(2, log.Count);
+
+        // F11: the pump switched the window and the app passed FullscreenToggled on; the SDL event that follows says the same and adds nothing
+        w.SetFullscreen(true);
+        s.NoteFullscreen(true);
+        s.NoteFullscreenEvent(new PlatformEvent(PlatformEventKind.EnteredFullscreen, Fullscreen: true));
+        Assert.Equal(3, commits.Count);
+        Assert.Equal(3, log.Count);
+        s.NoteFullscreenEvent(new PlatformEvent(PlatformEventKind.FocusLost));
+        Assert.Equal(1, c.Bytes[AppSettings.WindowModeOffset]);
+        Assert.Equal(3, log.Count);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void WindowsAndLinuxIgnoreTheFullscreenEventsAsV016Did(bool linux)
+    {
+        (DisplaySettings s, _, ConfigBlock c, List<string> log, Counter commits) = Make(SettingsPath, linux: linux, macOS: false);
+        s.NoteFullscreenEvent(new PlatformEvent(PlatformEventKind.EnteredFullscreen, Fullscreen: true));
+        c.Bytes[AppSettings.WindowModeOffset] = 1;
+        s.NoteFullscreenEvent(new PlatformEvent(PlatformEventKind.LeftFullscreen));
+        Assert.Equal(1, c.Bytes[AppSettings.WindowModeOffset]);
+        Assert.Equal(0, commits.Count);
+        Assert.Empty(log);
+        Assert.False(File.Exists(SettingsPath));
+    }
+
+    [Fact]
+    public void OnlyMacOSRemembersTheFullscreenEventsWhenNoPlatformIsGiven()
+    {
+        (DisplaySettings s, _, ConfigBlock c, _, _) = Make(null);       // what the app builds
+        s.NoteFullscreenEvent(new PlatformEvent(PlatformEventKind.EnteredFullscreen, Fullscreen: true));
+        Assert.Equal(OperatingSystem.IsMacOS() ? 1 : 0, c.Bytes[AppSettings.WindowModeOffset]);
     }
 
     [Fact]

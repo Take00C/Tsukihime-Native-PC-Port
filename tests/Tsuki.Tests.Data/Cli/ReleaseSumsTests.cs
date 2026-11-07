@@ -38,6 +38,7 @@ public sealed class ReleaseSumsTests : IDisposable
     /// <summary>A publish-like folder: both programs and TsukihimeLauncher.dll (a copy of Tsukihime.dll, so it carries this build's version), zipped by contents.</summary>
     private string ReleaseZip(string name, Action<string>? change = null, bool wrapped = false)
     {
+        SkipWithoutTheWindowsApphost();
         string folder = Path.Combine(_root, Path.GetFileNameWithoutExtension(name) + "-" + Guid.NewGuid().ToString("N")[..6]);
         Directory.CreateDirectory(Path.Combine(folder, "licenses"));
         File.Copy(Path.Combine(AppContext.BaseDirectory, "Tsukihime.exe"), Path.Combine(folder, "Tsukihime.exe"));
@@ -65,6 +66,15 @@ public sealed class ReleaseSumsTests : IDisposable
         }
 
         throw new InvalidOperationException("the repository root was not found above " + AppContext.BaseDirectory);
+    }
+
+    /// <summary>A Windows release zip is made of the Windows apphost, which only a Windows build of these tests has.</summary>
+    private static void SkipWithoutTheWindowsApphost()
+    {
+        if (!File.Exists(Path.Combine(AppContext.BaseDirectory, "Tsukihime.exe")))
+        {
+            Assert.Skip("a Windows release zip needs the Windows apphost Tsukihime.exe");
+        }
     }
 
     private static (int Exit, string Out, string Err) Run(params string[] args)
@@ -117,30 +127,75 @@ public sealed class ReleaseSumsTests : IDisposable
     }
 
     [Fact]
-    public void TheChecksumFileListsTheWindowsZipAndTheLinuxArchiveAndTheLauncherReadsOnlyItsZipsLine()
+    public void TheChecksumFileListsEveryPlatformAndTheLauncherReadsOnlyItsZipsLine()
     {
-        // package K46: one SHA256SUMS.txt for both assets; the Windows launcher's update looks up its zip by name and never takes the archive's line for it
+        // K46/K47: one SHA256SUMS.txt for Windows, Linux and both Macs; the Windows updater still looks up only its own zip.
+        if (!File.Exists(Path.Combine(AppContext.BaseDirectory, "Tsukihime.exe")))
+        {
+            Assert.Skip("the four-platform updater check needs the Windows apphost");
+        }
+
         string zip = ReleaseZip($"Tsukihime-v{_version}-win-x64.zip");
-        string tar = LinuxRelease.Tar(LinuxRelease.Folder(_root, "linux-" + Guid.NewGuid().ToString("N")[..6]), Path.Combine(Path.GetDirectoryName(zip)!, $"Tsukihime-v{_version}-linux-x64.tar.gz"));
+        string folder = Path.GetDirectoryName(zip)!;
+        string tar = LinuxRelease.Tar(LinuxRelease.Folder(_root, "linux-" + Guid.NewGuid().ToString("N")[..6]), Path.Combine(folder, $"Tsukihime-v{_version}-linux-x64.tar.gz"));
+        string arm = MacRelease.Zip(MacRelease.Folder(_root, "arm64", "sums-arm"), Path.Combine(folder, $"Tsukihime-v{_version}-macos-arm64.zip"));
+        string x64 = MacRelease.Zip(MacRelease.Folder(_root, "x64", "sums-x64"), Path.Combine(folder, $"Tsukihime-v{_version}-macos-x64.zip"));
         Assert.Empty(ReleaseSumsCommand.CheckReleaseTar(tar, Crescent));
-        (int exit, string output, string error) = Run(zip, tar);
+        (int exit, string output, string error) = Run(zip, tar, arm, x64);
         Assert.True(exit == ExitCode.Ok, output + error);
-        string text = File.ReadAllText(Path.Combine(Path.GetDirectoryName(zip)!, ReleaseSumsCommand.SumsFileName));
+        string text = File.ReadAllText(Path.Combine(folder, ReleaseSumsCommand.SumsFileName));
         string zipHex = ReleaseSums.Sha256Hex(zip);
         string tarHex = ReleaseSums.Sha256Hex(tar);
-        Assert.Equal($"{zipHex}  {Path.GetFileName(zip)}\n{tarHex}  {Path.GetFileName(tar)}\n", text);
+        string armHex = ReleaseSums.Sha256Hex(arm);
+        string x64Hex = ReleaseSums.Sha256Hex(x64);
+        Assert.Equal(
+            $"{zipHex}  {Path.GetFileName(zip)}\n{tarHex}  {Path.GetFileName(tar)}\n{armHex}  {Path.GetFileName(arm)}\n{x64Hex}  {Path.GetFileName(x64)}\n",
+            text);
         Assert.DoesNotContain("no Tsukihime-vX.Y.Z-win-x64.zip", output, StringComparison.Ordinal);
 
         IReadOnlyDictionary<string, string> map = ReleaseSums.Parse(text);
-        Assert.Equal(2, map.Count);
+        Assert.Equal(4, map.Count);
         Assert.True(ReleaseVersion.TryParse(_version, out ReleaseVersion parsed));
-        Assert.Equal(SumCheck.Match, ReleaseSums.Check(text, UpdateSource.ZipAssetName(parsed), zipHex));          // the name the launcher looks up
-        Assert.Equal(SumCheck.Mismatch, ReleaseSums.Check(text, Path.GetFileName(zip), tarHex));        // the archive's checksum never passes for the zip
+        Assert.Equal(SumCheck.Match, ReleaseSums.Check(text, UpdateSource.ZipAssetName(parsed), zipHex));
+        Assert.Equal(SumCheck.Mismatch, ReleaseSums.Check(text, Path.GetFileName(zip), tarHex));
+        Assert.Equal(SumCheck.Mismatch, ReleaseSums.Check(text, Path.GetFileName(zip), armHex));
+        Assert.Equal(SumCheck.Mismatch, ReleaseSums.Check(text, Path.GetFileName(zip), x64Hex));
         Assert.Equal(SumCheck.Match, ReleaseSums.Check(text, Path.GetFileName(tar), tarHex));
+        Assert.Equal(SumCheck.Match, ReleaseSums.Check(text, Path.GetFileName(arm), armHex));
+        Assert.Equal(SumCheck.Match, ReleaseSums.Check(text, Path.GetFileName(x64), x64Hex));
 
-        // the list in the other order reads the same
-        string reversed = $"{tarHex}  {Path.GetFileName(tar)}\n{zipHex}  {Path.GetFileName(zip)}\n";
+        string reversed = $"{x64Hex}  {Path.GetFileName(x64)}\n{armHex}  {Path.GetFileName(arm)}\n{tarHex}  {Path.GetFileName(tar)}\n{zipHex}  {Path.GetFileName(zip)}\n";
         Assert.Equal(SumCheck.Match, ReleaseSums.Check(reversed, Path.GetFileName(zip), zipHex));
+    }
+
+    [Fact]
+    public void TheLinuxArchiveAndBothMacZipsGetOneChecksumFileOnAnyHost()
+    {
+        // review K48 tests-docs-14: no Windows apphost is needed for the three Unix assets
+        string folder = Path.Combine(_root, "unix-" + Guid.NewGuid().ToString("N")[..6]);
+        string tar = LinuxRelease.Tar(LinuxRelease.Folder(_root, "linux-" + Guid.NewGuid().ToString("N")[..6]), Path.Combine(folder, $"Tsukihime-v{_version}-linux-x64.tar.gz"));
+        string arm = MacRelease.Zip(MacRelease.Folder(_root, "arm64", "unix-arm"), Path.Combine(folder, $"Tsukihime-v{_version}-macos-arm64.zip"));
+        string x64 = MacRelease.Zip(MacRelease.Folder(_root, "x64", "unix-x64"), Path.Combine(folder, $"Tsukihime-v{_version}-macos-x64.zip"));
+        (int exit, string output, string error) = Run(tar, arm, x64);
+        Assert.True(exit == ExitCode.Ok, output + error);
+        string text = File.ReadAllText(Path.Combine(folder, ReleaseSumsCommand.SumsFileName));
+        Assert.Equal($"{ReleaseSums.Sha256Hex(tar)}  {Path.GetFileName(tar)}\n{ReleaseSums.Sha256Hex(arm)}  {Path.GetFileName(arm)}\n{ReleaseSums.Sha256Hex(x64)}  {Path.GetFileName(x64)}\n", text);
+        Assert.Contains("no Tsukihime-vX.Y.Z-win-x64.zip among the files", output, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ALinuxArchiveIsHeldToTheReleaseSizeAndEntryLimits()
+    {
+        // review K48 tests-docs-04: the caps at the release-sums call, not only the helper
+        string folder = LinuxRelease.Folder(_root, "limits-" + Guid.NewGuid().ToString("N")[..6]);
+        long largest = Directory.GetFiles(folder, "*", SearchOption.AllDirectories).Max(f => new FileInfo(f).Length);
+        long sum = Directory.GetFiles(folder, "*", SearchOption.AllDirectories).Sum(f => new FileInfo(f).Length);
+        int entries = Directory.GetFileSystemEntries(folder, "*", SearchOption.AllDirectories).Length + 1;
+        string tar = LinuxRelease.Tar(folder, Path.Combine(_root, "limits-tar", $"Tsukihime-v{_version}-linux-x64.tar.gz"));
+        Assert.Empty(ReleaseSumsCommand.CheckReleaseTar(tar, Crescent, new ReleaseLimits(largest, sum, entries)));
+        Assert.Contains(ReleaseSumsCommand.CheckReleaseTar(tar, Crescent, new ReleaseLimits(largest - 1, sum, entries)), p => p.Contains("exceeds the", StringComparison.Ordinal));
+        Assert.Contains(ReleaseSumsCommand.CheckReleaseTar(tar, Crescent, new ReleaseLimits(largest, sum - 1, entries)), p => p.Contains("exceeds the", StringComparison.Ordinal));
+        Assert.Contains(ReleaseSumsCommand.CheckReleaseTar(tar, Crescent, new ReleaseLimits(largest, sum, entries - 1)), p => p.Contains($"more than {entries - 1} entries", StringComparison.Ordinal));
     }
 
     [Theory]
@@ -154,6 +209,13 @@ public sealed class ReleaseSumsTests : IDisposable
     [InlineData("framework-dependent")]
     [InlineData("version")]
     [InlineData("personal")]
+    [InlineData("launcher icon")]
+    [InlineData("launcher version")]
+    [InlineData("start files")]
+    [InlineData("developer")]
+    [InlineData("folder mode")]
+    [InlineData("file mode")]
+    [InlineData("flat")]
     public void ALinuxArchiveThatIsNotARightReleaseGetsNoChecksumFile(string what)
     {
         string folder = LinuxRelease.Folder(_root, "linux-" + Guid.NewGuid().ToString("N")[..6]);
@@ -193,12 +255,45 @@ public sealed class ReleaseSumsTests : IDisposable
             case "no library":
                 File.Delete(Path.Combine(folder, "libswresample.so.7"));
                 tar = LinuxRelease.Tar(folder, Path.Combine(dir, name));
-                expected = "no libswresample.so.7 in";
+                expected = "libswresample.so.7 is not beside Tsukihime";
                 break;
             case "framework-dependent":
                 File.Delete(Path.Combine(folder, "libhostfxr.so"));
                 tar = LinuxRelease.Tar(folder, Path.Combine(dir, name));
-                expected = "no libhostfxr.so in";
+                expected = "libhostfxr.so not beside Tsukihime: the Linux release is a self-contained publish";
+                break;
+            case "launcher icon":
+                // review K48: release-check refused such a folder, release-sums checked only the player's icon
+                LinuxRelease.ChangeIcon(Path.Combine(folder, "TsukihimeLauncher.dll"));
+                tar = LinuxRelease.Tar(folder, Path.Combine(dir, name));
+                expected = "TsukihimeLauncher.dll carries an icon that is not the port's crescent";
+                break;
+            case "launcher version":
+                File.Copy(typeof(Assert).Assembly.Location, Path.Combine(folder, "TsukihimeLauncher.dll"), overwrite: true);
+                tar = LinuxRelease.Tar(folder, Path.Combine(dir, name));
+                expected = "TsukihimeLauncher.dll says version";
+                break;
+            case "start files":
+                File.Delete(Path.Combine(folder, "TsukihimeLauncher.runtimeconfig.json"));
+                tar = LinuxRelease.Tar(folder, Path.Combine(dir, name));
+                expected = "TsukihimeLauncher.runtimeconfig.json is missing: the launcher cannot start without it";
+                break;
+            case "developer":
+                File.WriteAllBytes(Path.Combine(folder, "Tsuki.Cli.dll"), [0x4D, 0x5A]);
+                tar = LinuxRelease.Tar(folder, Path.Combine(dir, name));
+                expected = "Tsuki.Cli.dll is a developer program";
+                break;
+            case "folder mode":
+                tar = LinuxRelease.Tar(folder, Path.Combine(dir, name), extra: (w, root) => w.WriteEntry(new PaxTarEntry(TarEntryType.Directory, root + "/private/") { Mode = UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute }));
+                expected = "private/ has the mode 700, not 755";
+                break;
+            case "file mode":
+                tar = LinuxRelease.Tar(folder, Path.Combine(dir, name), (rel, m) => rel == "README.md" ? m | UnixFileMode.GroupWrite : m);
+                expected = "README.md has the mode 664, not 644";
+                break;
+            case "flat":
+                tar = LinuxRelease.Tar(folder, Path.Combine(dir, name), extra: (w, _) => w.WriteEntry(new PaxTarEntry(TarEntryType.RegularFile, "README.md") { Mode = UnixFileMode.UserRead | UnixFileMode.UserWrite, DataStream = new MemoryStream([1]) }));
+                expected = "the entry README.md is not inside the one folder";
                 break;
             case "version":
                 tar = LinuxRelease.Tar(folder, Path.Combine(dir, "Tsukihime-v9.9.9-linux-x64.tar.gz"));
@@ -287,6 +382,7 @@ public sealed class ReleaseSumsTests : IDisposable
     [Fact]
     public void AZipWhoseFilesSitInOneFolderIsAcceptedAsTheLauncherAcceptsIt()
     {
+        SkipWithoutTheWindowsApphost();
         string folder = Path.Combine(_root, "wrapped");
         string inner = Path.Combine(folder, $"Tsukihime-v{_version}-win-x64");
         Directory.CreateDirectory(inner);

@@ -139,8 +139,10 @@ def publish_folder(root: Path) -> Path:
     (folder / "licenses").mkdir(parents=True)
     (folder / "Tsukihime").write_bytes(b"\x7fELF" + b"\0" * 60)
     (folder / "Tsukihime.dll").write_bytes(b"MZ")
+    (folder / "TsukihimeLauncher").write_bytes(b"\x7fELF" + b"\0" * 60)
+    (folder / "TsukihimeLauncher.dll").write_bytes(b"MZ")
     (folder / "createdump").write_bytes(b"\x7fELF")
-    for lib in ("libSDL3.so", "libcoreclr.so", *LIBS):
+    for lib in ("libcoreclr.so", "libSkiaSharp.so", "libHarfBuzzSharp.so", "libSDL3.so", *LIBS):
         (folder / lib).write_bytes(b"\x7fELF")
     (folder / "licenses" / "FFmpeg-LGPL.txt").write_text("lgpl")
     (folder / "LINUX.md").write_text("# Linux")
@@ -159,7 +161,7 @@ def test_the_archive_has_one_folder_and_unix_modes_and_is_reproducible(tmp_path,
         members = {m.name: m for m in tar.getmembers()}
     assert all(n == "Tsukihime-v0.1.6-linux-x64" or n.startswith("Tsukihime-v0.1.6-linux-x64/") for n in members)
     root = "Tsukihime-v0.1.6-linux-x64/"
-    for name in ("Tsukihime", "createdump", "libSDL3.so", "libcoreclr.so", *LIBS):
+    for name in ("Tsukihime", "TsukihimeLauncher", "createdump", "libSDL3.so", "libcoreclr.so", *LIBS):
         assert members[root + name].mode == 0o755, name
     for name in ("Tsukihime.dll", "LINUX.md", "licenses/FFmpeg-LGPL.txt"):
         assert members[root + name].mode == 0o644, name
@@ -174,5 +176,17 @@ def test_a_folder_that_is_not_a_linux_publish_is_refused(tmp_path):
     with pytest.raises(ValueError, match="X.Y.Z"):
         tool.build(folder, "v0.1.6", tmp_path / "out")
     (folder / "Tsukihime").unlink()
-    with pytest.raises(ValueError, match="not a Linux publish folder"):
+    with pytest.raises(ValueError, match="not a Linux launcher publish"):
         tool.build(folder, "0.1.6", tmp_path / "out")
+    folder = publish_folder(tmp_path / "missing-launcher")
+    (folder / "TsukihimeLauncher").unlink()
+    with pytest.raises(ValueError, match="TsukihimeLauncher"):
+        tool.build(folder, "0.1.6", tmp_path / "out")
+
+
+@pytest.mark.parametrize("library", ["libSkiaSharp.so", "libHarfBuzzSharp.so"])
+def test_a_publish_without_a_launcher_native_library_is_refused(tmp_path, library):
+    folder = publish_folder(tmp_path)
+    (folder / library).unlink()
+    with pytest.raises(ValueError, match=library):
+        load("package_linux").build(folder, "0.1.6", tmp_path / "out")

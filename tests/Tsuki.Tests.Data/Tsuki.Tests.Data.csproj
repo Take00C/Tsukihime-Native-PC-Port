@@ -31,6 +31,6 @@
   </ItemGroup>
   <ItemGroup>
     <!-- Package K17: the launcher's logic (src/Tsuki.Launcher/Core, no WPF types) starts the game in LauncherLaunchTests; see the Synthetic project for why it is compiled in. -->
-    <Compile Include="..\..\src\Tsuki.Launcher\Core\*.cs" Link="Launcher\Core\%(Filename)%(Extension)" />
+    <Compile Include="..\..\src\Tsuki.Launcher\Core\*.cs" Exclude="..\..\src\Tsuki.Launcher\Core\ReleaseCheck.Shared.cs" Link="Launcher\Core\%(Filename)%(Extension)" />
   </ItemGroup>
 </Project>

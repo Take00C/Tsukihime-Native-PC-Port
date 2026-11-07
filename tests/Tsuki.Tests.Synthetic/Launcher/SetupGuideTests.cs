@@ -83,34 +83,83 @@ public sealed partial class SetupGuideTests
     public void PublishedDocumentationIncludesItsLocalLinksAndImages()
     {
         XDocument distribution = XDocument.Load(Path.Combine(Repo.Src, "Tsuki.Distribution.targets"));
-        var files = new Dictionary<string, string>(StringComparer.Ordinal);
-        foreach (XElement item in distribution.Descendants("None"))
+        foreach (string rid in new[] { "win-x64", "linux-x64", "osx-arm64" })
         {
-            foreach (string source in ((string)item.Attribute("Include")!).Split(';'))
+            var files = new Dictionary<string, string>(StringComparer.Ordinal);
+            bool mac = rid.StartsWith("osx-", StringComparison.Ordinal);
+            foreach (XElement item in distribution.Descendants("None").Where(item => Included(item, rid) && Included(item.Parent, rid)))
             {
-                string path = source.Replace("$(TsukiRepoRoot)", Repo.Root + Path.DirectorySeparatorChar, StringComparison.Ordinal);
-                string destination = ((string)item.Attribute("Link")!).Replace("%(Filename)%(Extension)", Path.GetFileName(path), StringComparison.Ordinal);
-                Assert.True(File.Exists(path), path);
-                files.Add(destination, path);
-            }
-        }
-
-        foreach ((string destination, string source) in files.Where(f => f.Key.EndsWith(".md", StringComparison.Ordinal)))
-        {
-            foreach (Match match in LocalLink().Matches(File.ReadAllText(source)))
-            {
-                string link = (match.Groups[1].Success ? match.Groups[1].Value : match.Groups[2].Value).Split('#')[0];
-                if (link.Length == 0 || Uri.TryCreate(link, UriKind.Absolute, out _))
+                foreach (string source in ((string)item.Attribute("Include")!).Split(';'))
                 {
-                    continue;
-                }
+                    string path = source.Replace("$(TsukiRepoRoot)", Repo.Root + Path.DirectorySeparatorChar, StringComparison.Ordinal);
+                    string destination = ((string)item.Attribute("Link")!).Replace("%(Filename)%(Extension)", Path.GetFileName(path), StringComparison.Ordinal);
+                    Assert.True(File.Exists(path), path);
+                    if (mac && (destination.StartsWith("docs/", StringComparison.Ordinal) || destination.StartsWith("assets/", StringComparison.Ordinal)
+                        || destination.StartsWith("licenses/", StringComparison.Ordinal) || destination is "README.md" or "CONTRIBUTING.md" or "LICENSE" or "MACOS.md"))
+                    {
+                        destination = "Contents/Resources/" + destination;
+                    }
 
-                string root = Path.Combine(Path.GetTempPath(), "tsuki-documentation-links");
-                string target = Path.GetFullPath(Path.Combine(root, Path.GetDirectoryName(destination) ?? string.Empty, link));
-                string relative = Path.GetRelativePath(root, target).Replace('\\', '/');
-                Assert.Contains(relative, files.Keys);
+                    files.Add(destination, path);
+                }
+            }
+
+            foreach ((string destination, string source) in files.Where(f => f.Key.EndsWith(".md", StringComparison.Ordinal)))
+            {
+                foreach (Match match in LocalLink().Matches(File.ReadAllText(source)))
+                {
+                    string link = (match.Groups[1].Success ? match.Groups[1].Value : match.Groups[2].Value).Split('#')[0];
+                    if (link.Length == 0 || Uri.TryCreate(link, UriKind.Absolute, out _))
+                    {
+                        continue;
+                    }
+
+                    string root = Path.Combine(Path.GetTempPath(), "tsuki-documentation-links");
+                    string target = Path.GetFullPath(Path.Combine(root, Path.GetDirectoryName(destination) ?? string.Empty, link));
+                    string relative = Path.GetRelativePath(root, target).Replace('\\', '/');
+                    Assert.True(files.ContainsKey(relative), $"{rid}: {destination} links to missing {relative}");
+                }
             }
         }
+
+        static bool Included(XElement? element, string rid)
+        {
+            string condition = (string?)element?.Attribute("Condition") ?? string.Empty;
+            if (condition.Length == 0)
+            {
+                return true;
+            }
+
+            bool linux = condition.Contains("'linux-'", StringComparison.Ordinal);
+            bool mac = condition.Contains("'osx-'", StringComparison.Ordinal);
+            if (linux && mac)
+            {
+                return rid.StartsWith("linux-", StringComparison.Ordinal) || rid.StartsWith("osx-", StringComparison.Ordinal);
+            }
+
+            if (linux)
+            {
+                return rid.StartsWith("linux-", StringComparison.Ordinal);
+            }
+
+            if (mac)
+            {
+                return rid.StartsWith("osx-", StringComparison.Ordinal);
+            }
+
+            throw new InvalidDataException("the documentation link test does not understand the condition: " + condition);
+        }
+    }
+
+    [Fact]
+    public void MacResourceMappingMatchesThePackagingScript()
+    {
+        string script = File.ReadAllText(Path.Combine(Repo.Root, "tools", "setup", "package_macos.py"));
+        Assert.Contains("RESOURCE_FILES = {\"README.md\", \"CONTRIBUTING.md\", \"LICENSE\", \"MACOS.md\"}", script, StringComparison.Ordinal);
+        Assert.Contains("RESOURCE_DIRS = {\"docs\", \"assets\", \"licenses\"}", script, StringComparison.Ordinal);
+        Assert.Contains("for kind, size in ((b\"icp4\", 16), (b\"icp5\", 32), (b\"ic08\", 256))", script, StringComparison.Ordinal);
+        Assert.Contains("body = b\"\".join(entries)", script, StringComparison.Ordinal);
+        Assert.Contains("return b\"icns\" + struct.pack(\">I\", len(body) + 8) + body", script, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -201,6 +250,31 @@ public sealed partial class SetupGuideTests
     }
 
     [Fact]
+    public void AppendixAListsEverySettingsKeyTheProgramsRead()
+    {
+        // the keys AppSettings.Parse reads (shared by the player and both launchers), taken from its source so a new key needs its row in both guide copies
+        string source = File.ReadAllText(Path.Combine(Repo.Src, "Tsuki.App", "Services", "AppSettings.cs"));
+        var keys = SettingsKey().Matches(source).Select(m => m.Groups[1].Value).Distinct(StringComparer.Ordinal).ToList();
+        Assert.Contains("display_mode", keys);
+        Assert.True(keys.Count >= 15, $"only {keys.Count} keys found in AppSettings.Parse");
+        string markdown = Section(Markdown, "## Appendix A", "## Appendix B");
+        var textLines = Section(Text, "Appendix A:", "Appendix B:").Split('\n').Select(l => l.TrimEnd('\r')).ToHashSet(StringComparer.Ordinal);
+        foreach (string key in keys)
+        {
+            Assert.True(markdown.Contains($"| `{key}` |", StringComparison.Ordinal), $"SETUP_GUIDE.md appendix A has no row for {key}");
+            Assert.True(textLines.Contains(key), $"SETUP_GUIDE.txt appendix A has no entry for {key}");
+        }
+
+        static string Section(string text, string start, string end)
+        {
+            int from = text.IndexOf(start, StringComparison.Ordinal);
+            int to = text.IndexOf(end, from + 1, StringComparison.Ordinal);
+            Assert.True(from >= 0 && to > from, $"no section from {start} to {end}");
+            return text[from..to];
+        }
+    }
+
+    [Fact]
     public void TheGuideCarriesNoPersonalPathAndNoGameDownloadLink()
     {
         // the names of the account running the test (the Windows user name and the profile folder's name): the guide must not carry whoever wrote it
@@ -227,6 +301,9 @@ public sealed partial class SetupGuideTests
 
     [GeneratedRegex(@"https?://[^\s)>\]]+")]
     private static partial Regex Link();
+
+    [GeneratedRegex(@"case ""([a-z_]+)"" when")]
+    private static partial Regex SettingsKey();
 
     [GeneratedRegex(@"\[[^\]]*\]\(([^)]+)\)|(?:src|href)=""([^""]+)""")]
     private static partial Regex LocalLink();

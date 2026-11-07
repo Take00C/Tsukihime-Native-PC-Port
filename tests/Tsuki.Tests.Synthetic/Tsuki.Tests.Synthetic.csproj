@@ -25,6 +25,6 @@
       Package K17: the launcher's logic (src/Tsuki.Launcher/Core, no WPF types) is compiled into the tests. A net10.0 test project cannot reference the net10.0-windows launcher project, and
       the one settings reader / writer both programs use comes from the Tsuki.App reference above.
     -->
-    <Compile Include="..\..\src\Tsuki.Launcher\Core\*.cs" Link="Launcher\Core\%(Filename)%(Extension)" />
+    <Compile Include="..\..\src\Tsuki.Launcher\Core\*.cs" Exclude="..\..\src\Tsuki.Launcher\Core\ReleaseCheck.Shared.cs" Link="Launcher\Core\%(Filename)%(Extension)" />
   </ItemGroup>
 </Project>

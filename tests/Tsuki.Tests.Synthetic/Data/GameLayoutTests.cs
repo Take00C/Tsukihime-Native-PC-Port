@@ -161,8 +161,7 @@ public sealed class GameLayoutTests : IDisposable
             IGameFiles files = layout.OpenFiles();
             Assert.Equal("patched allscr", Encoding.ASCII.GetString(files.ReadAll("image/allscr.mrg")));
             Assert.Equal("base allpac0", Encoding.ASCII.GetString(files.ReadAll("image/allpac0.mrg")));
-            Assert.Equal(Path.Combine(game, imageName, archiveName), files.ResolveFile("image/allpac0.hed"),
-                OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
+            Assert.Equal(Path.Combine(game, imageName, archiveName), files.ResolveFile("image/allpac0.hed"), VolumeCase.PathComparer(_root));
             Assert.Equal("01.01", BuildIdentity.Identify(files).AppVersion);
         }
     }

@@ -39,7 +39,8 @@ public sealed class SettingsTests : IDisposable
         TextWebSocketPort: 6700,
         ScreenshotNotice: false,
         UpdateCheck: false,
-        TextWebSocketOrigin: "https://reader.example");
+        TextWebSocketOrigin: "https://reader.example",
+        RememberedFullscreen: true);
 
     [Fact]
     public void EveryKeyRoundTripsThroughTheFile()
@@ -56,7 +57,7 @@ public sealed class SettingsTests : IDisposable
     {
         string text = AppSettings.Format(new AppSettingsData());
         Assert.Contains("prompts=auto", text, StringComparison.Ordinal);
-        foreach (string key in new[] { "fullscreen=", "window=", "monitor=", "vsync=", "language=", "mute_in_background=", "copy_text=", "text_hooker=", "text_websocket=", "text_websocket_port=", "text_websocket_origin=", "screenshot_notice=", "update_check=" })
+        foreach (string key in new[] { "fullscreen=", "display_mode=", "window=", "monitor=", "vsync=", "language=", "mute_in_background=", "copy_text=", "text_hooker=", "text_websocket=", "text_websocket_port=", "text_websocket_origin=", "screenshot_notice=", "update_check=" })
         {
             Assert.DoesNotContain(key, text, StringComparison.Ordinal);
         }
@@ -351,6 +352,197 @@ public sealed class SettingsTests : IDisposable
         Assert.False(Args("--windowed").Fullscreen);
     }
 
+    // -- the window mode of a start: one decision (StartupSettings.DecideWindowMode), which GameApp calls once ---------------------------------------------------
+
+    // v0.1.6's start, written out as GameApp.cs of c3e9698 did it: fullscreen right after showing the window for --fullscreen, the log line after ApplyToConfig,
+    // fullscreen once the game is set up when the byte says so
+    private static (bool AtShow, string Log, bool AfterSetUp) V016Start(AppArgs args, ConfigBlock config, StartupSettings startup)
+    {
+        bool atShow = args.Fullscreen;
+        startup.ApplyToConfig(config, false, args.WindowModeChoice);
+        bool byteSaysFullscreen = config.Bytes[StartupSettings.WindowModeOffset] == 1;
+        string log = args.WindowModeChoice is { } choice
+            ? $"window mode: {(choice ? "fullscreen" : "windowed")} (command line, remembered)"
+            : $"window mode: {(byteSaysFullscreen ? "fullscreen" : "windowed")} (remembered)";
+        return (atShow, log, byteSaysFullscreen);
+    }
+
+    [Fact]
+    public void WindowsAndLinuxWithoutTheSteamDeckStartAsV016DidForEveryKindOfStart()
+    {
+        var platforms = new (bool Linux, string? Marker)[] { (false, null), (false, "1"), (false, "0"), (true, ""), (true, "0"), (true, "true") };
+        string[][] options = [[], ["--fullscreen"], ["--windowed"]];
+        bool?[] switches = [null, true, false];
+        int starts = 0;
+        foreach ((bool linux, string? marker) in platforms)
+        {
+            foreach (string[] option in options)
+            {
+                foreach (byte remembered in new byte[] { 0, 1 })
+                {
+                    foreach (bool? displayMode in switches)
+                    {
+                        foreach (bool? pending in switches)
+                        {
+                            AppSettings.Save(SettingsPath, new AppSettingsData(Fullscreen: pending, RememberedFullscreen: displayMode));
+                            AppArgs args = Args([.. option, "--save-dir", _dir]);
+                            ConfigBlock config = ConfigBlock.CreateBootDefaults();
+                            config.Bytes[StartupSettings.WindowModeOffset] = remembered;
+                            StartupSettings startup = StartupSettings.Load(args);
+
+                            StartWindowMode mode = startup.DecideWindowMode(args, config, marker, linux);
+                            (bool atShow, string log, bool afterSetUp) = V016Start(args, config, startup);
+                            string start = $"linux {linux}, SteamDeck {marker}, [{string.Join(' ', option)}], byte {remembered}, display_mode {displayMode}, fullscreen= {pending}";
+                            Assert.False(mode.SteamDeck, start);
+                            Assert.True(atShow == mode.FullscreenAtShow, start);
+                            Assert.True(log == mode.LogLine, $"{start}: {mode.LogLine}");
+                            Assert.True(afterSetUp == mode.FullscreenAfterSetUp, start);
+                            starts++;
+                        }
+                    }
+                }
+            }
+        }
+
+        Assert.Equal(6 * 3 * 2 * 3 * 3, starts);
+    }
+
+    [Theory]
+    [InlineData(false, null, 0, "window mode: windowed (remembered)")]
+    [InlineData(false, null, 1, "window mode: fullscreen (remembered)")]
+    [InlineData(false, "--fullscreen", 0, "window mode: fullscreen (command line, remembered)")]
+    [InlineData(false, "--windowed", 1, "window mode: windowed (command line, remembered)")]
+    [InlineData(true, null, 0, "window mode: windowed (remembered)")]
+    [InlineData(true, null, 1, "window mode: fullscreen (remembered)")]
+    [InlineData(true, "--fullscreen", 0, "window mode: fullscreen (command line, remembered)")]
+    [InlineData(true, "--windowed", 1, "window mode: windowed (command line, remembered)")]
+    public void TheStartLogLineOfWindowsAndLinuxIsV016s(bool linux, string? option, byte remembered, string expected)
+    {
+        ConfigBlock config = ConfigBlock.CreateBootDefaults();
+        config.Bytes[StartupSettings.WindowModeOffset] = remembered;
+        AppArgs args = option is null ? Args() : Args(option);
+        Assert.Equal(expected, StartupSettings.From(new AppSettingsData()).DecideWindowMode(args, config, "0", linux).LogLine);
+    }
+
+    [Theory]
+    [InlineData(null, null, true, "SteamDeckDefault", "window mode: fullscreen (Steam Deck default)")]
+    [InlineData(null, false, false, "Remembered", "window mode: windowed (remembered)")]
+    [InlineData(null, true, true, "Remembered", "window mode: fullscreen (remembered)")]
+    [InlineData("--windowed", null, false, "CommandLine", "window mode: windowed (command line)")]
+    [InlineData("--fullscreen", false, true, "CommandLine", "window mode: fullscreen (command line)")]
+    [InlineData("--windowed", true, false, "CommandLine", "window mode: windowed (command line)")]
+    public void OnTheSteamDeckTheCommandLineThenTheDisplayModeChoiceThenFullscreen(string? option, bool? displayMode, bool fullscreen, string source, string log)
+    {
+        AppArgs args = option is null ? Args() : Args(option);
+        foreach (byte remembered in new byte[] { 0, 1 })
+        {
+            ConfigBlock config = ConfigBlock.CreateBootDefaults();
+            config.Bytes[StartupSettings.WindowModeOffset] = remembered;      // the Deck does not read the byte
+            StartWindowMode mode = StartupSettings.From(new AppSettingsData(RememberedFullscreen: displayMode)).DecideWindowMode(args, config, "1", linux: true);
+            Assert.Equal(new StartWindowMode(fullscreen, Enum.Parse<StartWindowSource>(source), SteamDeck: true), mode);
+            Assert.Equal(log, mode.LogLine);
+            Assert.Equal(fullscreen, mode.FullscreenAtShow);                    // asked for when the window is shown ...
+            Assert.False(mode.FullscreenAfterSetUp);                            // ... and the byte does not switch it later
+        }
+    }
+
+    [Theory]
+    [InlineData("--windowed", true, false)]
+    [InlineData("--fullscreen", false, true)]
+    public void OnTheSteamDeckTheCommandLineBeatsTheRememberedChoice(string option, bool remembered, bool expected)
+    {
+        StartupSettings startup = StartupSettings.From(new AppSettingsData(RememberedFullscreen: remembered));
+        Assert.Equal(expected, startup.DecideWindowMode(Args(option), ConfigBlock.CreateBootDefaults(), "1", linux: true).Fullscreen);
+    }
+
+    [Fact]
+    public void TheSteamDeckDefaultIsLinuxOnly()
+    {
+        ConfigBlock config = ConfigBlock.CreateBootDefaults();
+        StartupSettings startup = StartupSettings.From(new AppSettingsData());
+        Assert.Equal(new StartWindowMode(false, StartWindowSource.Remembered, SteamDeck: false), startup.DecideWindowMode(Args(), config, "1", linux: false));
+        Assert.Equal(new StartWindowMode(false, StartWindowSource.Remembered, SteamDeck: false), startup.DecideWindowMode(Args(), config, "0", linux: true));
+        Assert.Equal(new StartWindowMode(true, StartWindowSource.SteamDeckDefault, SteamDeck: true), startup.DecideWindowMode(Args(), config, "1", linux: true));
+    }
+
+    private sealed class DeckWindow : IDisplayWindow
+    {
+        public bool Fullscreen { get; set; }
+
+        public (int Width, int Height) Size => (1280, 800);
+
+        public bool Maximized => false;
+
+        public (int Width, int Height) WorkArea => (1280, 800);
+
+        public bool SetFullscreen(bool fullscreen)
+        {
+            Fullscreen = fullscreen;
+            return true;
+        }
+
+        public (int Width, int Height) Resize(int width, int height) => (width, height);
+    }
+
+    // one Steam Deck start as GameApp makes it: the decision from the save folder and save.dat, the command line applied to the config block, save.dat written
+    private StartWindowMode DeckStart(Action<DisplaySettings, SaveStore>? play = null)
+    {
+        AppArgs args = Args("--save-dir", _dir);
+        string savePath = Path.Combine(_dir, "save.dat");
+        SaveStore? saved = SaveFile.ReadWithFallback(savePath, out _);
+        SaveStore store = saved ?? new SaveStore();
+        if (saved is null)
+        {
+            store.SystemData.Config.CopyFrom(ConfigBlock.CreateBootDefaults());
+        }
+
+        StartupSettings startup = StartupSettings.Load(args);
+        StartWindowMode mode = startup.DecideWindowMode(args, store.SystemData.Config, "1", linux: true);
+        Assert.False(startup.ApplyToConfig(store.SystemData.Config, false, args.WindowModeChoice));
+        var window = new DeckWindow { Fullscreen = mode.FullscreenAtShow };
+        play?.Invoke(new DisplaySettings(window, store.SystemData.Config, () => { }, startup.Path, window.Size, linux: true), store);
+        SaveFile.WriteAtomic(savePath, store);
+        return mode;
+    }
+
+    [Fact]
+    public void SteamDeckTwoStartsWithoutAChoiceAreBothFullscreenAndAWindowedChoiceIsKeptByTheNext()
+    {
+        for (int start = 0; start < 2; start++)
+        {
+            StartWindowMode mode = DeckStart();
+            Assert.Equal(new StartWindowMode(true, StartWindowSource.SteamDeckDefault, SteamDeck: true), mode);
+            Assert.Equal("window mode: fullscreen (Steam Deck default)", mode.LogLine);
+            Assert.True(mode.FullscreenAtShow);
+            Assert.False(File.Exists(SettingsPath));                         // the default writes nothing
+        }
+
+        Assert.Equal(0, SaveTools.Summarize(Path.Combine(_dir, "save.dat")).WindowMode);
+
+        // Config > Display Mode > Windowed: the byte is already 0, the choice is display_mode=windowed
+        DeckStart((display, _) => display.Fullscreen = false);
+        Assert.Equal(false, AppSettings.Load(SettingsPath).RememberedFullscreen);
+
+        StartWindowMode next = DeckStart();
+        Assert.Equal(new StartWindowMode(false, StartWindowSource.Remembered, SteamDeck: true), next);
+        Assert.Equal("window mode: windowed (remembered)", next.LogLine);
+        Assert.False(next.FullscreenAtShow);
+        Assert.False(next.FullscreenAfterSetUp);
+
+        // back to Fullscreen on the row, then F11 to a window while the byte is left at 1 (as a desktop start leaves it): the next start follows the choice
+        DeckStart((display, _) => display.Fullscreen = true);
+        Assert.True(DeckStart().FullscreenAtShow);
+        DeckStart((display, store) =>
+        {
+            display.NoteFullscreen(false);
+            store.SystemData.Config.Bytes[StartupSettings.WindowModeOffset] = 1;
+        });
+        StartWindowMode windowed = DeckStart();
+        Assert.Equal(1, SaveTools.Summarize(Path.Combine(_dir, "save.dat")).WindowMode);
+        Assert.Equal(new StartWindowMode(false, StartWindowSource.Remembered, SteamDeck: true), windowed);
+        Assert.False(windowed.FullscreenAfterSetUp);
+    }
+
     [Fact]
     public void WindowedBeatsARememberedFullscreenAndFullscreenBeatsARememberedWindow()
     {
@@ -359,11 +551,11 @@ public sealed class SettingsTests : IDisposable
         StartupSettings startup = StartupSettings.From(new AppSettingsData());
         Assert.True(startup.ApplyToConfig(config, false, Args("--windowed").WindowModeChoice));
         Assert.Equal(0, config.Bytes[StartupSettings.WindowModeOffset]);          // this run and the next one are windowed
-        Assert.False(Args("--windowed").Fullscreen);                              // and the app asks for no fullscreen after placing the window
+        Assert.False(startup.DecideWindowMode(Args("--windowed"), config, "0", linux: false).FullscreenAtShow);   // and the app asks for no fullscreen after placing the window
 
         Assert.True(startup.ApplyToConfig(config, false, Args("--fullscreen").WindowModeChoice));
         Assert.Equal(1, config.Bytes[StartupSettings.WindowModeOffset]);
-        Assert.True(Args("--fullscreen").Fullscreen);
+        Assert.True(startup.DecideWindowMode(Args("--fullscreen"), config, "0", linux: false).FullscreenAtShow);
     }
 
     [Fact]

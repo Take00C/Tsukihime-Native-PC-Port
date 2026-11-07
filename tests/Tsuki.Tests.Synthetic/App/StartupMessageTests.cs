@@ -1,6 +1,7 @@
 using Tsuki.App;
 using Tsuki.App.Play;
 using Tsuki.Data;
+using Tsuki.Data.IO;
 using Tsuki.Engine.Contracts;
 using Tsuki.Media.Ffmpeg;
 using Tsuki.Platform;
@@ -23,21 +24,27 @@ public sealed class StartupMessageTests
         Directory.CreateDirectory(dir);
         try
         {
-            var e = new FfmpegMissingException(Path.GetFullPath(dir), FfmpegLibrary.RequiredDlls);
-            Assert.Equal(FfmpegLibrary.RequiredDlls, e.MissingFiles);
+            string[] required = OperatingSystem.IsWindows()
+                ? ["avutil-61.dll", "swresample-7.dll", "avcodec-63.dll", "avformat-63.dll"]
+                : OperatingSystem.IsMacOS()
+                    ? ["libavutil.61.dylib", "libswresample.7.dylib", "libavcodec.63.dylib", "libavformat.63.dylib"]
+                    : ["libavutil.so.61", "libswresample.so.7", "libavcodec.so.63", "libavformat.so.63"];
+            Assert.Equal(required, FfmpegLibrary.RequiredDlls);
+            var e = new FfmpegMissingException(Path.GetFullPath(dir), required);
+            Assert.Equal(required, e.MissingFiles);
             Assert.Equal(Path.GetFullPath(dir), e.Folder);
-            string names = OperatingSystem.IsLinux()
-                ? "libavutil.so.61, libswresample.so.7, libavcodec.so.63, libavformat.so.63"
-                : "avutil-61.dll, swresample-7.dll, avcodec-63.dll, avformat-63.dll";
-            Assert.Equal(OperatingSystem.IsLinux() ? "libavutil.so.61" : "avutil-61.dll", e.FileName);
-            Assert.Equal($"FFmpeg {(OperatingSystem.IsLinux() ? "shared libraries" : "DLLs")} missing from {Path.GetFullPath(dir)}: {names}", e.Message);
+            string names = string.Join(", ", required);
+            Assert.Equal(required[0], e.FileName);
+            Assert.Equal($"FFmpeg {(!OperatingSystem.IsWindows() ? "shared libraries" : "DLLs")} missing from {Path.GetFullPath(dir)}: {names}", e.Message);
             Assert.DoesNotContain("tools/setup", e.Message);
             Assert.DoesNotContain("ARCHITECTURE", e.Message);
 
             Assert.Equal(
                 OperatingSystem.IsLinux()
-                    ? "FFmpeg 9 shared libraries are missing (libavutil.so.61, libswresample.so.7, libavcodec.so.63, libavformat.so.63). Install the FFmpeg 9 shared libraries or place them next to Tsukihime."
-                    : "The FFmpeg libraries are missing next to Tsukihime.exe (avutil-61.dll, swresample-7.dll, avcodec-63.dll, avformat-63.dll). Reinstall the port or copy them back.",
+                    ? $"FFmpeg 9 shared libraries are missing ({names}). Install the FFmpeg 9 shared libraries or place them next to Tsukihime."
+                    : OperatingSystem.IsMacOS()
+                        ? $"The FFmpeg libraries are missing inside Tsukihime.app ({names}). Reinstall the port or copy them back."
+                        : "The FFmpeg libraries are missing next to Tsukihime.exe (avutil-61.dll, swresample-7.dll, avcodec-63.dll, avformat-63.dll). Reinstall the port or copy them back.",
                 GameApp.PlayerMessage(e));
         }
         finally
@@ -97,14 +104,16 @@ public sealed class StartupMessageTests
     {
         // K46: on a Linux desktop without xdg-desktop-portal and zenity, SDL's folder dialog fails at once; the first run used to quit without a word
         const string sdl = "File dialog driver unsupported (supported values for SDL_HINT_FILE_DIALOG_DRIVER are 'zenity' and 'portal')";
-        string command = OperatingSystem.IsWindows() ? @"Tsukihime.exe --game ""D:\Games\CUSA47999""" : "./Tsukihime --game /path/to/CUSA47999";
+        string command = OperatingSystem.IsWindows()
+            ? @"Tsukihime.exe --game ""D:\Games\CUSA47999"""
+            : OperatingSystem.IsMacOS() ? @"Tsukihime.app/Contents/MacOS/Tsukihime --game ""/path/to/CUSA47999""" : "./Tsukihime --game /path/to/CUSA47999";
         Assert.Equal(
             $"The folder window could not be opened ({sdl}).\n\nStart the game with the path of your CUSA47999 folder instead, for example:\n{command}\n\n"
             + "or set the environment variable TSUKI_GAME_DIR to that folder. On Linux the folder window needs xdg-desktop-portal or zenity.",
-            GameApp.FolderDialogFailedMessage(sdl));
+            GameApp.FolderDialogFailedMessage(sdl, steamDeck: false));
         foreach (Language lang in PortText.Languages)
         {
-            string text = GameApp.FolderDialogFailedMessage(sdl, lang);
+            string text = GameApp.FolderDialogFailedMessage(sdl, lang, steamDeck: false);
             Assert.Contains(sdl, text, StringComparison.Ordinal);
             Assert.Contains(command, text, StringComparison.Ordinal);
             Assert.Contains("TSUKI_GAME_DIR", text, StringComparison.Ordinal);
@@ -114,5 +123,97 @@ public sealed class StartupMessageTests
         Assert.Contains("(?)", GameApp.FolderDialogFailedMessage(null), StringComparison.Ordinal);
         Assert.True(AppArgs.TryParse(["--game", "/g/CUSA47999"], out AppArgs? args, out _));
         Assert.Equal("/g/CUSA47999", args!.GameDir);
+    }
+
+    [Fact]
+    public void OnASteamDeckTheFolderBoxNamesTheLaunchOptionsInEachLanguage()
+    {
+        if (!OperatingSystem.IsLinux())
+        {
+            Assert.Skip("the Steam Deck advice is Linux's");
+        }
+
+        string[] where = ["起動オプション", "Launch Options", "启动选项", "啟動選項"];
+        for (int i = 0; i < PortText.Languages.Count; i++)
+        {
+            string text = GameApp.FolderDialogFailedMessage("no portal", PortText.Languages[i], steamDeck: true);
+            Assert.Contains(where[i], text, StringComparison.Ordinal);
+            Assert.Contains("\n--game \"/home/deck/Games/CUSA47999\"", text, StringComparison.Ordinal);
+            Assert.DoesNotContain("./Tsukihime", text, StringComparison.Ordinal);
+        }
+    }
+
+    [Fact]
+    public void AGameFolderOnTheCommandLineThatHoldsNoGameIsNamedAsTypedAndAsRead()
+    {
+        var missing = new GameLayout("/home/deck/Games/CUSA4799", GameLayoutKind.Missing);
+        Assert.Equal("--game \"~/Games/CUSA4799\"\n\nThe game folder /home/deck/Games/CUSA4799 no longer exists.", GameApp.CommandLineFolderMessage("~/Games/CUSA4799", missing));
+        var empty = new GameLayout("/run/media/deck/SD", GameLayoutKind.NoGame);
+        Assert.Equal(
+            "--game \"/run/media/deck/SD\"\n\n/run/media/deck/SD holds no game: no folder with eboot.bin and image\\ was found in it, not even one or two levels down.",
+            GameApp.CommandLineFolderMessage("/run/media/deck/SD", empty));
+        var pkg = new GameLayout("/home/deck/game.pkg", GameLayoutKind.PkgFile);
+        Assert.Equal("--game \"/home/deck/game.pkg\"\n\n" + GameApp.GameFolderMessage("/home/deck/game.pkg", new GameLayoutException(pkg)), GameApp.CommandLineFolderMessage("/home/deck/game.pkg", pkg));
+        Assert.DoesNotContain("launcher", GameApp.CommandLineFolderMessage("x", missing, Language.En), StringComparison.Ordinal);
+        Assert.StartsWith("--game \"x\"\n\nゲームフォルダ /home/deck/Games/CUSA4799", GameApp.CommandLineFolderMessage("x", missing, Language.Ja), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void OffWindowsACommandLineTheGameCannotReadIsWrittenToTheProfilesCrashLog()
+    {
+        string profile = Path.Combine(Path.GetTempPath(), "tsuki-badargs-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            // Steam's Launch Options with an unquoted path that has a space: the shell splits it
+            string[] args = ["--save-dir", profile, "--hidden", "--game", "/run/media/deck/SD", "Card/CUSA47999"];
+            Assert.False(AppArgs.TryParse(args, out _, out string? error));
+            Assert.Null(Program.RefuseCommandLine(args, error!, hidden: true, windows: true));             // Windows: the console only, as v0.1.6
+            Assert.False(Directory.Exists(profile));
+
+            string? crash = Program.RefuseCommandLine(args, error!, hidden: true, windows: false);
+            Assert.Equal(Path.Combine(profile, "crash.log"), crash);
+            string text = File.ReadAllText(crash!);
+            Assert.Contains("the command line could not be read: unknown or incomplete argument: Card/CUSA47999", text, StringComparison.Ordinal);
+            Assert.Contains("\"/run/media/deck/SD\" \"Card/CUSA47999\"", text, StringComparison.Ordinal);
+        }
+        finally
+        {
+            if (Directory.Exists(profile))
+            {
+                Directory.Delete(profile, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public void OffWindowsACommandLineTheGameCannotReadFindsATildeProfileInTheHomeFolder()
+    {
+        string home = Path.Combine(Path.GetTempPath(), "tsuki-badargs-home-" + Guid.NewGuid().ToString("N"));
+        string literal = Path.GetFullPath("~");
+        bool literalExisted = Directory.Exists(literal);
+        Directory.CreateDirectory(home);
+        try
+        {
+            // Steam's Launch Options pass ~ as typed
+            string[] args = ["--save-dir", "~/profile", "--hidden", "--bogus"];
+            Assert.False(AppArgs.TryParse(args, home, out _, out string? error));
+            Assert.Null(Program.RefuseCommandLine(args, error!, hidden: true, windows: true, home));                 // Windows: the console only, as v0.1.6
+            Assert.Equal(Path.Combine(home, "profile", "crash.log"), Program.RefuseCommandLine(args, error!, hidden: true, windows: false, home));
+
+            // a --save-dir that is no folder: the folder of the --log file, read the same way
+            string notAFolder = Path.Combine(home, "file");
+            File.WriteAllText(notAFolder, "x");
+            string[] logArgs = ["--save-dir", notAFolder, "--log", "~/logs/run.log", "--hidden", "--bogus"];
+            Assert.Equal(Path.Combine(home, "logs", "crash.log"), Program.RefuseCommandLine(logArgs, error!, hidden: true, windows: false, home));
+            Assert.True(literalExisted || !Directory.Exists(literal), $"a folder named ~ was made in {Path.GetDirectoryName(literal)}");
+        }
+        finally
+        {
+            Directory.Delete(home, recursive: true);
+            if (!literalExisted && Directory.Exists(literal))
+            {
+                Directory.Delete(literal, recursive: true);
+            }
+        }
     }
 }
