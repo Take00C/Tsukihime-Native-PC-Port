@@ -1,0 +1,126 @@
+<Window xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="Tsuki.Launcher.Avalonia.MainWindow" Width="1200" Height="780" MinWidth="800" MinHeight="460"
+        WindowStartupLocation="CenterScreen" CanResize="True" Title="Tsukihime Launcher"
+        Background="{StaticResource NightBrush}" Foreground="{StaticResource TextBrush}" FontFamily="{StaticResource BodyFont}" FontSize="13">
+  <!-- the Windows launcher's shell (src/Tsuki.Launcher/Shell.xaml): sidebar, the page, the footer, the toast, the update overlay and the question -->
+  <Panel>
+    <Ellipse Width="760" Height="760" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,-420,-300,0" IsHitTestVisible="False">
+      <Ellipse.Fill><RadialGradientBrush><GradientStop Color="#2B5E8BFF"/><GradientStop Color="#105E8BFF" Offset="0.5"/><GradientStop Color="#005E8BFF" Offset="1"/></RadialGradientBrush></Ellipse.Fill>
+    </Ellipse>
+
+    <!-- while the update overlay or the question is up, nothing behind takes keys or clicks (the window sets IsEnabled) -->
+    <Grid x:Name="ContentArea" ColumnDefinitions="250,*">
+      <Border Background="{StaticResource SidebarBrush}" BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,0,1,0">
+        <DockPanel>
+          <!-- hidden in a short window (a Steam Deck at 150 %), where the seven pages need the whole height -->
+          <StackPanel x:Name="SidebarNote" DockPanel.Dock="Bottom" Margin="26,0,20,22">
+            <Rectangle Classes="GoldDivider" Margin="0,0,0,14"/>
+            <TextBlock Text="{Binding LauncherVersion}" Foreground="{StaticResource MutedBrush}" FontSize="12"/>
+            <TextBlock Text="Fan-made. Not affiliated with TYPE&#x2011;MOON." Foreground="#6C7699" FontSize="11" Margin="0,4,0,0" TextWrapping="Wrap"/>
+          </StackPanel>
+          <StackPanel>
+            <Grid Margin="26,34,16,0" Height="50">
+              <Viewbox Width="46" Height="46" HorizontalAlignment="Left" VerticalAlignment="Center">
+                <Canvas Width="44" Height="44">
+                  <Path x:Name="Crescent" Fill="{StaticResource AccentVerticalBrush}" Data="{StaticResource CrescentGeometry}" Canvas.Left="1" Canvas.Top="1">
+                    <Path.Effect><DropShadowEffect Color="#5E8BFF" BlurRadius="14" OffsetX="0" OffsetY="0" Opacity="0.75"/></Path.Effect>
+                  </Path>
+                  <Path Fill="#E9EDF8" Data="{StaticResource SparkleGeometry}" Canvas.Left="34" Canvas.Top="27">
+                    <Path.RenderTransform><ScaleTransform ScaleX="0.55" ScaleY="0.55"/></Path.RenderTransform>
+                  </Path>
+                </Canvas>
+              </Viewbox>
+              <StackPanel Margin="58,0,0,0" VerticalAlignment="Center">
+                <TextBlock Text="TSUKIHIME" FontFamily="{StaticResource SerifFont}" FontSize="19" LetterSpacing="1.7"/>
+                <TextBlock Text="PC PORT" Classes="SmallCaps" FontSize="10.5" LetterSpacing="3.6" Margin="1,2,0,0"/>
+              </StackPanel>
+            </Grid>
+            <ListBox x:Name="Nav" Classes="Nav" ItemsSource="{Binding NavItems}" SelectedItem="{Binding SelectedNav, Mode=TwoWay}" Margin="0,34,0,0"/>
+          </StackPanel>
+        </DockPanel>
+      </Border>
+
+      <Grid Grid.Column="1" RowDefinitions="40,*,Auto">
+        <ContentControl x:Name="PageHost" Grid.Row="1" Margin="32,6,32,0"/>
+
+        <Border Grid.Row="2" Height="88" Background="#990A0F24" BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,1,0,0">
+          <Grid ColumnDefinitions="*,Auto,Auto,Auto" Margin="32,0">
+            <DockPanel VerticalAlignment="Center" Margin="0,0,18,0">
+              <Ellipse DockPanel.Dock="Left" Width="7" Height="7" Fill="{StaticResource MoonPaleBrush}" Margin="0,1,12,0"/>
+              <TextBlock Text="{Binding StatusLine}" Foreground="{StaticResource MutedBrush}" FontSize="12.5" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+            </DockPanel>
+            <Button Grid.Column="1" x:Name="UpdateButton" Content="{Binding UpdateButtonLabel}" Command="{Binding UpdateButtonCommand}" Classes="UpdateButton" ToolTip.Tip="{Binding UpdateButtonToolTip}" Margin="0,0,14,0" VerticalAlignment="Center"/>
+            <Button Grid.Column="2" Content="Log" Command="{Binding OpenLogCommand}" Classes="GhostButton" Height="42" Padding="22,0" Margin="0,0,14,0" VerticalAlignment="Center"/>
+            <Button Grid.Column="3" x:Name="PlayButton" Content="{Binding PlayLabel}" Command="{Binding PlayCommand}" Classes="PlayButton" VerticalAlignment="Center"/>
+          </Grid>
+        </Border>
+
+        <!-- a short message above the footer -->
+        <Border x:Name="ToastHost" Grid.Row="1" HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="32,0,32,18" Padding="18,11" CornerRadius="10" MaxWidth="640"
+                Background="#F2161F45" BorderBrush="#668FA6FF" BorderThickness="1" BoxShadow="0 4 24 0 #73000000" IsVisible="{Binding ToastVisible}">
+          <TextBlock x:Name="ToastText" Text="{Binding Toast}" TextWrapping="Wrap" FontSize="13"/>
+        </Border>
+      </Grid>
+    </Grid>
+
+    <!-- the update: the release's notes, Update now / Later, the progress, what went wrong -->
+    <Grid x:Name="UpdateOverlay" Background="#B3060A1A" IsVisible="{Binding UpdateOverlayVisible}">
+      <Border Width="640" HorizontalAlignment="Center" VerticalAlignment="Center" Classes="Card" Background="#FF121A3A" Padding="28,22" BoxShadow="0 0 40 0 #405E8BFF">
+        <StackPanel>
+          <StackPanel Orientation="Horizontal">
+            <Viewbox Width="13" Height="13" Margin="0,0,8,0" VerticalAlignment="Center">
+              <Path Classes="Icon" Data="{StaticResource DownloadIcon}" Stroke="{StaticResource GoldBrush}" StrokeThickness="2"/>
+            </Viewbox>
+            <TextBlock Text="UPDATE" Classes="SmallCaps" VerticalAlignment="Center"/>
+          </StackPanel>
+          <TextBlock x:Name="UpdateHeading" Text="{Binding UpdateOverlayTitle}" Classes="Heading" FontSize="25" Margin="0,8,0,0"/>
+          <TextBlock x:Name="UpdateVersion" Text="{Binding UpdateVersionLine}" Classes="Muted" Margin="0,4,0,0"/>
+          <Rectangle Classes="GoldDivider" Margin="0,14"/>
+          <TextBlock x:Name="UpdateTitle" Text="{Binding UpdateReleaseTitle}" Classes="RowTitle" FontSize="14.5" TextTrimming="CharacterEllipsis"/>
+          <Border Background="#66090E22" BorderBrush="{StaticResource PanelBorderBrush}" BorderThickness="1" CornerRadius="8" Margin="0,10,0,0" Padding="14,10,4,10">
+            <ScrollViewer MaxHeight="230" HorizontalScrollBarVisibility="Disabled">
+              <TextBlock x:Name="UpdateNotesText" Text="{Binding UpdateNotes}" TextWrapping="Wrap" FontSize="12.5" LineHeight="19" Foreground="{StaticResource SoftTextBrush}" Margin="0,0,10,0"/>
+            </ScrollViewer>
+          </Border>
+          <StackPanel Margin="0,16,0,0" IsVisible="{Binding UpdateWorking}">
+            <ProgressBar Value="{Binding UpdatePercent}" IsIndeterminate="{Binding UpdateIndeterminate}" Minimum="0" Maximum="100"/>
+            <TextBlock x:Name="UpdateProgressLine" Text="{Binding UpdateProgressText}" Classes="Muted" Margin="0,8,0,0"/>
+          </StackPanel>
+          <Border x:Name="UpdateMessageBox" Margin="0,14,0,0" Padding="12,9" CornerRadius="8" Background="#1FE8C877" BorderBrush="#66E8C877" BorderThickness="1" IsVisible="{Binding UpdateMessageVisible}">
+            <Grid ColumnDefinitions="Auto,*">
+              <Viewbox Width="14" Height="14" Margin="0,2,10,0" VerticalAlignment="Top">
+                <Path Classes="Icon" Data="{StaticResource WarningIcon}" Stroke="{StaticResource WarningBrush}" StrokeThickness="1.8"/>
+              </Viewbox>
+              <TextBlock x:Name="UpdateMessageText" Grid.Column="1" Text="{Binding UpdateMessage}" TextWrapping="Wrap" FontSize="12.5" LineHeight="18" Foreground="#F2E3B8"/>
+            </Grid>
+          </Border>
+          <TextBlock Classes="Muted" Margin="0,14,0,0" FontSize="12"
+                     Text="The launcher downloads the release and its SHA256SUMS.txt from GitHub, checks the download against it, replaces its own files and restarts. Your saves, your settings and your game folder are not touched."/>
+          <Grid Margin="0,18,0,0">
+            <Button Content="Open the release page" Command="{Binding OpenReleasePageCommand}" Classes="LinkButton" HorizontalAlignment="Left" VerticalAlignment="Center"/>
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+              <Button x:Name="UpdateLaterButton" Content="{Binding UpdateSecondaryLabel}" Command="{Binding UpdateLaterCommand}" Classes="GhostButton" Height="38" Padding="22,0" Margin="0,0,10,0" IsCancel="True" IsVisible="{Binding UpdateChoiceVisible}"/>
+              <Button x:Name="UpdateCancelButton" Content="Cancel" Command="{Binding CancelUpdateCommand}" Classes="GhostButton" Height="38" Padding="22,0" IsVisible="{Binding UpdateCancelVisible}"/>
+              <Button x:Name="UpdateNowButton" Content="{Binding UpdatePrimaryLabel}" Command="{Binding UpdateNowCommand}" Classes="AccentButton" Height="38" Padding="24,0" IsDefault="True" IsVisible="{Binding UpdateChoiceVisible}"/>
+            </StackPanel>
+          </Grid>
+        </StackPanel>
+      </Border>
+    </Grid>
+
+    <!-- a yes / no question (restore, import) -->
+    <Grid x:Name="QuestionOverlay" Background="#B3060A1A" IsVisible="False">
+      <Border Width="500" HorizontalAlignment="Center" VerticalAlignment="Center" Classes="Card" Background="#FF121A3A" Padding="28,24,28,22" BoxShadow="0 0 40 0 #405E8BFF">
+        <StackPanel>
+          <TextBlock x:Name="QuestionTitle" Classes="Heading" FontSize="23"/>
+          <Rectangle Classes="GoldDivider" Margin="0,14"/>
+          <TextBlock x:Name="QuestionBody" Classes="Muted" FontSize="13" LineHeight="20" Foreground="{StaticResource SoftTextBrush}"/>
+          <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,22,0,0">
+            <Button x:Name="QuestionNo" Content="Cancel" Classes="GhostButton" Height="38" Padding="22,0" Margin="0,0,10,0" IsCancel="True" IsVisible="{Binding #QuestionOverlay.IsVisible}"/>
+            <Button x:Name="QuestionYes" Classes="AccentButton" Height="38" Padding="24,0" IsDefault="True" IsVisible="{Binding #QuestionOverlay.IsVisible}"/>
+          </StackPanel>
+        </StackPanel>
+      </Border>
+    </Grid>
+  </Panel>
+</Window>
