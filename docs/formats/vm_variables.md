@@ -167,6 +167,10 @@ per-message arrays indexed by F823 [E]:
 | F[824 + k], F[835 + k] | 0x92380 (VA 0x92640 / 0x9264F: copies of F31 / F32, the text scale words; textbox.md 5.8 "C824 / C835") | HUD 0x53CF0, 0x7C340 |
 | F[847 + k] (`C847`) | scripts; `_SELR` (+1 on the first line of a choice group, 4.6) | HUD 0x53CF0 (line offset, textbox.md 5.8) |
 | F[859 + k] (`C859`) | scripts (reset to 0); HUD 0x53CF0 (dimming timer, textbox.md 5.8) | HUD 0x53CF0 |
+| F[870 + j] | HUD 0x53CF0 only, every frame for j = min(F823, 11) - 2: text speed - 128 (VA 0x55C2E) | HUD 0x53CF0 (dimming limit, textbox.md 5.8) |
+
+The HUD reads F[859 + j] and F[870 + j] with j the 0-based page position (F823 - 1 of the
+message), so the script's `C859` reset before message k clears the timer of message k + 1.
 
 Script_Scan (0xA4060, run after a slot load) ends by zeroing F823 (u16 at 0x164B83E),
 F847..F857 (16 bytes at 0x164B86E, 8 at 0x164B87C) and F859..F869 (16 bytes at 0x164B886, 8 at

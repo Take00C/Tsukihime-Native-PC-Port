@@ -1084,8 +1084,8 @@ public sealed class AchievementsTests : IDisposable
         Directory.CreateDirectory(backup);
         File.WriteAllText(Path.Combine(backup, TrophyLog.FileName), "version=1\n6=2026-11-12T13:03:11Z\n");
 
-        // Another program holds the record without sharing and lets go as soon as a writer's temporary file appears beside it (or after 0.6 s, when none does):
-        // a write that came after the failed reading would then go through, over what nobody could read.
+        // Another program holds the record without sharing and lets go as soon as a writer's temporary file appears beside it (or once the step has returned,
+        // when none does): a write that came after the failed reading would then go through, over what nobody could read.
         foreach ((string what, Func<bool> change) in new (string, Func<bool>)[]
         {
             ("the replaced save's achievements", () => Achievements.KeepBeforeSaveChange(_paths, null).Count > 0),
@@ -1108,21 +1108,30 @@ public sealed class AchievementsTests : IDisposable
         Assert.Empty(TemporaryFiles());
     }
 
-    // runs change while another thread holds trophies.ini without sharing; the holder lets go when a temporary file of a write appears, or after 0.6 s
+    // runs change while another thread holds trophies.ini without sharing; the holder lets go when a temporary file of a write appears, or once change has
+    // returned (after a last look for one). Not after a fixed time: a change on a loaded machine can take longer than any, read the record after the holder let
+    // go, and rightly write it. The bound only keeps a change that never returns from holding the file for ever
     private bool HeldUntilAWriteBegins(Func<bool> change, out bool writeBegan)
     {
+        var bound = TimeSpan.FromSeconds(60);
         var held = new FileStream(_paths.TrophiesFile, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
         int began = 0;
+        int returned = 0;
         var holder = new Thread(() =>
         {
             try
             {
                 var clock = Stopwatch.StartNew();
-                while (clock.ElapsedMilliseconds < 600)
+                while (true)
                 {
                     if (Directory.EnumerateFiles(_paths.DataDirectory, TrophyLog.FileName + ".*.tmp").Any())
                     {
                         Volatile.Write(ref began, 1);
+                        break;
+                    }
+
+                    if (Volatile.Read(ref returned) == 1 || clock.Elapsed > bound)
+                    {
                         break;
                     }
 
@@ -1135,8 +1144,17 @@ public sealed class AchievementsTests : IDisposable
             }
         });
         holder.Start();
-        bool wrote = change();
-        holder.Join();
+        bool wrote;
+        try
+        {
+            wrote = change();
+        }
+        finally
+        {
+            Volatile.Write(ref returned, 1);
+        }
+
+        Assert.True(holder.Join(bound), "the holder never let go");
         writeBegan = Volatile.Read(ref began) == 1;
         return wrote;
     }

@@ -45,17 +45,44 @@ public sealed class LoadingTests(ITestOutputHelper output)
     {
         var cache = new ScriptCache(Source);
         int start = Source.Eboot.GameFlow.ScriptOfSceneId(110);          // START_SCRIPT jumps on into the story
-        _ = cache.Script(start);
-        var sw = System.Diagnostics.Stopwatch.StartNew();
-        // the prefetch runs on the thread pool, which the full parallel run keeps busy with the decode tests: it can be seconds before a pool thread is free (package K10)
-        while (cache.Prefetched == 0 && sw.Elapsed < TimeSpan.FromSeconds(60))
+        long ms = -1;
+        // The game's VM asks for scripts on its own thread, so the prefetch goes to the pool's shared queue. Asked from this test's thread (a pool thread that then
+        // waits), it went to that thread's own queue, which the other pool threads take from only when the shared queue is empty: in the full parallel run, busy
+        // with the decode tests, it waited 14..20 s and once more than 60 s (in one loaded run a probe queued from a test thread waited 17 s where the shared
+        // queue took 2 s). The shared queue itself took up to 7 s then, hence the long wait (package K10).
+        OnOwnThread(() =>
         {
-            Thread.Sleep(5);
-        }
-
-        Assert.True(cache.Prefetched > 0, "no jump target was decoded ahead");
-        output.WriteLine($"script {start}: {cache.Prefetched} jump targets decoded ahead after {sw.ElapsedMilliseconds} ms");
+            _ = cache.Script(start);
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            Assert.True(SpinWait.SpinUntil(() => cache.Prefetched > 0, TimeSpan.FromSeconds(60)), "no jump target was decoded ahead");
+            ms = sw.ElapsedMilliseconds;
+        });
+        output.WriteLine($"script {start}: {cache.Prefetched} jump targets decoded ahead after {ms} ms");
         Assert.NotNull(cache.Script(1));
+    }
+
+    // runs body on a thread of its own and rethrows what it threw
+    private static void OnOwnThread(Action body)
+    {
+        System.Runtime.ExceptionServices.ExceptionDispatchInfo? failure = null;
+        var thread = new Thread(() =>
+        {
+            try
+            {
+                body();
+            }
+            catch (Exception e)
+            {
+                failure = System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(e);
+            }
+        })
+        {
+            IsBackground = true,
+            Name = "test VM thread",
+        };
+        thread.Start();
+        Assert.True(thread.Join(TimeSpan.FromMinutes(5)), "the test body did not end within 5 minutes");
+        failure?.Throw();
     }
 
     [GameDataFact]

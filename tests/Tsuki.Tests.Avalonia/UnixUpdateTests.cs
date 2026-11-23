@@ -71,6 +71,16 @@ public sealed class UnixUpdateTests : IDisposable
     }
 
     [Fact]
+    public void TheFirstTwoDigitPatchNamesTheAssetsItsReleaseAttaches()
+    {
+        var version = new ReleaseVersion(0, 1, 10);
+        Assert.Equal("Tsukihime-v0.1.10-linux-x64.tar.gz", PlatformUpdate.AssetNameFor(version, "linux", Architecture.X64));
+        Assert.Equal("Tsukihime-v0.1.10-macos-arm64.zip", PlatformUpdate.AssetNameFor(version, "macos", Architecture.Arm64));
+        Assert.Equal("Tsukihime-v0.1.10-macos-x64.zip", PlatformUpdate.AssetNameFor(version, "macos", Architecture.X64));
+        Assert.Equal("Tsukihime-v0.1.10-win-x64.zip", PlatformUpdate.AssetNameFor(version, "win", Architecture.X64));
+    }
+
+    [Fact]
     public async Task LinuxDownloadsItsTarAppliesItAndKeepsTheProfileUntouched()
     {
         string install = LinuxRelease.Folder(_root, "install");

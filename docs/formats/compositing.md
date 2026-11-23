@@ -500,6 +500,14 @@ alpha = `_STCH` opacity / 255 and a = picture alpha:
   - Proof: interpreting PS #21, #23, #40, #41, #28 and #30 with P.z = 0, 0.5 and 1 on 2,048 random
     lanes changes the output of #21, #23 and #40 by up to 0.93 and of #41, #28 and #30 by exactly 0.
     The output alpha is 1.000 on every lane.
+- **Held layers (the port, issue #14) [H].** A layer drawn in its window's pass (STCH mask,
+  layers.md 9) is laid over the backdrop by its picture alpha in the modes whose colour ignores it
+  (1, 4, 6, 8, 10, and 5, 7, 9 without the flag): `rgb = shader a + d (1 - a)`. This is the
+  masked-layer pass of 5.1 (effect 26 + m, strength 1, through the mask in Da) with Da = a, and
+  knife's `ps_mix`; mode 8 (knife's `NoAlpha`) and flagged 10 (effect 36, blend state 0) are weighted
+  beyond both, on purpose, to match the other modes. A frame of a playthrough video of the issue's scene
+  (00_00, the IMG2230 glows in two cut-in windows; labelled PS4, but probably the Switch build, K52) matches this result. Glows such as IMG2230 keep full colour under alpha 0..2; drawn alpha-blind they
+  show as a hard stepped disc. Layers that no window holds keep the single-pass shader.
 
 Census [D] (14,940 statements; flagged = 4th argument 1):
 

@@ -102,6 +102,17 @@ def test_unsigned_app_layout_metadata_and_modes(tmp_path):
         assert (contents / "Resources" / "Tsukihime.icns").stat().st_mode & 0o777 == 0o644
 
 
+def test_the_first_two_digit_patch_is_the_bundle_version_and_names_the_zip(tmp_path, monkeypatch):
+    folder = publish(tmp_path)
+    app = package.build(folder, "0.1.10", "arm64", tmp_path / "out", sign=False)
+    with (app / "Contents" / "Info.plist").open("rb") as stream:
+        info = plistlib.load(stream)
+    assert info["CFBundleShortVersionString"] == "0.1.10" and info["CFBundleVersion"] == "0.1.10"
+    monkeypatch.setattr(sys, "platform", "darwin")
+    monkeypatch.setattr(package.subprocess, "run", lambda command, **kwargs: None)
+    assert package.archive(app, "0.1.10", "x64", tmp_path / "out").name == "Tsukihime-v0.1.10-macos-x64.zip"
+
+
 def test_wrong_architecture_incomplete_publish_and_existing_output_are_refused(tmp_path):
     folder = publish(tmp_path, "x64")
     with pytest.raises(ValueError, match="not the requested arm64"):

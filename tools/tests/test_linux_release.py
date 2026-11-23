@@ -170,6 +170,13 @@ def test_the_archive_has_one_folder_and_unix_modes_and_is_reproducible(tmp_path,
     assert all(m.isfile() or m.isdir() for m in members.values())
 
 
+def test_the_first_two_digit_patch_names_its_archive_and_its_one_folder(tmp_path):
+    archive = load("package_linux").build(publish_folder(tmp_path), "0.1.10", tmp_path / "out")
+    assert archive.name == "Tsukihime-v0.1.10-linux-x64.tar.gz"
+    with tarfile.open(archive) as tar:
+        assert {m.name.split("/")[0] for m in tar.getmembers()} == {"Tsukihime-v0.1.10-linux-x64"}
+
+
 def test_a_folder_that_is_not_a_linux_publish_is_refused(tmp_path):
     tool = load("package_linux")
     folder = publish_folder(tmp_path)

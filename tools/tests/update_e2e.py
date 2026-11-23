@@ -106,8 +106,11 @@ def report_problems(before: str, after: str, version: str) -> list[str]:
     problems = []
     if "UPDATE SELFTEST PASS" not in before:
         problems.append("the old launcher did not report UPDATE SELFTEST PASS")
-    for needle in ("SELFTEST PASS:", f"launcher v{version}", f"Updated from v{CURRENT}"):
-        if needle not in after:
+    if "SELFTEST PASS:" not in after:
+        problems.append("the restarted launcher's report lacks 'SELFTEST PASS:'")
+    for needle in (f"launcher v{version}", f"Updated from v{CURRENT}"):
+        # a version ends where its digits do: a report of "launcher v0.1.10" has no "launcher v0.1.1"
+        if not re.search(re.escape(needle) + r"(?![0-9])", after):
             problems.append(f"the restarted launcher's report lacks {needle!r}")
     return problems
 

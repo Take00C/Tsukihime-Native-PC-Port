@@ -186,7 +186,6 @@ public sealed partial class GameHost
         }
 
         (double X, double Y)[] pos = PageOrigins();
-        double t = WindowIndex() < 3 ? 100.0 : 255.0;
         (double qx, double qy) = Stage.MessageQuake.Active ? (Stage.MessageQuake.X, Stage.MessageQuake.Y) : (0.0, 0.0);
         // the quake offsets are 640 x 448 canvas units added after the (1, 1.3) scale; the converting instruction truncates them (text_vertical_scale.md 3)
         double offX = Math.Truncate(qx) * TextScale;
@@ -205,8 +204,7 @@ public sealed partial class GameHost
                 double alpha = Wait.WindowAlpha;
                 if (!current)
                 {
-                    double dim = m.DimTimer < 0 ? t / 255.0 : 1.0 - ((255.0 - t) / 255.0 * Math.Min(1.0, m.DimTimer / Math.Max(1.0, m.DimLimit)));
-                    alpha *= dim;
+                    alpha *= DimAlpha(j);
                 }
 
                 double head = current ? Wait.Head : BlockDraw.RevealAll;

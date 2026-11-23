@@ -520,6 +520,9 @@ public sealed class TrophyAppTests : IDisposable
         Assert.Empty(Directory.GetFiles(_dir, "*.tmp"));
     }
 
+    // how long a holder below may hold trophies.ini at most, whatever happens: tens of seconds, far beyond a start on a loaded machine
+    private static readonly TimeSpan HolderBound = TimeSpan.FromSeconds(60);
+
     // a program that holds trophies.ini without sharing it (Windows only: elsewhere it keeps no reader out) until it lets go
     private static Thread Hold(string path, ManualResetEventSlim held, Func<bool> letGo)
     {
@@ -550,17 +553,33 @@ public sealed class TrophyAppTests : IDisposable
             return;
         }
 
-        // the record holds trophy 5 with its date; another program holds it from before the start and lets go the moment a write's temporary file appears
-        // beside it (or after 600 ms when none does). The save implies trophy 1, so the start has something to write
+        // the record holds trophy 5 with its date; another program holds it from before the start until the start has returned, and lets go the moment a
+        // write's temporary file appears beside it. The save implies trophy 1, so the start has something to write. The holder waits for the start, not for a
+        // fixed time: on a loaded machine the start took longer than the 0.6 s once allowed, the holder let go after the start's first reading, and its second
+        // one read the record and wrote the two together, which is right but not this case. The bound only keeps a start that never returns from holding the
+        // file for ever
         const string Held = "# held\nversion=1\n5=2026-01-02T03:04:05Z\n";
         File.WriteAllText(TrophyFile, Held);
         using var held = new ManualResetEventSlim(false);
         bool sawTemporary = false;
+        bool startReturned = false;
         var watch = System.Diagnostics.Stopwatch.StartNew();
-        Thread holder = Hold(TrophyFile, held, () => (sawTemporary = Directory.GetFiles(_dir, TrophyLog.FileName + ".*.tmp").Length > 0) || watch.ElapsedMilliseconds > 600);
+        Thread holder = Hold(
+            TrophyFile,
+            held,
+            () => (sawTemporary = Directory.GetFiles(_dir, TrophyLog.FileName + ".*.tmp").Length > 0) || Volatile.Read(ref startReturned) || watch.Elapsed > HolderBound);
         long ms = 0;
-        var rt = new Rt(new AppRig(AppRig.ThreePages, savePath: SavePath, store: ProfileWithProgress(1), trophyScenes: Scenes, milliseconds: () => ms));
-        holder.Join();
+        Rt rt;
+        try
+        {
+            rt = new Rt(new AppRig(AppRig.ThreePages, savePath: SavePath, store: ProfileWithProgress(1), trophyScenes: Scenes, milliseconds: () => ms));
+        }
+        finally
+        {
+            Volatile.Write(ref startReturned, true);
+        }
+
+        Assert.True(holder.Join(HolderBound), "the holder never let go");
         Assert.False(sawTemporary, "a write was begun over a file that had not been read");
         Assert.Equal(TrophyFileState.Unreadable, rt.Rig.Services.TrophyFileAtStart);
         Assert.Equal([1], rt.Rig.Services.TrophiesCaughtUp);

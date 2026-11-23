@@ -181,9 +181,11 @@ public sealed partial class GameHost
                     SetF(859 + j, -1);
                 }
 
-                foreach (PageMessage m in _page)
+                // the memset covers F823 - 1 words from F859 (VA 0xA27FC..0xA2830): the earlier messages only, so the one whose reveal the click completed still dims over its
+                // limit once the next message starts
+                for (int j = 0; j < _page.Count - 1; j++)
                 {
-                    m.DimTimer = -1;
+                    _page[j].DimTimer = -1;
                 }
             }
 

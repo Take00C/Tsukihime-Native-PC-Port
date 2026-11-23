@@ -382,7 +382,7 @@ public sealed unsafe class GpuCompositor : IDisposable
         bool haze = fx.Pass == QuadPass.Haze;
         if (prog.Fx >= 0)
         {
-            _gl.Uniform4(prog.Fx, haze ? 1f : 0f, fx.Mask != 0 ? 1f : 0f, fx.Pass == QuadPass.Blur ? 1f : 0f, 0f);
+            _gl.Uniform4(prog.Fx, haze ? 1f : 0f, fx.Mask != 0 ? 1f : 0f, fx.Pass == QuadPass.Blur ? 1f : 0f, fx.Held ? 1f : 0f);
         }
 
         if (fx.Pass == QuadPass.Blur && prog.Blur >= 0)

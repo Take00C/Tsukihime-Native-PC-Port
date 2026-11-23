@@ -76,6 +76,48 @@ public sealed class StageEffectTests
     }
 
     [Fact]
+    public void OnlyTheLayersAWindowHoldsAreDrawnHeld()
+    {
+        // issue #14: a held layer's quads carry QuadFx.Held (the blend modes that ignore the picture alpha are then weighted by it); the window, its silhouette and a
+        // plain layer in the same mode do not, nor does anything in K2's plain emission
+        StageRuntime rt = Stage();
+        StageKit.Run(rt, "_STCH(3,IMG0001,240,136,1000,255,50,,CC);");
+        StageKit.Run(rt, "_STCH(4,IMG0002,240,136,1000,255,60,,CC,,,3);");
+        StageKit.Run(rt, "_STBR(4,1);");
+        StageKit.Run(rt, "_STCH(5,IMG0002,240,136,1000,255,70,,CC);");
+        StageKit.Run(rt, "_STBR(5,1);");
+        Commit(rt);
+        DrawCmd[] cmds = Frame(rt);
+        DrawCmd[] kids = [.. cmds.Where(c => c.Kind == DrawKind.TexturedQuad && PicOf(c) == P2)];
+        Assert.Equal(2, kids.Length);
+        Assert.Equal((1, StageRuntime.MaskTarget, true), (kids[0].EffectWord, kids[0].Fx.Mask, kids[0].Fx.Held));     // layer 4, in its window's pass
+        Assert.Equal((1, (byte)0, false), (kids[1].EffectWord, kids[1].Fx.Mask, kids[1].Fx.Held));                     // layer 5, no window
+        Assert.All(cmds.Where(c => PicOf(c) == P1), c => Assert.False(c.Fx.Held));
+
+        rt.EffectPasses = false;
+        Assert.All(Frame(rt), c => Assert.False(c.Fx.Held));
+    }
+
+    [Fact]
+    public void AHeldLayerKeepsHeldUnderItsHazeAndItsNoise()
+    {
+        StageRuntime rt = Stage();
+        rt.HazeTable = new FixedHaze([2f, 0f, 1f, 3f, 0f, 1f, 4f, 0f, 1f, 1000f]);
+        StageKit.Run(rt, "_STCH(3,IMG0001,240,136,1000,255,50,,CC);");
+        StageKit.Run(rt, "_STCH(4,IMG0002,240,136,1000,255,60,,CC,,,3);");
+        StageKit.Run(rt, "_STRA(4,7,0);");
+        Commit(rt);
+        rt.Update(60);
+        DrawCmd hazy = Assert.Single(Frame(rt), c => c.Kind == DrawKind.TexturedQuad && PicOf(c) == P2);
+        Assert.Equal((QuadPass.Haze, StageRuntime.MaskTarget, true), (hazy.Fx.Pass, hazy.Fx.Mask, hazy.Fx.Held));
+
+        StageKit.Run(rt, "_STNS(4,11);");
+        Commit(rt);
+        DrawCmd grain = Assert.Single(Frame(rt), c => c.Kind == DrawKind.TexturedQuad && c.Texture.Kind == TextureKind.UiTile);
+        Assert.Equal((StageRuntime.MaskTarget, true), (grain.Fx.Mask, grain.Fx.Held));
+    }
+
+    [Fact]
     public void AWindowThatFadedOutLeavesItsLayersAnEmptyMask()
     {
         StageRuntime rt = Stage();

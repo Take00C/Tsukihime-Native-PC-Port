@@ -45,7 +45,10 @@ public sealed class PageMessage
     /// <summary>Frames the message has been dimmed (-1: fully dimmed).</summary>
     public int DimTimer { get; set; }
 
-    /// <summary>The dimming limit in frames: <c>(C870 + 128) * 1.2</c>.</summary>
+    /// <summary>
+    /// The dimming limit in frames, <c>(F[870 + j] + 128) * 1.2</c> for page position j (VA 0x55C37..0x55C5E). The HUD writes F[870 + j] every frame while the message is the one
+    /// before the current (<see cref="GameHost"/>'s dimming step, VA 0x55C00), so the limit is the text speed x 1.2 frames, and keeps it after that.
+    /// </summary>
     public float DimLimit { get; set; } = 153.6f;
 
     /// <summary>The <c>@x</c> continue position the message was laid out with (<see cref="Tsuki.Engine.Text.MessageWindow.ContinueX"/> of the message before it; 0 for the first of a page).</summary>
@@ -337,7 +340,6 @@ public sealed partial class GameHost
             ScaleY = f32 > 0 ? f32 / 24.0 : 1.0,
             Index = f823,
             Window = WindowIndex(),
-            DimLimit = (F(870 + f823) + 128) * 1.2f,
             SavedX = savedX,
         };
         _page.Add(msg);
@@ -650,21 +652,76 @@ public sealed partial class GameHost
             _textFade = t;
         }
 
-        // dimming of the earlier messages of the page (textbox.md 5.8)
-        if (_textFade >= 1f)
+        UpdateDimming(k);
+    }
+
+    /// <summary>
+    /// The dimming of the earlier messages of the page (textbox.md 5.8), the HUD's page loop (VA 0x558BD..0x5602A, j = 0 .. min(F823, 11) - 2), which runs only in a page
+    /// (F822 == 1) while F1103 == 0. Every frame it stores F[870 + j] = text speed - 128 for the message before the current one (VA 0x55C00..0x55C2E: config +0x20 unread or
+    /// +0x22 read, as 0x781AB0 picks it for the current message), so that message dims in text speed x 1.2 frames (42 unread, 18 read at the boot speeds). The timer (F[859 + j]
+    /// on the PS4, <see cref="PageMessage.DimTimer"/> here) advances only while F1103 == 0 and the text fade is 1 (the guard at VA 0x55F8A) and becomes -1 past the limit
+    /// (VA 0x55FE2); config +0xA4 == 1 makes it -1 at once (VA 0x55C4A). The port used to read the limit once from F[870 + F823] when the message started, a word nothing
+    /// wrote: 153.6 frames for every message.
+    /// </summary>
+    private void UpdateDimming(int k)
+    {
+        if (!IsPageMode || F(1103) != 0)
         {
-            for (int j = 0; j < _page.Count - 1; j++)
+            return;
+        }
+
+        int last = Math.Min(F(823), 11) - 2;
+        if (last >= 0)
+        {
+            int speed = Wait.ReadSel == 1 ? Config.SeenTextSpeed : Config.UnseenTextSpeed;
+            SetF(870 + last, speed - 128);
+            if (_page.Count >= 2)
             {
-                PageMessage m = _page[j];
-                if (m.DimTimer >= 0)
+                _page[^2].DimLimit = (F(870 + last) + 128) * 1.2f;
+            }
+        }
+
+        for (int j = 0; j < _page.Count - 1; j++)
+        {
+            PageMessage m = _page[j];
+            if (Config.SeenTextAnimations == 1)
+            {
+                m.DimTimer = -1;
+            }
+            else if (_textFade >= 1f && m.DimTimer >= 0)
+            {
+                m.DimTimer += k;
+                if (m.DimTimer > m.DimLimit)
                 {
-                    m.DimTimer += k;
-                    if (m.DimTimer >= m.DimLimit || Config.SeenTextAnimations == 1)
-                    {
-                        m.DimTimer = -1;
-                    }
+                    m.DimTimer = -1;
                 }
             }
         }
     }
+
+    /// <summary>
+    /// The alpha factor of earlier message <paramref name="j"/> of the page (VA 0x55CB7..0x55E7B; t = 100, or 255 in a bubble window: the HUD tests F1111 >= 3 at VA 0x55C42,
+    /// the port the window index, as before): <c>1 - (255 - t) / 255 * timer / limit</c>,
+    /// t / 255 once dimmed. A message whose text ends in <c>@k</c> (469 <c>$N@k@e</c> lines) dims with the next message of the page that does not, by that message's timer and limit
+    /// (VA 0x55D01..0x55D50, 0x55E86..0x55F52); while that run reaches the current message it is not dimmed.
+    /// </summary>
+    internal double DimAlpha(int j)
+    {
+        int end = j;
+        while (end < _page.Count - 1 && EndsInAtK(_page[end].Raw))
+        {
+            end++;
+        }
+
+        if (end >= _page.Count - 1)
+        {
+            return 1.0;
+        }
+
+        double t = WindowIndex() < 3 ? 100.0 : 255.0;
+        PageMessage m = _page[end];
+        return m.DimTimer < 0 ? t / 255.0 : 1.0 - ((255.0 - t) / 255.0 * Math.Min(1.0, m.DimTimer / Math.Max(1.0, m.DimLimit)));
+    }
+
+    private static bool EndsInAtK(byte[] raw) => raw.Length >= 2 && raw[^2] == (byte)'@' && raw[^1] == (byte)'k';
 }

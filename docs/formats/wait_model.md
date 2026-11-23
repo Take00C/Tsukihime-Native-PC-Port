@@ -249,7 +249,8 @@ adv_state.md 9.2 mapping (V-emu of Config_FromMenu); the effect is [V-emu]. Work
 `@k` is ignored by the layout and by the wait logic: it is not a wait. All 469 uses are
 `$N@k@e`, i.e. "no click" messages. Its only reader is the HUD page history (0x55D01 /
 0x55EEF): when a logged page message ends in `@k`, the dimming of earlier messages (textbox.md
-5.8) skips over it to the next message that does not end in `@k` [E; visual result H].
+5.8) skips over it to the next message that does not end in `@k` and uses that message's timer
+and limit; while the run reaches the current message, it is not dimmed [E; visual result H].
 
 ### 4.5 `_WNTY(n)` [E 0x972F5 -> 0x53600]
 
@@ -804,7 +805,8 @@ imports), with every VEX instruction (BMI included) executed by
 3. Fields +0x86 / +0x8C of the drawn layer record tested by `_STCF` masks 1 / 2 (no retail
    `_STCF` uses them).
 4. The HUD click icon test 0xCA690 was not emulated (assumed equal to 0xCA070's rule).
-5. The `@k` dimming rule of 4.4 has no visual check (the prologue movie shows no dimming,
+5. The `@k` dimming rule of 4.4 has no visual check (the prologue movie shows no dimming; one
+   playthrough frame, most likely of the Switch build, agrees only with the dimming time,
    textbox.md open question 7).
 6. The meaning of 0x6EAB0, which gates the d-pad-down latch 0xDF29E0, is assumed to be "no HUD
    menu open" [H]. The frame check stubs it to 0.

@@ -13,8 +13,12 @@ public sealed class ClipCacheLifetimeTests
 {
     private static AudioClip Clip(AudioBank bank, int entry, int frames = 64) => new(bank, entry, 2, 48_000, new float[frames * 2], null);
 
+    // The tests that wait for decodes queued on the thread pool run on a thread of their own, as the game's engine thread queues them, and give the pool tens of
+    // seconds: in a full parallel run a pool thread can take seconds to come (BackgroundWork.OnOwnThread).
+    private const int PoolMs = 60_000;
+
     [Fact]
-    public void ShutdownWaitsForTheDecodesThatRunAndRefusesTheRest()
+    public void ShutdownWaitsForTheDecodesThatRunAndRefusesTheRest() => BackgroundWork.OnOwnThread(() =>
     {
         using var release = new ManualResetEventSlim(false);
         int running = 0;
@@ -25,7 +29,7 @@ public sealed class ClipCacheLifetimeTests
             Interlocked.Increment(ref running);
             try
             {
-                release.Wait(30_000);
+                release.Wait(2 * PoolMs);
                 return Clip(b, i);
             }
             finally
@@ -33,29 +37,36 @@ public sealed class ClipCacheLifetimeTests
                 Interlocked.Decrement(ref running);
             }
         });
-        for (int i = 0; i < 4; i++)
+        try
         {
-            cache.Prefetch(AudioBank.Bgm, i);
+            for (int i = 0; i < 4; i++)
+            {
+                cache.Prefetch(AudioBank.Bgm, i);
+            }
+
+            Assert.True(SpinWait.SpinUntil(() => Volatile.Read(ref started) == 4, PoolMs), $"{Volatile.Read(ref started)} of the four decodes started");
+
+            Assert.False(cache.Shutdown(TimeSpan.FromMilliseconds(80)), "four decodes are running: the wait runs out");
+            int startedBefore = Volatile.Read(ref started);
+            cache.Prefetch(AudioBank.Bgm, 99);                          // refused silently
+            Assert.Throws<ObjectDisposedException>(() => cache.Get(AudioBank.Bgm, 98));
+            Thread.Sleep(30);
+            Assert.Equal(startedBefore, Volatile.Read(ref started));
+
+            var closer = BackgroundWork.Run(() => cache.Shutdown(TimeSpan.FromMilliseconds(PoolMs)));
+            Thread.Sleep(40);
+            Assert.False(closer.IsCompleted, "Shutdown does not return while a decode runs");
+            release.Set();
+            Assert.True(BackgroundWork.Wait(closer, 2 * PoolMs));
+            Assert.True(BackgroundWork.Result(closer));
+            Assert.Equal(0, Volatile.Read(ref running));                // when Shutdown returns, no decode is inside the decode function
+            Assert.Equal(startedBefore, Volatile.Read(ref started));
         }
-
-        Assert.True(SpinWait.SpinUntil(() => Volatile.Read(ref started) == 4, 10_000));
-
-        Assert.False(cache.Shutdown(TimeSpan.FromMilliseconds(80)), "four decodes are running: the wait runs out");
-        int startedBefore = Volatile.Read(ref started);
-        cache.Prefetch(AudioBank.Bgm, 99);                          // refused silently
-        Assert.Throws<ObjectDisposedException>(() => cache.Get(AudioBank.Bgm, 98));
-        Thread.Sleep(30);
-        Assert.Equal(startedBefore, Volatile.Read(ref started));
-
-        var closer = BackgroundWork.Run(() => cache.Shutdown(TimeSpan.FromSeconds(20)));
-        Thread.Sleep(40);
-        Assert.False(closer.IsCompleted, "Shutdown does not return while a decode runs");
-        release.Set();
-        Assert.True(BackgroundWork.Wait(closer, 10_000));
-        Assert.True(BackgroundWork.Result(closer));
-        Assert.Equal(0, Volatile.Read(ref running));                // when Shutdown returns, no decode is inside the decode function
-        Assert.Equal(startedBefore, Volatile.Read(ref started));
-    }
+        finally
+        {
+            release.Set();                                              // a failed assertion leaves no decode blocked on the pool
+        }
+    });
 
     [Fact]
     public void GetPrefetchEvictionAndAShutdownFromManyThreadsNeverRunTheDecoderAfterTheDataIsGone()
@@ -173,28 +184,36 @@ public sealed class ClipCacheLifetimeTests
         Assert.Equal(decodesBefore, cache.Decodes);                              // both were still cached
     }
 
-    [Fact]
-    public void AFailingDecodeIsNeverCachedAndNeverEscapesAPrefetch()
+    [Theory]
+    [InlineData(0)]
+    [InlineData(300)]   // a decode that takes 0.3 s to fail: the slow machine where a Get 50 ms after the decode began joined it and saw its error (macos-15-intel)
+    public void AFailingDecodeIsNeverCachedAndNeverEscapesAPrefetch(int failAfterMs) => BackgroundWork.OnOwnThread(() =>
     {
         int calls = 0;
         var cache = new ClipCache((b, i) =>
         {
             int n = Interlocked.Increment(ref calls);
+            if (n == 1 && failAfterMs > 0)
+            {
+                Thread.Sleep(failAfterMs);
+            }
+
             return i == 7 && n <= 2 ? throw new InvalidDataException("avcodec_send_packet failed: Invalid data found (-1094995529)") : Clip(b, i);
         });
-        cache.Prefetch(AudioBank.Voice, 7);                          // the speculative decode fails on the pool: nothing may come of it
-        Assert.True(SpinWait.SpinUntil(() => Volatile.Read(ref calls) >= 1, 10_000));
-        Thread.Sleep(50);
+        var prefetch = QueuedWork.Of(() => cache.Prefetch(AudioBank.Voice, 7));    // the speculative decode fails on the pool: nothing may come of it
+        Assert.True(prefetch.WaitEnded(1, PoolMs), QueuedWork.NeverEnded("the prefetch"));    // its decode, its catch and the forgetting of the failure
+        Assert.Equal(1, Volatile.Read(ref calls));
         Assert.Equal(0, cache.Bytes);
 
+        // a Get while the prefetch still decodes shares its decode and its error (ClipCache.Get); once the prefetch has ended, its failure must be gone
         Assert.Throws<InvalidDataException>(() => cache.Get(AudioBank.Voice, 7));    // the caller that needs the clip sees the error (a second failure)
         Assert.Equal(2, Volatile.Read(ref calls));
         AudioClip again = cache.Get(AudioBank.Voice, 7);             // and the next try decodes afresh: the failure was not kept
         Assert.Equal(7, again.Index);
-    }
+    });
 
     [Fact]
-    public void WithAsyncDecodeAClipThatFailsIsReportedSkippedAndTheNextPlayStillWorks()
+    public void WithAsyncDecodeAClipThatFailsIsReportedSkippedAndTheNextPlayStillWorks() => BackgroundWork.OnOwnThread(() =>
     {
         var mixer = new AudioMixer();
         var player = new AudioCommandPlayer(
@@ -208,7 +227,7 @@ public sealed class ClipCacheLifetimeTests
                 player.Pump();
                 return player.Failures.Count == 1;
             },
-            10_000));
+            PoolMs));
         Assert.Equal((AudioBank.Voice, 13), (player.Failures[0].Bank, player.Failures[0].Entry));
         Assert.IsType<InvalidDataException>(player.Failures[0].Error);
         Assert.False(player.IsPlaying(6), "the stream is silent, not stuck");
@@ -220,12 +239,12 @@ public sealed class ClipCacheLifetimeTests
                 player.Pump();
                 return player.PlaysPosted == 1;
             },
-            10_000));
+            PoolMs));
         Assert.Single(player.Failures);
-    }
+    });
 
     [Fact]
-    public void ADisposedPlayerDecodesNothingMoreAndWaitsForTheDecodeThatRuns()
+    public void ADisposedPlayerDecodesNothingMoreAndWaitsForTheDecodeThatRuns() => BackgroundWork.OnOwnThread(() =>
     {
         using var release = new ManualResetEventSlim(false);
         int running = 0;
@@ -236,7 +255,7 @@ public sealed class ClipCacheLifetimeTests
                 Interlocked.Increment(ref running);
                 try
                 {
-                    release.Wait(30_000);
+                    release.Wait(2 * PoolMs);
                     return new AudioClip(b, i, 2, 48_000, new float[2000], null);
                 }
                 finally
@@ -246,24 +265,31 @@ public sealed class ClipCacheLifetimeTests
             },
             mixer,
             new AudioPlayerOptions(AsyncDecode: true));
-        player.Perform(AudioCommand.Play(0, AudioBank.Bgm, 1, true, 1f));
-        Assert.True(SpinWait.SpinUntil(() => Volatile.Read(ref running) == 1, 10_000));
+        try
+        {
+            player.Perform(AudioCommand.Play(0, AudioBank.Bgm, 1, true, 1f));
+            Assert.True(SpinWait.SpinUntil(() => Volatile.Read(ref running) == 1, PoolMs));
 
-        var disposer = BackgroundWork.Run(player.Dispose);
-        Thread.Sleep(50);
-        Assert.False(disposer.IsCompleted, "Dispose waits for the decode in flight");
-        release.Set();
-        Assert.True(BackgroundWork.Wait(disposer, 10_000));
-        Assert.Equal(0, Volatile.Read(ref running));
+            var disposer = BackgroundWork.Run(player.Dispose);
+            Thread.Sleep(50);
+            Assert.False(disposer.IsCompleted, "Dispose waits for the decode in flight");
+            release.Set();
+            Assert.True(BackgroundWork.Wait(disposer, PoolMs));
+            Assert.Equal(0, Volatile.Read(ref running));
 
-        player.Perform(AudioCommand.Play(1, AudioBank.Bgm, 2, true, 1f));      // after the shutdown: reported, not decoded, nothing thrown
-        Assert.True(SpinWait.SpinUntil(
-            () =>
-            {
-                player.Pump();
-                return player.Failures.Count >= 1;
-            },
-            10_000));
-        Assert.Equal(0, Volatile.Read(ref running));
-    }
+            player.Perform(AudioCommand.Play(1, AudioBank.Bgm, 2, true, 1f));      // after the shutdown: reported, not decoded, nothing thrown
+            Assert.True(SpinWait.SpinUntil(
+                () =>
+                {
+                    player.Pump();
+                    return player.Failures.Count >= 1;
+                },
+                PoolMs));
+            Assert.Equal(0, Volatile.Read(ref running));
+        }
+        finally
+        {
+            release.Set();                                                     // a failed assertion leaves no decode blocked on the pool
+        }
+    });
 }

@@ -1037,6 +1037,9 @@ vm_variables_errata.
   it only: **a masked layer that is below its mask layer in z order is never drawn**), then the layer again with effect 58 as the mask pass; the sprite calls read `[W, masked..., W]`. Every other layer takes
   the plain path (0x51010 -> 0x51060). The group path renders offscreen; the C# stage emits the layers' quads with the window as scissor and does not build the group pass (K2.md, open issues).
 
+* **9 held layers and the picture alpha** (issue #14) [H]: the stage marks the quads of a held layer (`QuadFx.Held`), and the blend modes that ignore the picture alpha weight them by it, as the
+  masked-layer pass does (compositing.md 5.2).
+
 * **STNS at draw time** (0x4F0E0, called from the layer sprite routine 0x4F320 after the picture): a layer with `stns` 1..12 that is drawn advances `stns_b` by the frames of the step (0xD47C0, at most 3) once
   per draw and, when the byte passes the period (20 for `stns < 3`, else 12), replaces it by the remainder (the dword at +0x1D2 is cleared); `stns_b` therefore cycles 1..period. The layer's own pass has
   no noise when it has a crop window; the layers masked by a window **with** a crop advance in the window's mask pass, those masked by a window without a crop do not (observed with the engine, 0x505BE).

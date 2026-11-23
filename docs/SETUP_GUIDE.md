@@ -4,7 +4,7 @@
 and macOS. Paths are given for Windows; the [Linux guide](LINUX.md) and [macOS guide](MACOS.md) give the
 paths, requirements and notes for those systems.
 
-This guide describes version 0.1.9. Downloaded builds may differ from the current source.
+This guide describes version 0.1.10. Downloaded builds may differ from the current source.
 Windows packages include `SETUP_GUIDE.txt` beside the programs, opened by
 **Help & about > Open the setup guide**; on Linux and macOS that button opens this Markdown copy in `docs/`.
 

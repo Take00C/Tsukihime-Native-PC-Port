@@ -54,7 +54,7 @@ public static class CompositorShaders
         uniform sampler2D u_backdrop;  // D: copy of the render target (slot 1, m_transition = screen position)
         uniform vec4 u_params;         // blend: (1 - strength, strength, P2, 0); transition: (lo, hi, inv, 0)
         uniform sampler2D u_mask;      // the offscreen mask target of QuadFx.Mask (unit 2), read at the pixel's position
-        uniform vec4 u_fx;             // (haze enabled, mask enabled, blur enabled, 0)
+        uniform vec4 u_fx;             // (haze enabled, mask enabled, blur enabled, held: QuadFx.Held)
         uniform vec4 u_blur;           // QuadPass.Blur: (du, dv, sigma, n)
         uniform vec4 u_hazeA;          // STRA haze, x: (amplitude, waves, phase, v offset)
         uniform vec4 u_hazeB;          // y: (amplitude, waves, phase, v scale)
@@ -202,6 +202,21 @@ public static class CompositorShaders
             rgb = max(vec3(0.0), d + s - 1.0);
         #else
         #error unknown blend mode
+        #endif
+            // QuadFx.Held (issue #14): a layer held by a window is laid over the backdrop by its picture alpha, as the PS4's masked-layer pass (effect 26 + m
+            // through the mask in the target alpha) and knife's ps_mix do. Only the modes whose colour ignores that alpha: 1, 4, 6, 8, 10, and 5, 7, 9 without the
+            // _STBR flag (P2 = 1; with it k = alpha a already). 15, 17 and the PS family (through the blend state) use it already; 2 is never held in the scripts.
+            // Exact at a = 1 and a = 0, so an opaque texel keeps today's value and a transparent one leaves the backdrop alone.
+        #if MODE == 1 || MODE == 4 || MODE == 6 || MODE == 8 || MODE == 10
+            if (u_fx.w > 0.5)
+            {
+                rgb = rgb * sa + d * (1.0 - sa);
+            }
+        #elif MODE == 5 || MODE == 7 || MODE == 9
+            if (u_fx.w > 0.5 && p2 > 0.5)
+            {
+                rgb = rgb * sa + d * (1.0 - sa);
+            }
         #endif
         #if MODE == 1 || MODE == 2 || (MODE >= 4 && MODE <= 10) || MODE == 15 || MODE == 17
             float a = 1.0 + p1 * (D.a - 1.0);           // "nexl" family

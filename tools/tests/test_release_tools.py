@@ -65,6 +65,20 @@ def test_the_version_check_prints_only_the_version_and_fails_loudly(tmp_path, mo
     assert version_tool.main([]) == 1
 
 
+def test_the_first_two_digit_patch_is_its_own_version_and_tag(tmp_path):
+    # v0.1.10 is the first release with a two-digit number: nothing may take it for 0.1.1 or for an older 0.1.9
+    root = projects(tmp_path, "0.1.10", "0.1.10", "0.1.10")
+    assert version_tool.release_version(root, "tag", "v0.1.10") == "0.1.10"
+    for tag in ("v0.1.1", "v0.1.9", "v0.1.100", "v0.1.10-rc1"):
+        with pytest.raises(ValueError, match=f"the tag {re.escape(tag)} is not v0.1.10"):
+            version_tool.release_version(root, "tag", tag)
+    projects(tmp_path, "0.1.10", "0.1.10", "0.1.9")
+    with pytest.raises(ValueError, match="disagree.*Tsuki.Launcher.Avalonia.csproj 0.1.9"):
+        version_tool.release_version(root)
+    assert e2e.parse_archive_name("Tsukihime-v0.1.10-linux-x64.tar.gz") == ("0.1.10", False)
+    assert e2e.parse_archive_name("Tsukihime-v0.1.10-macos-arm64.zip") == ("0.1.10", True)
+
+
 def test_release_asset_names_are_read_for_both_unix_platforms():
     assert e2e.parse_archive_name("Tsukihime-v0.1.7-macos-arm64.zip") == ("0.1.7", True)
     assert e2e.parse_archive_name("Tsukihime-v0.1.7-macos-x64.zip") == ("0.1.7", True)
@@ -123,6 +137,10 @@ def test_the_reports_must_show_the_update_and_the_restarted_launcher_of_this_ver
         "the restarted launcher's report lacks 'Updated from v0.0.1'"]
     assert e2e.report_problems(before, after, "0.1.8") == ["the restarted launcher's report lacks 'launcher v0.1.8'"]
     assert len(e2e.report_problems(before, "(no report from the restarted launcher)", "0.1.7")) == 3
+    # a version ends where its digits do: the report of a v0.1.10 launcher is not one of v0.1.1
+    after10 = after.replace("v0.1.7", "v0.1.10")
+    assert e2e.report_problems(before, after10, "0.1.10") == []
+    assert e2e.report_problems(before, after10, "0.1.1") == ["the restarted launcher's report lacks 'launcher v0.1.1'"]
 
 
 def test_the_driver_refuses_a_used_work_folder_and_a_wrong_archive(tmp_path, capsys):

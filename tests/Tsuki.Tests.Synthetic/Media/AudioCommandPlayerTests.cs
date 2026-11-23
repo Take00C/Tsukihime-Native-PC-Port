@@ -34,6 +34,18 @@ public sealed class AudioCommandPlayerTests
         return o;
     }
 
+    // The tests that wait for a decode on the thread pool run on a thread of their own, as the game's engine thread does, and give the pool tens of seconds: in a
+    // full parallel run a pool thread can take seconds to come (BackgroundWork.OnOwnThread).
+    private const int PoolMs = 60_000;
+
+    private static int Requests(List<(AudioBank, int)> requests)
+    {
+        lock (requests)
+        {
+            return requests.Count;
+        }
+    }
+
     private static (AudioCommandPlayer Player, AudioMixer Mixer, List<(AudioBank, int)> Requests) Make(Func<AudioBank, int, AudioClip> clips, AudioPlayerOptions? options = null)
     {
         var mixer = new AudioMixer();
@@ -219,46 +231,56 @@ public sealed class AudioCommandPlayerTests
     }
 
     [Fact]
-    public void TheClipCacheDecodesOnceAndPrefetchWarmsIt()
+    public void TheClipCacheDecodesOnceAndPrefetchWarmsIt() => BackgroundWork.OnOwnThread(() =>
     {
         (AudioCommandPlayer player, AudioMixer mixer, List<(AudioBank, int)> requests) = Make((b, i) => StereoRamp(100, index: i));
         player.Perform(AudioCommand.Play(6, AudioBank.Se, 5, false, 1f));
         player.Perform(AudioCommand.Play(7, AudioBank.Se, 5, false, 1f));
         Assert.Single(requests);
-        player.Prefetch(AudioBank.Bgm, 9);
-        Assert.True(SpinWait.SpinUntil(() => player.Cache.Bytes > 0 && requests.Count == 2, 5000));
+        long before = player.Cache.Bytes;                            // the Se 5 clip
+        var prefetch = QueuedWork.Of(() => player.Prefetch(AudioBank.Bgm, 9));
+        Assert.True(prefetch.WaitEnded(1, PoolMs), QueuedWork.NeverEnded("the prefetch"));    // on the pool, which a full parallel run can keep busy for seconds
+        Assert.Equal(before + (100 * 2 * sizeof(float)), player.Cache.Bytes);                  // it kept the Bgm 9 clip
+        Assert.Equal(2, Requests(requests));
         player.Perform(AudioCommand.Play(0, AudioBank.Bgm, 9, false, 1f));
-        Assert.Equal(2, requests.Count);
+        Assert.Equal(2, Requests(requests));
         Assert.True(player.Cache.Hits >= 2);
         Render(mixer, 1);
-    }
+    });
 
     [Fact]
-    public void WithAsyncDecodeAPlayWaitsForItsClipAndThePanAfterItStillApplies()
+    public void WithAsyncDecodeAPlayWaitsForItsClipAndThePanAfterItStillApplies() => BackgroundWork.OnOwnThread(() =>
     {
         using var release = new ManualResetEventSlim(false);
         (AudioCommandPlayer player, AudioMixer mixer, _) = Make((b, i) =>
         {
-            release.Wait(10_000);
+            release.Wait(2 * PoolMs);
             return Dc(1f, 4000);
         }, new AudioPlayerOptions(AsyncDecode: true));
-        player.Perform([AudioCommand.OpenFile(0, AudioBank.Bgm), AudioCommand.Play(0, AudioBank.Bgm, 33, true, 0f)]);
-        Assert.True(player.IsPlaying(0), "a pending play counts as playing");
-        player.Perform(AudioCommand.SetVolume(0, 0.25f));            // later steps keep changing the pending play
-        player.Perform(AudioCommand.SetPan(0, -1f));
-        Assert.All(Render(mixer, 8), v => Assert.Equal(0f, v));
-        Assert.Equal(0, mixer.CommandsPosted);
-
-        release.Set();
-        Assert.True(SpinWait.SpinUntil(() =>
+        try
         {
-            player.Pump();
-            return mixer.CommandsPosted > 0;
-        }, 5000));
-        float[] o = Render(mixer, 4);
-        Assert.Equal([0.25f, 0f, 0.25f, 0f, 0.25f, 0f, 0.25f, 0f], o);
-        Assert.Equal(1, player.PlaysPosted);
-    }
+            player.Perform([AudioCommand.OpenFile(0, AudioBank.Bgm), AudioCommand.Play(0, AudioBank.Bgm, 33, true, 0f)]);
+            Assert.True(player.IsPlaying(0), "a pending play counts as playing");
+            player.Perform(AudioCommand.SetVolume(0, 0.25f));            // later steps keep changing the pending play
+            player.Perform(AudioCommand.SetPan(0, -1f));
+            Assert.All(Render(mixer, 8), v => Assert.Equal(0f, v));
+            Assert.Equal(0, mixer.CommandsPosted);
+
+            release.Set();
+            Assert.True(SpinWait.SpinUntil(() =>
+            {
+                player.Pump();
+                return mixer.CommandsPosted > 0;
+            }, PoolMs), "the decode never came back from the pool");
+            float[] o = Render(mixer, 4);
+            Assert.Equal([0.25f, 0f, 0.25f, 0f, 0.25f, 0f, 0.25f, 0f], o);
+            Assert.Equal(1, player.PlaysPosted);
+        }
+        finally
+        {
+            release.Set();                                           // a failed assertion leaves no decode blocked on the pool
+        }
+    });
 
     [Fact]
     public void AStopWhileTheClipIsStillDecodingCancelsThePlay()

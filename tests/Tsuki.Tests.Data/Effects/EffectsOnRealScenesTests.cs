@@ -143,6 +143,25 @@ public sealed class EffectsOnRealScenesTests(ITestOutputHelper output)
     }
 
     [GameDataFact]
+    public void TheGlowsTheProloguesCutInWindowsHoldAreDrawnHeld()
+    {
+        // issue #14: 00_00 adds IMG2230 (a glow whose colour goes on under its transparent rim) in mode 1 inside two cut-in windows; drawn held, the add is weighted
+        // by the picture alpha, so the colour under the rim no longer shows as a hard stepped disc
+        int glow = Source.Eboot.Pictures.Lookup("IMG2230");
+        Assert.True(glow >= 0, "IMG2230 is in the catalog");
+        (GameHost host, DisplayList list) = RunUntil(1, h => AnyLayer(h, r => r.Pic == glow && r.Mask >= 0 && (r.Blend & 0xFF) == 1 && r.Alpha > 0.5f
+            && h.Stage.Drawn[r.Mask].Used != 0 && h.Stage.Drawn[r.Mask].Alpha > 0.5f));
+        PictureLayout layout = Assert.IsType<PictureLayout>(new GamePictureLayouts(Source).Get(glow, host.Stage.Language));
+        HashSet<(int, int)> files = [.. layout.Files.Select(f => (f.Archive, f.Entry))];
+        DrawCmd[] cmds = list.Commands.ToArray();
+        DrawCmd[] quads = [.. cmds.Where(c => c.Kind == DrawKind.TexturedQuad && c.Target == 0 && c.Texture.Kind == TextureKind.PictureTile && files.Contains((c.Texture.A, c.Texture.B)))];
+        Assert.NotEmpty(quads);
+        Assert.All(quads, c => Assert.Equal((1, StageRuntime.MaskTarget, true), (c.EffectWord & 0xFF, c.Fx.Mask, c.Fx.Held)));
+        Assert.All(cmds.Where(c => c.Fx.Held), c => Assert.Equal(StageRuntime.MaskTarget, c.Fx.Mask));
+        output.WriteLine($"script 1: {quads.Length} IMG2230 quads held, {cmds.Count(c => c.Fx.Held)} held quads in all, {host.Stage.DrawnLayers.Count} layers");
+    }
+
+    [GameDataFact]
     public void AGradedLayerCarriesAGradeKeyThatResolvesToAnStecMode()
     {
         (_, DisplayList list) = RunUntil(1, h => AnyLayer(h, r => r.GradeKey != 0 && r.Alpha > 0.5f));

@@ -72,6 +72,11 @@ public enum QuadPass : byte
 /// <param name="B1">Pass parameter 5.</param>
 /// <param name="B2">Pass parameter 6.</param>
 /// <param name="B3">Pass parameter 7.</param>
+/// <param name="Held">
+/// True for a quad of a layer held by a window layer (STCH mask; issue #14): the blend shaders whose colour ignores the picture's alpha (modes 1, 4, 6, 8, 10, and 5, 7, 9
+/// without the <c>_STBR</c> flag) lay their result over the backdrop by that alpha, <c>rgb * a + d * (1 - a)</c>, as the PS4's masked-layer pass (effects 27..51 through the
+/// mask in the target alpha, compositing.md 5.1) and knife's <c>ps_mix</c> do. Every other mode, and every quad without it, is drawn as before.
+/// </param>
 public readonly record struct QuadFx(
     QuadPass Pass = QuadPass.None,
     byte Mask = 0,
@@ -83,13 +88,14 @@ public readonly record struct QuadFx(
     float B0 = 0f,
     float B1 = 0f,
     float B2 = 0f,
-    float B3 = 0f)
+    float B3 = 0f,
+    bool Held = false)
 {
     /// <summary>The rule-mask shader with the given transition parameters.</summary>
     public static QuadFx ForRule(float lo, float hi, float invert, byte mask = 0) => new(QuadPass.Rule, mask, false, lo, hi, invert);
 
-    /// <summary>A quad multiplied by the alpha of render target <paramref name="target"/>.</summary>
-    public static QuadFx Masked(byte target) => new(Mask: target);
+    /// <summary>A quad multiplied by the alpha of render target <paramref name="target"/>; <paramref name="held"/> sets <see cref="Held"/>.</summary>
+    public static QuadFx Masked(byte target, bool held = false) => new(Mask: target, Held: held);
 }
 
 /// <summary>What a <see cref="TextureRef"/> points at.</summary>

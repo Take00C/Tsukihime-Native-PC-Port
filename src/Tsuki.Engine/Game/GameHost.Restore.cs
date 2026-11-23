@@ -340,7 +340,6 @@ public sealed partial class GameHost
             ScaleY = f32 > 0 ? f32 / 24.0 : 1.0,
             Index = f823,
             Window = WindowIndex(),
-            DimLimit = (F(870 + Math.Clamp(f823, 0, 11)) + 128) * 1.2f,
         };
         _page.Add(msg);
         _current = msg;

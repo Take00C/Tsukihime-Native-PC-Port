@@ -181,7 +181,7 @@ Take these in **both ja and en** unless noted: full-screen 1080p PNG, no zoom.
 
 | id | P | where | what to capture and look for | ref |
 |---|---|---|---|---|
-| T04 | P1 | `00_00`, 1 / 1, the page whose 4th message is msg 7 (`$000114`) | (a) Right after the 4th message has fully appeared. (b) The same page after 30 s without input. Look for: **previous-message dimming** (older messages fade to about 0.39 alpha, or not at all); the **line pitch** (78 px from the engine constants vs 81 px in the prologue movie); glyph x positions; drop shadow and outline | textbox 5.8, 6.3, 12 #1, #7; ARCHITECTURE 11 #2 |
+| T04 | P1 | `00_00`, 1 / 1, the page whose 4th message is msg 7 (`$000114`) | (a) Right after the 4th message has fully appeared. (b) The same page after 30 s without input. Look for: **previous-message dimming** (the eboot: older messages reach about 0.39 alpha after text speed x 1.2 frames, 42 unread, 18 read; see the note below); the **line pitch** (PS4 eboot 81.55 px; the Switch overseas build 78.4 px); glyph x positions; drop shadow and outline | textbox 5.8, 6.3, 12 #1, #7; ARCHITECTURE 11 #2 |
 | T05 | P1 | `01_00_ARC01_10`, 3 / 4, msg 4 (`$002565`) | The same as T04 with the window picture hidden (F1104 = 1): text directly on the scene | textbox 7, 10.1 |
 | T10 | P1 | `01_00_ARC01_1`, 3 / 3, the end of the script (first story choice) | The choice menu with each option highlighted, in ja and en. The glyph height on the 640 x 344.7 choice canvas is open | system_flow 5.3, 5.6 |
 | T01 | P2 | `03_00_ARC03_5B`, 7 / 68, msg 19 (`$004478`; text ids 4478..4620, 13 runs) | **The `@g` style.** What glyph flag bit 2 looks like (colour, slant, shake?) | text 6.2, 9 #1 |
@@ -195,6 +195,22 @@ Take these in **both ja and en** unless noted: full-screen 1080p PNG, no zoom.
 | T09 | P2 | `05_00_ARC05_3_1`, 11 / 122, msg 18 (`$009328`); `09_01_CIEL09_6`, 21 / 312, msg 94 (`$023613`) | Video of the reveal: with `@t`, both parts appear at the same time | text 6.2 |
 | T06 | P3 | `QA_01` (extras), from msg 0 | Speech bubbles (window 5): the bubble position and the text inside it. They occur only in the extras | textbox 7 |
 | T11 | P1 | any read page, with the config option for the colour of read text on | The same page unread and read again: the read-text colour | textbox 12 #2; adv_state 9 |
+
+**T04 and the owner's video frames (K52, 2026-11-22).** Two frames of a playthrough video labelled PS4, from `00_00` (one
+message dimmed while the next one types), probably of the Switch overseas build. What they tell T04:
+
+- Dimming: judging by how far the next line has typed, the earlier one is at the dimmed level about 54 frames after the page
+  fades back in. That fits the eboot's limit of text speed x 1.2 frames (textbox 5.8) and rules out the port's old 153.6. The
+  dimmed level (about 0.39) and the window darkening (0.62 of the backdrop) match the port. The time on a PS4 is still unseen.
+- Line pitch: not answered. The frames' text is the Switch overseas build's layout (knife's model to within 0.5 px, kerned),
+  not the PS4 eboot's, so they say nothing about 81.55 px or the (1, 1.3) stretch.
+
+To tell a PS4 frame of that page from a Switch one, use signs that do not depend on what T04 is to confirm: on a PS4 a 'Y'
+followed by 'o' is evenly spaced (the eboot imports no font library; Switch: kerned), the dimmed message takes 3 lines (the
+0.74 scale and width 574 were checked under emulation; Switch: 2), and button prompts elsewhere in the same video (a menu, the
+save screen, the backlog) are PlayStation ones. Expected from the eboot, to be confirmed by such a capture: lines 81.5 px apart, the first baseline at
+about 153 px and a cap height of about 35 px (Switch: 78.4, 178 and 29). Still wanted: a Share-button PNG from a PS4
+(English, default settings; it settles the platform by itself) of that page or of T04's.
 
 ---
 

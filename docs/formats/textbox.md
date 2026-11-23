@@ -454,10 +454,23 @@ before each message and adds `_WKAD(C847,1)` after a message to leave an empty l
 the next one (3,075 uses) [D]. Previous messages are re-laid out from the history ring (record
 +0x38FE, expanded again) into blocks 0x4F+j, with sx/sy from their saved C824/C835.
 
-**Dimming of previous messages** [E; not seen in the movie]: alpha =
-`1 - (255 - t)/255 * timer/limit`, with t = 100 (full-screen) or 255 (bubbles, F1111 >= 3),
-`limit = (C870 + 128) * 1.2` frames. The timer C859 advances by 0xD47C0() per frame while T == 1.
-At the limit it becomes -1, giving alpha t/255 = 0.39. Config +0xA4 == 1 makes it -1 at once.
+**Dimming of previous messages** [E; a playthrough frame agrees, likely Switch: K52]: alpha =
+`1 - (255 - t)/255 * timer/limit`, with t = 100 (full-screen) or 255 (bubbles, F1111 >= 3).
+The words are indexed by the page position j (0-based; F823 - 1 of the message), not by F823:
+timer F[859 + j], `limit = (F[870 + j] + 128) * 1.2` frames (VA 0x55C37). The page loop runs only
+with F822 == 1 and F1103 == 0, and every frame it stores, for j = min(F823, 11) - 2 (the message
+before the current one), `F[870 + j] = text speed - 128` (VA 0x55C00..0x55C2E; config +0x20 unread
+or +0x22 read, as 0x781AB0 says for the current message). So the limit is text speed x 1.2:
+42 frames unread, 18 read at the boot speeds. Older positions keep their last value; F870..F880
+are in the history record's s8 list, so saves carry them. The timer advances by 0xD47C0() per
+frame only while F1103 == 0, T == 1.0 and timer >= 0 (VA 0x55F8A), and becomes -1 once it is
+above the limit (VA 0x55FE2), giving alpha t/255 = 0.39. Config +0xA4 == 1 makes it -1 at once.
+A click that completes a reveal sets F823 - 1 timers from F859 to -1 (VA 0xA27FC..0xA2830,
+wait_model.md 5.2): the earlier messages only, so the message it completed still dims over its
+limit once the next one starts.
+A message whose logged text ends in `@k` takes the timer and limit of the next message that does
+not; if that run reaches the current message, it is drawn at alpha 1 (VA 0x55D01..0x55D50,
+0x55E86..0x55F52; wait_model.md 4.4).
 
 ---
 
@@ -779,8 +792,13 @@ CLI: `python -m tsuki.textbox layout <lang> <id>.. [--text T --window N --glyphs
 4. `_FCSP` / `_FCLN` bodies (VA 0xB79C0 / 0xB7900): their effect on the window variables.
 5. Producers of blocks slot+6 / slot+8 (bits 1, 2 of VA 0x16541D8) and flag 0x80 (F1102).
 6. C<n> = F[n + F823]: inferred from the HUD; the variable dispatcher VA 0x987C5 was not read.
-7. Previous-message dimming (5.8) is in the code but not visible in the movie. A timer
-   condition is not understood.
+7. Previous-message dimming (5.8) is not visible in the movie. Answered from the HUD code: the
+   limit is text speed x 1.2 frames. A frame of a playthrough video of the prologue agrees (the
+   line above is grey while the next one is still typing); its text layout is the Switch overseas
+   build's, not the PS4's (K52). That build's code (knife) has the same 1.2 x text speed factor
+   but takes the earlier message's own read state, where the eboot takes the current message's
+   (0x781AB0, VA 0x55C14): a read line above an unread one dims over a 42-frame limit in the eboot
+   and the port (`PageDimmingTests`), over 18 in knife.
 8. F822 == 0 window path (slots 5 / 13, "window design").
 
 ---

@@ -238,6 +238,66 @@ public sealed class PassTests
         Assert.Contains(nearest[mid], new byte[] { 0, 255 });
     }
 
+    // issue #14: a glow like IMG2230, one colour all over, whose alpha falls to 0 while the colour goes on: texel 0 opaque, texel 1 half transparent, texels 2 and 3 transparent
+    private static readonly byte[] Glow = [40, 140, 220, 255, 40, 140, 220, 128, 40, 140, 220, 0, 40, 140, 220, 0];
+
+    private static readonly (int R, int G, int B) Backdrop = (90, 110, 130);
+
+    /// <summary>The frame after the glow is drawn with <paramref name="word"/> over the backdrop through a full mask (target 1), held or not; nearest filtering, 16 px per texel.</summary>
+    private static byte[] DrawGlow(int word, bool held)
+    {
+        TextureRef pic = TextureRef.ForPictureTile(0, 3, 0);
+        using Rig rig = new() { Nearest = true };
+        rig.Cache.Upload(pic, 4, 1, Glow);
+        rig.Run(
+            Clear(0, (byte)Backdrop.R, (byte)Backdrop.G, (byte)Backdrop.B, 255),
+            Clear(1, 0, 0, 0, 255),
+            Quads.Textured(pic, 0, 0, Size, Size, 0, 0, 1, 1, Quads.White(), word) with { Fx = QuadFx.Masked(1, held) });
+        return rig.Compositor.Read(rig.Compositor.Frame);
+    }
+
+    private static (int R, int G, int B) At(byte[] frame, int x) => (frame[((20 * Size) + x) * 4], frame[(((20 * Size) + x) * 4) + 1], frame[(((20 * Size) + x) * 4) + 2]);
+
+    [Theory]
+    [InlineData(1)]         // add
+    [InlineData(4)]         // darken
+    [InlineData(5)]         // dodge
+    [InlineData(6)]         // lighten
+    [InlineData(7)]         // multiplicative
+    [InlineData(8)]         // opaque
+    [InlineData(9)]         // screen
+    [InlineData(10)]        // sub
+    [InlineData(0x10A)]     // sub with the _STBR flag: blending off, the colour still ignores the alpha
+    public void AHeldQuadLeavesTheBackdropWhereItsPictureIsTransparent(int word)
+    {
+        byte[] plain = DrawGlow(word, held: false);
+        byte[] held = DrawGlow(word, held: true);
+        Assert.NotEqual(Backdrop, At(plain, 40));                  // not held: the colour under alpha 0 lands on the frame (compositing.md 2.3), the hard disc of issue #14
+        Assert.Equal(Backdrop, At(held, 40));                      // held: alpha 0 leaves the backdrop alone
+        Assert.Equal(Backdrop, At(held, 56));
+        Assert.Equal(At(plain, 8), At(held, 8));                   // an opaque texel keeps its value exactly
+        (int R, int G, int B) full = At(plain, 24);                // the half-transparent texel: half way from the backdrop to the plain result
+        (int R, int G, int B) half = At(held, 24);
+        const double a = 128 / 255.0;
+        Assert.InRange(half.R, (int)(Backdrop.R + (a * (full.R - Backdrop.R))) - 2, (int)(Backdrop.R + (a * (full.R - Backdrop.R))) + 2);
+        Assert.InRange(half.G, (int)(Backdrop.G + (a * (full.G - Backdrop.G))) - 2, (int)(Backdrop.G + (a * (full.G - Backdrop.G))) + 2);
+        Assert.InRange(half.B, (int)(Backdrop.B + (a * (full.B - Backdrop.B))) - 2, (int)(Backdrop.B + (a * (full.B - Backdrop.B))) + 2);
+    }
+
+    [Theory]
+    [InlineData(0)]         // basic over: weighted by the alpha through the blend state
+    [InlineData(2)]         // addalpha: never held in the scripts, left as it is
+    [InlineData(0x105)]     // dodge, multiplicative and screen with the _STBR flag: k = alpha a already
+    [InlineData(0x107)]
+    [InlineData(0x109)]
+    [InlineData(11)]        // the PS family: weighted by the alpha through the blend state
+    [InlineData(15)]        // diff5 and dodge5 use alpha a
+    [InlineData(17)]
+    [InlineData(21)]
+    [InlineData(23)]
+    public void HeldChangesNothingInTheOtherModes(int word) =>
+        Assert.Equal(DrawGlow(word, held: false), DrawGlow(word, held: true));
+
     private static readonly TextureRef Rule = TextureRef.ForPictureTile(4, 99, 0);
 
     private static float Fract(float x) => x - MathF.Floor(x);

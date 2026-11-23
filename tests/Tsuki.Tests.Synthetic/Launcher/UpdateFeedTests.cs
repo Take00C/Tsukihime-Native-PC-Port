@@ -18,6 +18,7 @@ public sealed class UpdateFeedTests : IDisposable
     [InlineData("0.1.3", 0, 1, 3)]
     [InlineData(" V1.2.30 ", 1, 2, 30)]
     [InlineData("v10.0.0", 10, 0, 0)]
+    [InlineData("v0.1.10", 0, 1, 10)]
     public void PlainTagsAreReleases(string tag, int major, int minor, int patch)
     {
         Assert.True(ReleaseVersion.TryParseTag(tag, out ReleaseVersion v));
@@ -48,6 +49,8 @@ public sealed class UpdateFeedTests : IDisposable
     [InlineData("0.1.3-personal+cccace4", 0, 1, 3)]
     [InlineData("0.1.3-personal", 0, 1, 3)]
     [InlineData("1.0.0", 1, 0, 0)]
+    [InlineData("0.1.10+dd8d727", 0, 1, 10)]
+    [InlineData("0.1.10-personal+dd8d727", 0, 1, 10)]
     public void TheRunningVersionDropsTheCommitAndThePersonalLabel(string informational, int major, int minor, int patch)
     {
         Assert.True(ReleaseVersion.TryParseInformational(informational, out ReleaseVersion v));
@@ -65,6 +68,38 @@ public sealed class UpdateFeedTests : IDisposable
         Assert.Equal("v0.1.4", new ReleaseVersion(0, 1, 4).Tag);
         Assert.Equal("Tsukihime-v0.1.4-win-x64.zip", UpdateSource.ZipAssetName(new ReleaseVersion(0, 1, 4)));
         Assert.False(ReleaseVersion.TryParseInformational("garbage", out _));
+    }
+
+    /// <summary>
+    /// v0.1.10, the first two-digit patch: as text "v0.1.10" sorts before "v0.1.9" and starts with "v0.1.1", so a launcher that compared tags as strings would
+    /// never offer it to a v0.1.9 player. Both orders of the release list (GitHub lists the newest first; nothing may depend on it).
+    /// </summary>
+    [Fact]
+    public void TheFirstTwoDigitPatchIsNewerThanEveryOneDigitPatch()
+    {
+        Assert.True(string.CompareOrdinal("v0.1.10", "v0.1.9") < 0);                // the trap
+        Assert.Equal(
+            new ReleaseVersion[] { new(0, 1, 1), new(0, 1, 9), new(0, 1, 10), new(0, 1, 11), new(0, 2, 0) },
+            new ReleaseVersion[] { new(0, 1, 10), new(0, 2, 0), new(0, 1, 9), new(0, 1, 11), new(0, 1, 1) }.Order().ToArray());
+        Assert.True(new ReleaseVersion(0, 1, 10) > new ReleaseVersion(0, 1, 1));
+        Assert.Equal("v0.1.10", new ReleaseVersion(0, 1, 10).Tag);
+        Assert.Equal("Tsukihime-v0.1.10-win-x64.zip", UpdateSource.ZipAssetName(new ReleaseVersion(0, 1, 10)));
+
+        foreach (string[] tags in new[] { new[] { "v0.1.10", "v0.1.9" }, new[] { "v0.1.9", "v0.1.10" } })
+        {
+            IReadOnlyList<FeedEntry> entries = UpdateFeed.Parse(JsonSerializer.Serialize(tags.Select(t => Rel(t)).ToArray()));
+            Assert.All(entries, e => Assert.Null(e.Skipped));
+            foreach (ReleaseVersion running in new ReleaseVersion[] { new(0, 1, 9), new(0, 1, 3), new(0, 1, 1) })
+            {
+                ReleaseInfo? pick = UpdateFeed.Pick(entries, running);
+                Assert.NotNull(pick);
+                Assert.Equal(new ReleaseVersion(0, 1, 10), pick.Version);
+                Assert.Equal("Tsukihime-v0.1.10-win-x64.zip", pick.Zip.Name);
+            }
+
+            Assert.Null(UpdateFeed.Pick(entries, new ReleaseVersion(0, 1, 10)));   // v0.1.10 itself: nothing newer, and v0.1.9 is no update
+            Assert.Null(UpdateFeed.Pick(entries, new ReleaseVersion(0, 1, 11)));
+        }
     }
 
     private static object Asset(string name, long size = 1000, string state = "uploaded") =>

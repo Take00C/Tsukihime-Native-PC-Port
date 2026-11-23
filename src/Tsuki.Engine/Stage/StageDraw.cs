@@ -486,6 +486,7 @@ public sealed partial class StageRuntime
         HazeState? haze = EffectPasses && r.Stns == 0 ? Haze(l) : null;
         bool noisy = EffectPasses && r.Stns is >= 1 and <= 12;
         byte ownMask = rule is not null ? MaskTarget : maskedBy;
+        bool held = maskedBy != 0;      // drawn through its window's mask: the PS4's masked-layer pass weights the blend by the picture alpha (issue #14)
         SoftWindow? ownSoft = rule is null && maskedBy == 0 ? soft : null;
         if (ownSoft is not null)
         {
@@ -514,7 +515,7 @@ public sealed partial class StageRuntime
                     EffectWord = unchecked((short)word),
                     BlendState = (byte)EffectTables.BlendStateOf(word),
                     Clip = window,
-                    Fx = haze is { } h ? HazeFx(h, layout, file, t, ownMask) : (ownMask != 0 ? QuadFx.Masked(ownMask) : default),
+                    Fx = haze is { } h ? HazeFx(h, layout, file, t, ownMask) with { Held = held } : (ownMask != 0 ? QuadFx.Masked(ownMask, held) : default),
                 });
             }
         }
@@ -527,7 +528,7 @@ public sealed partial class StageRuntime
 
         if (noisy)
         {
-            DrawCmd grain = NoiseQuad(r, m, layout, rgba, word, window, ownMask != 0 ? QuadFx.Masked(ownMask) : default);
+            DrawCmd grain = NoiseQuad(r, m, layout, rgba, word, window, ownMask != 0 ? QuadFx.Masked(ownMask, held) : default);
             _quads.Clear();
             _quads.Add(grain);
         }

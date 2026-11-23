@@ -106,6 +106,45 @@ public sealed class StageGpuTests
     }
 
     [Fact]
+    public void AGlowHeldByAWindowInAddModeFadesWithItsAlphaInsteadOfShowingTheColourUnderIt()
+    {
+        // issue #14 (00_00: IMG2230, _STBR 1, held by a cut-in window): the glow's colour goes on under its transparent part, and the add mode ignores the
+        // picture alpha; held by a window, the layer is laid over the backdrop by that alpha (the PS4's masked-layer pass, knife ps_add), so the colour stays hidden
+        using GlContext ctx = GlContext.CreateHidden();
+        using var compositor = new GpuCompositor(ctx.Device.Gl, W, H);
+        using var cache = new TextureCache(ctx.Device.Gl);
+        var executor = new DisplayListExecutor(compositor, cache);
+        cache.Upload(Pic(0), 4, 4, Solid(4, 4, 0, 0, 0, 255));
+        cache.Upload(Pic(1), 4, 4, Solid(4, 4, 90, 110, 130, 255));                                          // WIN: an opaque panel
+        cache.Upload(Pic(2), 8, 4, Solid(8, 4, 40, 140, 220, 255, (x, _) => (byte)(x < 4 ? 255 : 0)));      // KID: opaque left half, transparent right half, one colour
+
+        byte[] Draw(bool heldByWindow)
+        {
+            StageRuntime rt = NewStage();
+            Run(rt, "_STCH(3,WIN,240,136,1000,255,50,,CC);");
+            Run(rt, heldByWindow ? "_STCH(4,KID,240,136,1000,255,60,,CC,,,3);" : "_STCH(4,KID,240,136,1000,255,60,,CC);");
+            Run(rt, "_STBR(4,1);");
+            Commit(rt);
+            var list = new DisplayList();
+            list.Reset(0);
+            rt.Draw(list);
+            list.Seal();
+            compositor.Clear(0, 0, 0, 0, 255);
+            executor.Execute(list);
+            return compositor.Read(compositor.Frame);
+        }
+
+        byte[] held = Draw(heldByWindow: true);
+        Assert.Equal((130, 250, 255), At(held, 400, 500));          // the opaque half adds its colour to the panel
+        Assert.Equal((90, 110, 130), At(held, 1500, 500));          // the transparent half leaves the panel as it is
+        Assert.Equal((90, 110, 130), At(held, 1900, 1000));
+
+        // a layer that no window holds keeps the single-pass add of the PS4 shader (#64 does not read the picture alpha; compositing.md 2.3)
+        byte[] plain = Draw(heldByWindow: false);
+        Assert.Equal((130, 250, 255), At(plain, 1500, 500));
+    }
+
+    [Fact]
     public void AnInsetWindowFadesTheLayerOutAtItsEdgesAndTheRidgeModeShrinksItsScissor()
     {
         using GlContext ctx = GlContext.CreateHidden();
