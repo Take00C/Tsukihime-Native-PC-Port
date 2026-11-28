@@ -714,7 +714,8 @@ Errata proved by the follow-up documents (not applied to script.md; each names i
   absent v = 0), not a "per-layer parameter". `_STZ4` a7 is a pivot flag (zoom in screen space
   after rotation); start values, time and easing drive only the live tween, the scene keeps the
   end values; `_STRT(l, r0, r1, ms, e, a5, a6)` likewise; `_STRR` sets an angle (+0xCB0 / +0x15C)
-  that no draw code reads. `_STPV`: anchor = `trunc(x*640/480*size class)`, `trunc(y*480/360*size
+  that turns a crop window's clip and ridge (0x4C720, 0x4DC60; layers.md 13 item 3). `_STPV`:
+  anchor = `trunc(x*640/480*size class)`, `trunc(y*480/360*size
   class)` plus the variant anchor difference; a3 sets the rotation. `_SOXY`: only a1 / a2 (x / 3
   and y * 448/1080 canvas units). `_STEC`: modes 0..81, colour stored only for mode 1. `_SNX2` /
   `_SNX3` = keyframe fields 24 / 25. `_STNS`: n >= 13 -> 0. `_STTR`: stores `(n-1) | m << 12`;
@@ -1178,6 +1179,6 @@ group -> config slot mapping (old P2 15: sound_runtime 8, 10).
 19. Build independence: every eboot address here is for app 01.01; a pattern-based locator would
     be needed to support other builds or patches (fonts.md 10.7).
 20. LV lip-sync data (placeholder only in this release).
-21. Features without effect on PS4: the `_STCH` a19 / `_STRR` / motion bit-34 angle (no draw
-    reader), motion flag bits 3 / 23 / 27 (never tested), the "system voice" option (no player;
-    se_nam section 0 never searched), the unused `_MSTP` / `_SEPN` / `_SEP3` / `_SEAC`, config +0x40.
+21. Features without effect on PS4: motion flag bits 3 / 23 / 27 (never tested), the "system voice"
+    option (no player; se_nam section 0 never searched), the unused `_MSTP` / `_SEPN` / `_SEP3` /
+    `_SEAC`, config +0x40.

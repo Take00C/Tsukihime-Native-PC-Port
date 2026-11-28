@@ -167,6 +167,16 @@ def motions():
 
 
 @needs_game
+def test_strr_sentinel(cat, names) -> None:
+    """_STRR(l, -99999) stores -32768, the follow-the-window angle (cmp 0xFFFE7961 at 0x845EB); -100001 is an ordinary angle and wraps to 7999."""
+    m = SceneModel(cat, names)
+    m.step("_STRR(3,-99999);")
+    assert m.s.get("angle", 3) == -32768
+    m.step("_STRR(3,-100001);")
+    assert m.s.get("angle", 3) == 7999
+
+
+@needs_game
 def test_scene_model_stch_and_commit(cat, names) -> None:
     m = SceneModel(cat, names)
     m.step("_STCH(7,img0597,100,50,800,200,518,,CC,,,,608,-219,1152,1512,120,3,,9000);")
@@ -349,6 +359,30 @@ def test_engine_crosscheck(cat, names) -> None:
     assert seen >= 2
     _motion_crosscheck(R, cat, names)
     _anchor_motion_crosscheck(R, cat)
+    _group_alpha_crosscheck(R)
+
+
+def _group_alpha_crosscheck(R) -> None:
+    """Issue #16 review: the window group pass 0x5A5E0 draws the window into its offscreen list at forced alpha 1 (in every case below), but the
+    group reaches the screen only through the destination alpha that the window's own last mask pass 0x51060(window, esi = 1) writes with effect 58
+    after the pop, at the window's alpha (the per-held-layer passes before it, inside the offscreen list, carry the held layer's alpha). With the
+    window at alpha 0, 0x51060 returns before drawing in every such pass (0x510FA..0x5112D), with or without a crop rectangle."""
+    window = 0xE8 + 3
+    for crop in (",100,50,600,400,15,2", ""):
+        for alpha, mask_alpha in ((0, None), (128, 128 / 255), (255, 1.0)):
+            R.reset()
+            for st in (f"_STCH(3,img0597,240,136,1000,{alpha},50,,CC,,,{crop});",
+                       "_STCH(4,SIE_S_07_00_N00,300,200,800,255,60,,CC,,,3);", "_FADS(1,0,0);"):
+                R.F.step(st)
+            R.F.update(1)
+            calls = R.F.draw()
+            assert any(c["slot"] == window and c["arg2"] & 0xFFFF != 58 for c in calls), (crop, alpha)      # the group pass ran
+            assert any(c["slot"] == 0xE8 + 4 for c in calls), (crop, alpha)                                  # with the held layer in it
+            masks = [c["colour"][0] for c in calls if c["slot"] == window and c["arg2"] & 0xFFFF == 58]
+            if mask_alpha is None:
+                assert masks == [], (crop, alpha)
+            else:
+                assert masks and masks[-1] == pytest.approx(mask_alpha, abs=1e-4), (crop, alpha, masks)
 
 
 def _anchor_motion_crosscheck(R, cat) -> None:

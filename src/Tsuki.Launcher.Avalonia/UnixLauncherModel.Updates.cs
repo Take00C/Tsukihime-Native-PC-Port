@@ -454,6 +454,7 @@ public sealed partial class UnixLauncherModel
     {
         Raise(nameof(UpdateButtonLabel), nameof(UpdateButtonEnabled), nameof(UpdateButtonAccent), nameof(UpdateButtonToolTip), nameof(UpdateStatus));
         PlayCommand.Raise();
+        PortableSavesCommand.Raise();
         UpdateButtonCommand.Raise();
         UpdateNowCommand.Raise();
         CancelUpdateCommand.Raise();

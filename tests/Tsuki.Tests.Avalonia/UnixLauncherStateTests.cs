@@ -123,6 +123,24 @@ public sealed class UnixLauncherStateTests : IDisposable
     }
 
     [Fact]
+    public async Task ThePortableSwitchIsDisabledDuringAnUpdate()
+    {
+        string install = LinuxRelease.Folder(_root, "install");
+        using var server = new FakeGitHub();
+        ServeRelease(server, LinuxRelease.Folder(_root, "release"));
+        var model = Model(install, server.Base, absolute: true, anyGameRunning: () => false);
+        model.RestartRequested = (_, _) => throw new InvalidOperationException("the test does not restart");
+        await model.CheckForUpdatesAsync(manual: true);
+        bool announced = false;
+        model.PortableSavesCommand.CanExecuteChanged += (_, _) => announced = true;
+        Task update = model.RunUpdateAsync();
+        Assert.True(model.UpdateBusy);
+        Assert.False(model.PortableSavesCommand.CanExecute(null));
+        Assert.True(announced, "the visible switch must be disabled while the update runs");
+        await update;
+    }
+
+    [Fact]
     public async Task CancelIsNotAFailure()
     {
         string install = LinuxRelease.Folder(_root, "install");
@@ -705,8 +723,9 @@ public sealed class UnixLauncherStateTests : IDisposable
     private static string[] Snapshot(string folder) => Directory.GetFiles(folder, "*", SearchOption.AllDirectories)
         .Order(StringComparer.Ordinal).Select(file => Path.GetRelativePath(folder, file) + ":" + ReleaseSums.Sha256Hex(file)).ToArray();
 
-    private UnixLauncherModel Model(string install, Uri api, bool absolute = false) => new(_paths, absolute ? install : Path.Combine(_root, install), Path.Combine(_root, "no-game"))
+    private UnixLauncherModel Model(string install, Uri api, bool absolute = false, Func<bool>? anyGameRunning = null) => new(_paths, absolute ? install : Path.Combine(_root, install), Path.Combine(_root, "no-game"))
     {
+        AnyGameRunning = anyGameRunning ?? GameLauncher.IsGameRunning,
         UpdateSource = UpdateSource.ForLoopback(api),
         AssetName = version => PlatformUpdate.AssetNameFor(version, "linux", Architecture.X64),
         CurrentVersionOverride = new ReleaseVersion(0, 0, 1),

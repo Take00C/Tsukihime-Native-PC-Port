@@ -128,6 +128,17 @@ public sealed class StageCommandTests
     }
 
     [Fact]
+    public void StrrMinus99999StoresTheFollowTheWindowAngleAndMinus100001Wraps()
+    {
+        // 0x845EB compares -99999 (0xFFFE7961) and stores -32768; every other value is wrapped, -100001 to 7999
+        StageRuntime rt = Stage();
+        StageKit.Run(rt, "_STRR(3,-99999);");
+        Assert.Equal(-32768, rt.Scene.GetAngle(3));
+        StageKit.Run(rt, "_STRR(3,-100001);");
+        Assert.Equal(7999, rt.Scene.GetAngle(3));
+    }
+
+    [Fact]
     public void StccClearsTheSceneAndTheDrawnRecordsMotionAngleCropAndSttr()
     {
         StageRuntime rt = Stage();

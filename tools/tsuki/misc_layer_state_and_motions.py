@@ -561,7 +561,7 @@ class SceneModel:
         v = 0
         if a.has(1):
             r = a.expr(1)
-            v = -32768 if r == -100001 else wrap_angle(r)
+            v = -32768 if r == -99999 else wrap_angle(r)          # 0x845EB: cmp eax, 0xFFFE7961
         self.s.set("angle", l, v)
         return []
 

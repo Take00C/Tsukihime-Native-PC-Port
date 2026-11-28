@@ -299,7 +299,7 @@ public sealed class LayerRecord
     /// <summary>+0x13C: STCH a17.</summary>
     public byte A17;
 
-    /// <summary>+0x15C: STCH a19 / STRR angle (no reader in the draw path).</summary>
+    /// <summary>+0x15C: STCH a19 / STRR angle: a crop window turns its clip and ridge by it (0x4C720, 0x4DC60).</summary>
     public short Angle;
 
     /// <summary>+0x160: motion id.</summary>

@@ -43,7 +43,7 @@ Local player-document links must resolve inside every archive, so each carries t
 unbundled references use full repository URLs. Do not move essential offline instructions to such a link.
 Check both copies of the setup guide when changing player instructions.
 
-Current source versions are **0.1.10** for the player and both launchers. Recent self-contained evaluation resolved
+Current source versions are **0.1.11** for the player and both launchers. Recent self-contained evaluation resolved
 **.NET 10.0.13** and **SDL 3.5.0**; check the actual resolved versions for each release.
 Check [Releases](https://github.com/Take00C/Tsukihime-Native-PC-Port/releases) for published downloads.
 Source builds and fork releases may differ from the published packages.

@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using Tsuki.Launcher.Core;
 
 namespace Tsuki.Tests.Synthetic.Launcher;
@@ -48,6 +49,19 @@ public sealed class UpdateInstallerTests : IDisposable
     private string Read(params string[] parts) => File.ReadAllText(Path.Combine([_app, .. parts]));
 
     private string[] OldFiles() => Directory.GetFiles(_app, "*.old", SearchOption.AllDirectories);
+
+    private string[] PortableSnapshot() => Directory.EnumerateFiles(Path.Combine(_app, "save"), "*", SearchOption.AllDirectories)
+        .Select(f => Path.GetRelativePath(Path.Combine(_app, "save"), f) + "|" + Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(f))))
+        .Order(StringComparer.Ordinal)
+        .ToArray();
+
+    private string[] MakePortableProfile()
+    {
+        Directory.CreateDirectory(Path.Combine(_app, "save", "nested"));
+        File.WriteAllBytes(Path.Combine(_app, "save", "save.dat"), [.. Enumerable.Range(0, 256).Select(x => (byte)x)]);
+        File.WriteAllText(Path.Combine(_app, "save", "nested", "note.txt"), "not an update file");
+        return PortableSnapshot();
+    }
 
     public static bool IsWindows => OperatingSystem.IsWindows();
 
@@ -346,6 +360,57 @@ public sealed class UpdateInstallerTests : IDisposable
         Assert.Equal(0, UpdateInstaller.Cleanup(_app, launcherFileName));
         Assert.Equal(counted ? "unix launcher new" : "unix launcher old", File.ReadAllText(launcher));
         Assert.Empty(OldFiles());
+    }
+
+    [Fact]
+    public void AnUpdateAndItsRollbackLeavePortableSavesByteForByteUnchanged()
+    {
+        string[] before = MakePortableProfile();
+        StagedRelease release = Stage();
+        ApplyResult applied = UpdateInstaller.Apply(_app, release, _staging.Journal);
+        Assert.True(applied.Applied, applied.Problem);
+        Assert.Equal(before, PortableSnapshot());
+        Assert.True(UpdateInstaller.Rollback(_staging.Journal));
+        Assert.Equal(before, PortableSnapshot());
+        Assert.Equal(0, UpdateInstaller.Cleanup(_app));
+        Assert.Equal(before, PortableSnapshot());
+    }
+
+    [Fact]
+    public void AReleaseCannotWriteIntoPortableSavesEvenWhenItsApplyRollsBack()
+    {
+        string[] before = MakePortableProfile();
+        StagedRelease staged = Stage();
+        string relative = Path.Combine("save", "from-update.txt");
+        Directory.CreateDirectory(Path.GetDirectoryName(Path.Combine(staged.Root, relative))!);
+        File.WriteAllText(Path.Combine(staged.Root, relative), "not a save");
+        ApplyResult result = UpdateInstaller.Apply(_app, staged with { Files = [.. staged.Files, relative] }, _staging.Journal);
+        Assert.False(result.Applied);
+        Assert.True(result.RolledBack);
+        Assert.Contains("portable save", result.Problem, StringComparison.Ordinal);
+        Assert.Equal(before, PortableSnapshot());
+        Assert.Equal(0, UpdateInstaller.Cleanup(_app));
+        Assert.Equal(before, PortableSnapshot());
+    }
+
+    [Fact]
+    public void ARollbackJournalCannotDeletePortableSaves()
+    {
+        string[] before = MakePortableProfile();
+        Directory.CreateDirectory(_staging.Root);
+        string save = Path.Combine(_app, "save", "save.dat");
+        File.WriteAllLines(_staging.Journal, ["new\t" + save, "done"]);
+        Assert.True(UpdateInstaller.Rollback(_staging.Journal));
+        Assert.Equal(before, PortableSnapshot());
+        Assert.Equal(0, UpdateInstaller.Cleanup(_app));
+        Assert.Equal(before, PortableSnapshot());
+
+        File.WriteAllText(save + ".old", "old portable data");
+        Directory.CreateDirectory(_staging.Root);
+        File.WriteAllLines(_staging.Journal, ["old\t" + save, "done"]);
+        before = PortableSnapshot();
+        Assert.Equal(0, UpdateInstaller.Cleanup(_app));
+        Assert.Equal(before, PortableSnapshot());
     }
 
     [Fact]

@@ -105,6 +105,106 @@ public sealed class StageGpuTests
         Assert.Equal((255, 0, 0), At(compositor.Read(compositor.Frame), 1500, 500));
     }
 
+    /// <summary>A red KID held by a crop window (WIN: opaque white left half) at each window alpha, over black.</summary>
+    private static byte[][] HeldThroughACropWindow(params int[] windowAlphas)
+    {
+        using GlContext ctx = GlContext.CreateHidden();
+        using var compositor = new GpuCompositor(ctx.Device.Gl, W, H);
+        using var cache = new TextureCache(ctx.Device.Gl);
+        var executor = new DisplayListExecutor(compositor, cache);
+        cache.Upload(Pic(0), 4, 4, Solid(4, 4, 0, 0, 0, 255));
+        cache.Upload(Pic(1), 8, 4, Solid(8, 4, 255, 255, 255, 255, (x, _) => (byte)(x < 4 ? 255 : 0)));
+        cache.Upload(Pic(2), 4, 4, Solid(4, 4, 255, 0, 0, 255));
+
+        var frames = new byte[windowAlphas.Length][];
+        for (int i = 0; i < windowAlphas.Length; i++)
+        {
+            StageRuntime rt = NewStage();
+            Run(rt, $"_STCH(3,WIN,240,136,1000,{windowAlphas[i]},50,,CC,,,,0,0,1920,1080);");
+            Run(rt, "_STCH(4,KID,240,136,1000,255,60,,CC,,,3);");
+            Commit(rt);
+            var list = new DisplayList();
+            list.Reset(i);
+            rt.Draw(list);
+            list.Seal();
+            compositor.Clear(0, 0, 0, 0, 255);
+            executor.Execute(list);
+            frames[i] = compositor.Read(compositor.Frame);
+        }
+
+        return frames;
+    }
+
+    [Fact]
+    public void ATurnedCropWindowCutsItsPictureAndTheLayersItHoldsAlongTheSlantedEdge()
+    {
+        // scene 300's window 33 without its inset: crop (580, -181, 1006, 1473), angle 1153 (+11.525 deg) turned about the crop centre (1083, 555.5) by the
+        // PS4's 0x4C720 / 0xDEC90. The left edge crosses y 100 / 400 at x 662.5 / 601.4, the right edge crosses y 100 / 800 at 1689.2 / 1546.5; a straight
+        // scissor would cut at 580 and 1586. The held layer sits at the crop's origin (x 580.., y ..899), so every point lies on it
+        using GlContext ctx = GlContext.CreateHidden();
+        using var compositor = new GpuCompositor(ctx.Device.Gl, W, H);
+        using var cache = new TextureCache(ctx.Device.Gl);
+        var executor = new DisplayListExecutor(compositor, cache);
+        cache.Upload(Pic(0), 4, 4, Solid(4, 4, 0, 0, 0, 255));
+        cache.Upload(Pic(1), 4, 4, Solid(4, 4, 255, 255, 255, 255));                                         // WIN: opaque white
+        cache.Upload(Pic(2), 4, 4, Solid(4, 4, 255, 0, 0, 255));                                             // KID: solid red
+
+        byte[] Draw(bool holds)
+        {
+            StageRuntime rt = NewStage();
+            Run(rt, "_STCH(3,WIN,240,136,1000,255,50,,CC,,,,580,-181,1006,1473,,,,1153);");
+            if (holds)
+            {
+                Run(rt, "_STCH(4,KID,240,136,1000,255,60,,CC,,,3);");
+            }
+
+            Commit(rt);
+            var list = new DisplayList();
+            list.Reset(holds ? 1 : 0);
+            rt.Draw(list);
+            list.Seal();
+            compositor.Clear(0, 0, 0, 0, 255);
+            executor.Execute(list);
+            return compositor.Read(compositor.Frame);
+        }
+
+        foreach ((bool holds, (int, int, int) inside) in new[] { (false, (255, 255, 255)), (true, (255, 0, 0)) })
+        {
+            byte[] f = Draw(holds);
+            foreach ((int x, int y) in new[] { (667, 100), (606, 400), (1685, 100), (1542, 800) })
+            {
+                Assert.True(At(f, x, y) == inside, $"holds {holds}: ({x},{y}) is {At(f, x, y)}, inside the turned crop");
+            }
+
+            foreach ((int x, int y) in new[] { (658, 100), (597, 400), (1694, 100), (1551, 800) })
+            {
+                Assert.True(At(f, x, y) == (0, 0, 0), $"holds {holds}: ({x},{y}) is {At(f, x, y)}, outside the turned crop");
+            }
+        }
+    }
+
+    [Fact]
+    public void AnInvisibleCropWindowHidesTheLayersItHolds()
+    {
+        // issue #16 review: the PS4 lays a window's group over the screen through the destination alpha that only the window's own mask pass writes, at the
+        // window's alpha (0x5A5E0 -> 0x51060 with esi = 1, effect 58); at alpha 0 that pass draws nothing, so neither the window nor what it holds shows
+        byte[] frame = HeldThroughACropWindow(0)[0];
+        Assert.Equal((0, 0, 0), At(frame, 400, 500));
+        Assert.Equal((0, 0, 0), At(frame, 1500, 500));
+    }
+
+    [Fact]
+    public void ACropWindowShowsTheLayersItHoldsByItsAlpha()
+    {
+        // the held layer's weight follows the window's alpha down to 0 (R - G: the red of the layer over the window's own white)
+        byte[][] f = HeldThroughACropWindow(255, 128, 8);
+        (int r, int g, int b) = At(f[0], 400, 500);
+        Assert.True(r >= 253 && g <= 2 && b <= 2, $"alpha 255: ({r},{g},{b})");
+        Assert.InRange(At(f[1], 400, 500).R - At(f[1], 400, 500).G, 120, 136);
+        Assert.InRange(At(f[2], 400, 500).R - At(f[2], 400, 500).G, 4, 12);
+        Assert.All(f, frame => Assert.Equal((0, 0, 0), At(frame, 1500, 500)));        // outside the window's picture: nothing
+    }
+
     [Fact]
     public void AGlowHeldByAWindowInAddModeFadesWithItsAlphaInsteadOfShowingTheColourUnderIt()
     {

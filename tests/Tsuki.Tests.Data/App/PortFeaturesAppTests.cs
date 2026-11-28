@@ -776,7 +776,10 @@ public sealed class PortFeaturesAppTests : IDisposable
         using (process)
         {
             // a ClientWebSocket whose connect failed is aborted and cannot connect again (the retry would throw ObjectDisposedException), so every attempt takes a fresh
-            // one: the game needs a moment to reach the step that starts the server, longer on a busy machine (package K22)
+            // one: the game needs a moment to reach the step that starts the server, longer on a busy machine (package K22). The connect is waited on synchronously:
+            // in a full Data run the thread pool was starved and one 2 s attempt returned after 15 s, past the game's exit (2026-11-27), so the pool is sized first
+            ThreadPool.GetMinThreads(out int workers, out int ports);
+            ThreadPool.SetMinThreads(Math.Max(workers, 64), ports);
             System.Net.WebSockets.ClientWebSocket? connectedClient = null;
             for (int attempt = 0; attempt < 300 && connectedClient is null && !process.HasExited; attempt++)
             {

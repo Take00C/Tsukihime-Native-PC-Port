@@ -90,6 +90,9 @@ public sealed partial class LauncherModel : INotifyPropertyChanged
     private string? _heroArtFolder;
     private string? _gameIconPath;
     private readonly ControllerList _controllers;
+    private bool _portableBusy;
+    private bool? _portableOverride;
+    private bool _profileRestartRequired;
 
     /// <summary>Creates the model; call <see cref="RefreshAsync"/> to fill it.</summary>
     /// <param name="paths">The profile folder.</param>
@@ -114,7 +117,7 @@ public sealed partial class LauncherModel : INotifyPropertyChanged
             new(LauncherPage.Help, "Help & about", ""),
         ];
         FixCommand = new RelayCommand(p => { if (p is LauncherPage page) { Page = page; } });
-        PlayCommand = new RelayCommand(_ => Play(), _ => !GameRunning && !UpdateBusy);
+        PlayCommand = new RelayCommand(_ => Play(), _ => !GameRunning && !UpdateBusy && !_portableBusy);
         BrowseCommand = new RelayCommand(_ => BrowseRequested?.Invoke());
         OpenGameFolderCommand = new RelayCommand(_ => OpenPath(Folder.Path), _ => Folder.State is not (FolderState.NotSet or FolderState.Missing));
         RecheckCommand = new RelayCommand(async _ => await RefreshAsync());
@@ -122,9 +125,10 @@ public sealed partial class LauncherModel : INotifyPropertyChanged
         OpenGuideCommand = new RelayCommand(_ => OpenGuide());
         OpenSavesFolderCommand = new RelayCommand(_ => OpenPath(EnsureDataDirectory()));
         OpenBackupsFolderCommand = new RelayCommand(_ => OpenPath(Directory.Exists(_paths.BackupsDirectory) ? _paths.BackupsDirectory : EnsureDataDirectory()));
-        BackupNowCommand = new RelayCommand(_ => BackupNow(), _ => !GameRunning);
-        ImportCommand = new RelayCommand(_ => ImportRequested?.Invoke(), _ => !GameRunning);
-        ImportFoundCommand = new RelayCommand(_ => AskImport(_shadImage!), _ => !GameRunning && _shadImage is not null);
+        BackupNowCommand = new RelayCommand(_ => BackupNow(), _ => !GameRunning && !_portableBusy);
+        PortableSavesCommand = new RelayCommand(async _ => await SetPortableSavesAsync(!PortableSaves), _ => !_portableBusy && !_profileRestartRequired && !GameRunning && !UpdateBusy);
+        ImportCommand = new RelayCommand(_ => ImportRequested?.Invoke(), _ => !GameRunning && !_portableBusy);
+        ImportFoundCommand = new RelayCommand(_ => AskImport(_shadImage!), _ => !GameRunning && !_portableBusy && _shadImage is not null);
         ConfirmYesCommand = new RelayCommand(_ => AnswerConfirm(true));
         ConfirmNoCommand = new RelayCommand(_ => AnswerConfirm(false));
         ApplyFolderCommand = new RelayCommand(_ => ApplyFolderText());
@@ -417,6 +421,15 @@ public sealed partial class LauncherModel : INotifyPropertyChanged
     /// <summary>The save folder, shown in short.</summary>
     public string DataDirectory => _paths.DataDirectory;
 
+    /// <summary>Whether the next launcher start uses the portable folder.</summary>
+    public bool PortableSaves => _portableOverride ?? PortableProfile.InUse(_paths, _launcherDirectory);
+
+    /// <summary>The portable switch is available on Windows.</summary>
+    public bool PortableSavesAvailable => true;
+
+    /// <summary>Copies the current profile in the requested direction and verifies it.</summary>
+    public ICommand PortableSavesCommand { get; }
+
     /// <summary>The backups, newest first.</summary>
     public ObservableCollection<BackupRow> Backups { get; } = [];
 
@@ -572,7 +585,7 @@ public sealed partial class LauncherModel : INotifyPropertyChanged
         _missingFfmpeg = _appExe is null ? [] : GameLauncher.MissingFfmpegDlls(Path.GetDirectoryName(_appExe)!);
         if (_folderText.Length == 0 || remembered is not null)
         {
-            _folderText = folder.Path ?? string.Empty;
+            _folderText = remembered ?? folder.Path ?? string.Empty;
         }
 
         _folder = folder;
@@ -657,14 +670,37 @@ public sealed partial class LauncherModel : INotifyPropertyChanged
         Backups.Clear();
         foreach (BackupInfo b in SaveTools.List(_paths))
         {
-            Backups.Add(new BackupRow(b, new RelayCommand(_ => AskRestore(b), _ => !GameRunning)));
+            Backups.Add(new BackupRow(b, new RelayCommand(_ => AskRestore(b), _ => !GameRunning && !_portableBusy)));
         }
 
         Raise(nameof(NoBackups));
     }
 
+    /// <summary>True (and a toast) while a portable switch copies the profile, or after one until the launcher reopens: nothing else may change a profile then.</summary>
+    private bool ProfileChangeRefused()
+    {
+        if (_portableBusy)
+        {
+            ShowToast(LauncherTexts.PortableCopyRunning);
+            return true;
+        }
+
+        if (!_profileRestartRequired)
+        {
+            return false;
+        }
+
+        ShowToast("Close and reopen the launcher before using the profile you just copied.");
+        return true;
+    }
+
     private void UpdateSettings(Func<AppSettingsData, AppSettingsData> change)
     {
+        if (ProfileChangeRefused())
+        {
+            return;
+        }
+
         EnsureDataDirectory();
         if (!AppSettings.Update(_paths.SettingsFile, change))
         {
@@ -760,9 +796,14 @@ public sealed partial class LauncherModel : INotifyPropertyChanged
     // -- game folder --------------------------------------------------------------------------------------------------
 
     /// <summary>Takes the folder the user chose or typed: checks it and, when it holds the game, remembers it for the game and the launcher.</summary>
-    public async Task SetGameFolderAsync(string path)
+    public async Task SetGameFolderAsync(string path, bool picker = false)
     {
-        LauncherFolderChoice choice = await LauncherFolderChoice.ChooseAsync(_paths, path);
+        if (ProfileChangeRefused())
+        {
+            return;
+        }
+
+        LauncherFolderChoice choice = await LauncherFolderChoice.ChooseAsync(_paths, path, picker);
         _gameFolderOverride = null;           // the user chose: from now on the remembered folder is the one that counts, not the --game option of this launch
         _folderText = choice.DisplayPath;
         Raise(nameof(FolderText));
@@ -787,6 +828,11 @@ public sealed partial class LauncherModel : INotifyPropertyChanged
 
     private void Play()
     {
+        if (ProfileChangeRefused())
+        {
+            return;
+        }
+
         if (!CanPlay)
         {
             Page = LauncherPage.GameFiles;
@@ -826,6 +872,7 @@ public sealed partial class LauncherModel : INotifyPropertyChanged
         Raise(nameof(GameRunning));
         Raise(nameof(PlayLabel));
         (PlayCommand as RelayCommand)?.Raise();
+        ((RelayCommand)PortableSavesCommand).Raise();
         GameStarted?.Invoke();
     }
 
@@ -835,6 +882,7 @@ public sealed partial class LauncherModel : INotifyPropertyChanged
         Raise(nameof(GameRunning));
         Raise(nameof(PlayLabel));
         (PlayCommand as RelayCommand)?.Raise();
+        ((RelayCommand)PortableSavesCommand).Raise();
         try
         {
             await RefreshAsync();
@@ -854,8 +902,55 @@ public sealed partial class LauncherModel : INotifyPropertyChanged
 
     // -- saves --------------------------------------------------------------------------------------------------------
 
+    /// <summary>Tells PLAY, the saves buttons and the portable switch that the copy started or ended.</summary>
+    private void RaiseProfileCommands()
+    {
+        ((RelayCommand)PlayCommand).Raise();
+        ((RelayCommand)BackupNowCommand).Raise();
+        ((RelayCommand)ImportCommand).Raise();
+        ((RelayCommand)ImportFoundCommand).Raise();
+        ((RelayCommand)PortableSavesCommand).Raise();
+        foreach (BackupRow row in Backups)
+        {
+            (row.Restore as RelayCommand)?.Raise();
+        }
+    }
+
+    private async Task SetPortableSavesAsync(bool enable)
+    {
+        if (_portableBusy || UpdateBusy || ProfileChangeRefused())
+        {
+            return;
+        }
+
+        _portableBusy = true;
+        RaiseProfileCommands();
+        try
+        {
+            PortableProfileResult result = await Task.Run(() => PortableProfile.Set(enable, _paths, _launcherDirectory, gameRunning: () => GameRunning || GameLauncher.IsGameRunning()));
+            if (result.Changed)
+            {
+                _portableOverride = enable;
+                _profileRestartRequired = result.RestartRequired;
+            }
+
+            Raise(nameof(PortableSaves));
+            ShowToast(result.Message);
+        }
+        finally
+        {
+            _portableBusy = false;
+            RaiseProfileCommands();
+        }
+    }
+
     private void BackupNow()
     {
+        if (ProfileChangeRefused())
+        {
+            return;
+        }
+
         try
         {
             BackupInfo? b = SaveTools.Backup(_paths, DateTime.Now);
@@ -870,12 +965,22 @@ public sealed partial class LauncherModel : INotifyPropertyChanged
 
     private void AskRestore(BackupInfo backup)
     {
+        if (ProfileChangeRefused())
+        {
+            return;
+        }
+
         (string title, string body, string label) = LauncherTexts.RestoreQuestion(backup);
         Confirm = new ConfirmRequest(title, body, label, () => DoRestore(backup));
     }
 
     private void DoRestore(BackupInfo backup)
     {
+        if (ProfileChangeRefused())
+        {
+            return;
+        }
+
         try
         {
             SaveTools.Restore(_paths, backup, DateTime.Now, AchievementsFolder);
@@ -892,12 +997,22 @@ public sealed partial class LauncherModel : INotifyPropertyChanged
     /// <summary>Asks before replacing the save by a PS4 image.</summary>
     public void AskImport(string imagePath)
     {
+        if (ProfileChangeRefused())
+        {
+            return;
+        }
+
         (string title, string body, string label) = LauncherTexts.ImportQuestion(imagePath);
         Confirm = new ConfirmRequest(title, body, label, () => DoImport(imagePath));
     }
 
     private void DoImport(string imagePath)
     {
+        if (ProfileChangeRefused())
+        {
+            return;
+        }
+
         try
         {
             (BackupInfo? _, int slots) = SaveTools.ImportPs4(_paths, imagePath, DateTime.Now, AchievementsFolder);
@@ -1048,6 +1163,11 @@ public sealed partial class LauncherModel : INotifyPropertyChanged
 
     private string EnsureDataDirectory()
     {
+        if (ProfileChangeRefused())
+        {
+            return _paths.DataDirectory;
+        }
+
         Directory.CreateDirectory(_paths.DataDirectory);
         return _paths.DataDirectory;
     }

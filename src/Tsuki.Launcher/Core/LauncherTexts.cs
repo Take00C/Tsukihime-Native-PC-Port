@@ -51,6 +51,9 @@ public static class LauncherTexts
     /// <summary>The toast of PLAY while a game runs already (started by hand, or by another launcher).</summary>
     public const string GameAlreadyRunning = "The game is already running.";
 
+    /// <summary>The toast of PLAY, a backup, a restore, an import or a setting while the portable switch copies the profile.</summary>
+    public const string PortableCopyRunning = "Wait until the profile copy has finished.";
+
     /// <summary>The toast of PLAY when the game program could not be started.</summary>
     public static string GameNotStarted(string why) => "The game could not be started: " + why;
 

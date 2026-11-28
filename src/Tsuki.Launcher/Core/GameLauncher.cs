@@ -178,7 +178,7 @@ public static class GameLauncher
         ArgumentException.ThrowIfNullOrWhiteSpace(appExe);
         ArgumentException.ThrowIfNullOrWhiteSpace(gameFolder);
         ArgumentNullException.ThrowIfNull(paths);
-        var args = new List<string> { "--game", gameFolder, "--log", paths.LastRunLog };
+        var args = new List<string> { "--game", Tsuki.Data.GameFolderPath.Resolve(gameFolder), "--log", paths.LastRunLog };
         if (windowMode)
         {
             args.Add(fullscreen ? "--fullscreen" : "--windowed");
@@ -199,7 +199,7 @@ public static class GameLauncher
         return new LaunchPlan(appExe, Path.GetDirectoryName(Path.GetFullPath(appExe))!, args);
     }
 
-    /// <summary>Starts the game process (no console window, no shell). The folder of the log file (<c>%APPDATA%\Tsuki</c>) is created first.</summary>
+    /// <summary>Starts the game process (no console window, no shell). The selected profile's folder is created first.</summary>
     public static Process Start(LaunchPlan plan, LauncherPaths paths)
     {
         ArgumentNullException.ThrowIfNull(plan);

@@ -64,6 +64,9 @@ public sealed partial class UnixLauncherModel : INotifyPropertyChanged
     private string? _heroArtFolder;
     private WriteableBitmap? _gameIcon;
     private string? _gameIconFolder;
+    private bool _portableBusy;
+    private bool? _portableOverride;
+    private bool _profileRestartRequired;
 
     public UnixLauncherModel(LauncherPaths paths, string launcherDirectory, string? gameFolder = null)
     {
@@ -83,7 +86,7 @@ public sealed partial class UnixLauncherModel : INotifyPropertyChanged
             new(LauncherPage.Help, "Help & about", NavIcons.Help),
         ];
         FixCommand = new RelayCommand(p => { if (p is LauncherPage page) { Page = page; } });
-        PlayCommand = new RelayCommand(_ => Play(), _ => !GameRunning && !UpdateBusy);
+        PlayCommand = new RelayCommand(_ => Play(), _ => !GameRunning && !UpdateBusy && !_portableBusy);
         BrowseCommand = new RelayCommand(async _ => { if (BrowseRequested is { } browse) { await browse(); } });
         OpenGameFolderCommand = new RelayCommand(_ => OpenPath(Folder.Path), _ => Folder.State is not (FolderState.NotSet or FolderState.Missing));
         RecheckCommand = new RelayCommand(async _ =>
@@ -95,9 +98,10 @@ public sealed partial class UnixLauncherModel : INotifyPropertyChanged
         OpenGuideCommand = new RelayCommand(_ => OpenGuide());
         OpenSavesFolderCommand = new RelayCommand(_ => OpenPath(EnsureDataDirectory()));
         OpenBackupsFolderCommand = new RelayCommand(_ => OpenPath(Directory.Exists(_paths.BackupsDirectory) ? _paths.BackupsDirectory : EnsureDataDirectory()));
-        BackupNowCommand = new RelayCommand(_ => BackupNow(), _ => !GameRunning);
-        ImportCommand = new RelayCommand(async _ => await ImportAsync(), _ => !GameRunning);
-        RestoreCommand = new RelayCommand(async p => { if (p is BackupRow backup) { await RestoreAsync(backup.Info); } }, _ => !GameRunning);
+        BackupNowCommand = new RelayCommand(_ => BackupNow(), _ => !GameRunning && !_portableBusy);
+        PortableSavesCommand = new RelayCommand(async _ => await SetPortableSavesAsync(!PortableSaves), _ => !_portableBusy && !_profileRestartRequired && !GameRunning && !UpdateBusy);
+        ImportCommand = new RelayCommand(async _ => await ImportAsync(), _ => !GameRunning && !_portableBusy);
+        RestoreCommand = new RelayCommand(async p => { if (p is BackupRow backup) { await RestoreAsync(backup.Info); } }, _ => !GameRunning && !_portableBusy);
         ApplyFolderCommand = new RelayCommand(async _ => await ApplyFolderText());
         ShortcutCommand = new RelayCommand(_ => CreateShortcut(), _ => ShortcutSupported && !GameRunning);
         _log = LauncherLog.For(paths);
@@ -134,6 +138,7 @@ public sealed partial class UnixLauncherModel : INotifyPropertyChanged
     public RelayCommand OpenSavesFolderCommand { get; }
     public RelayCommand OpenBackupsFolderCommand { get; }
     public RelayCommand BackupNowCommand { get; }
+    public RelayCommand PortableSavesCommand { get; }
     public RelayCommand ImportCommand { get; }
     public RelayCommand RestoreCommand { get; }
     public RelayCommand ApplyFolderCommand { get; }
@@ -220,6 +225,8 @@ public sealed partial class UnixLauncherModel : INotifyPropertyChanged
     public string PlatformLine => "NATIVE PORT  ·  " + (IsMac ? "MACOS" : "LINUX");
     public string AboutLine => $"A fan-made, native {(IsMac ? "macOS" : "Linux")} version of the PS4 game that runs on the files of your own copy.";
     public string DataDirectory => _paths.DataDirectory;
+    public bool PortableSaves => _portableOverride ?? PortableProfile.InUse(_paths, _launcherDirectory);
+    public bool PortableSavesAvailable => IsLinux;
     public string SaveText => _profile.Saves.Describe() + (_profile.Saves.LastWrite is { } t ? $"  ·  last changed {t.ToString("d MMM yyyy, HH:mm", CultureInfo.InvariantCulture)}" : string.Empty);
     public string FolderHelp => $"Choose the folder that holds eboot.bin and image/, or the folder above it. A base game with its update in a second folder beside it (CUSA47999 and CUSA47999-patch, or CUSA47999-UPDATE) is read as one game: the update's files take precedence. A .pkg must be extracted first. The folder is remembered for the game too ({_paths.GameDirFile}). Press Enter in the box to check a typed path.";
     public string ShortcutsText => $"Once the game folder is set, the Tsukihime program starts the game on its own: it remembers the folder, and your saves stay in {_paths.DataDirectory} whichever way you start it. The entry puts Tsukihime in your desktop's application menu.";
@@ -335,7 +342,7 @@ public sealed partial class UnixLauncherModel : INotifyPropertyChanged
         Step(() =>
         {
             _folder = folder;
-            FolderText = folder.Path ?? remembered ?? string.Empty;
+            FolderText = remembered ?? folder.Path ?? string.Empty;
         });
         Step(() =>
         {
@@ -450,6 +457,11 @@ public sealed partial class UnixLauncherModel : INotifyPropertyChanged
 
     private void Play()
     {
+        if (ProfileChangeRefused())
+        {
+            return;
+        }
+
         if (!CanPlay)
         {
             Page = LauncherPage.GameFiles;
@@ -625,14 +637,30 @@ public sealed partial class UnixLauncherModel : INotifyPropertyChanged
         Raise(nameof(GameRunning), nameof(PlayLabel));
         PlayCommand.Raise();
         BackupNowCommand.Raise();
+        PortableSavesCommand.Raise();
         ImportCommand.Raise();
         RestoreCommand.Raise();
         ShortcutCommand.Raise();
     }
 
+    /// <summary>True (and a toast) while a portable switch copies the profile, or after one until the launcher reopens: nothing else may change a profile then.</summary>
+    private bool ProfileChangeRefused()
+    {
+        if (_portableBusy)
+        {
+            ShowToast(LauncherTexts.PortableCopyRunning);
+            return true;
+        }
+
+        if (!_profileRestartRequired) { return false; }
+        ShowToast("Close and reopen the launcher before using the profile you just copied.");
+        return true;
+    }
+
     /// <summary>True (and a toast) while the game runs: it writes save.dat when it quits, over a restore, an import or a backup made now.</summary>
     private bool RefuseWhileGameRuns()
     {
+        if (ProfileChangeRefused()) { return true; }
         if (!GameRunning) { return false; }
         ShowToast(CloseGameFirst);
         return true;
@@ -648,6 +676,30 @@ public sealed partial class UnixLauncherModel : INotifyPropertyChanged
         }
 
         return await ask(question);
+    }
+
+    private async Task SetPortableSavesAsync(bool enable)
+    {
+        if (_portableBusy || UpdateBusy || ProfileChangeRefused()) { return; }
+        _portableBusy = true;
+        RaisePlayState();
+        try
+        {
+            PortableProfileResult result = await Task.Run(() => PortableProfile.Set(enable, _paths, _launcherDirectory, gameRunning: () => GameRunning || AnyGameRunning(), beforeCopy: PortableCopyStep));
+            if (result.Changed)
+            {
+                _portableOverride = enable;
+                _profileRestartRequired = result.RestartRequired;
+            }
+
+            Raise(nameof(PortableSaves));
+            ShowToast(result.Message);
+        }
+        finally
+        {
+            _portableBusy = false;
+            RaisePlayState();
+        }
     }
 
     private void BackupNow()
@@ -722,11 +774,14 @@ public sealed partial class UnixLauncherModel : INotifyPropertyChanged
         _ = ReadAchievementsAgainAsync(onlyIfChanged: true);
     }
 
-    public async Task ApplyFolderText()
+    public async Task ApplyFolderText() => await SetGameFolderAsync(FolderText);
+
+    public async Task SetGameFolderAsync(string path, bool picker = false)
     {
+        if (ProfileChangeRefused()) { return; }
         try
         {
-            LauncherFolderChoice choice = await LauncherFolderChoice.ChooseAsync(_paths, FolderText);
+            LauncherFolderChoice choice = await LauncherFolderChoice.ChooseAsync(_paths, path, picker);
             _gameFolderOverride = null;
             FolderText = choice.DisplayPath;
             FolderMessage = choice.Message;
@@ -740,6 +795,7 @@ public sealed partial class UnixLauncherModel : INotifyPropertyChanged
 
     private void UpdateSettings(Func<AppSettingsData, AppSettingsData> change)
     {
+        if (ProfileChangeRefused()) { return; }
         if (!TryEnsureDataDirectory() || !AppSettings.Update(_paths.SettingsFile, change))
         {
             ShowToast("settings.ini could not be written (" + _paths.SettingsFile + ").");
@@ -754,6 +810,7 @@ public sealed partial class UnixLauncherModel : INotifyPropertyChanged
 
     private bool TryEnsureDataDirectory()
     {
+        if (ProfileChangeRefused()) { return false; }
         try
         {
             Directory.CreateDirectory(_paths.DataDirectory);

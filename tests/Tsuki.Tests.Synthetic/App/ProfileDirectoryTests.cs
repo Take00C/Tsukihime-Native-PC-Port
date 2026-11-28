@@ -82,6 +82,27 @@ public sealed class ProfileDirectoryTests : IDisposable
         Assert.True(Directory.Exists(expected));
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void WindowsAndLinuxUseAnExistingPortableFolder(bool windows)
+    {
+        string program = Path.Combine(_root, "program");
+        string portable = Path.Combine(program, "save");
+        Directory.CreateDirectory(portable);
+        string appData = Path.Combine(_root, "roaming");
+        Assert.Equal(portable, ProfileDirectory.Select(appData, Path.Combine(_root, "home"), windows, macOs: false, program));
+    }
+
+    [Fact]
+    public void MacOsIgnoresAnExistingPortableFolder()
+    {
+        string program = Path.Combine(_root, "program");
+        Directory.CreateDirectory(Path.Combine(program, "save"));
+        string appData = Path.Combine(_root, "Application Support");
+        Assert.Equal(Path.Combine(appData, "Tsuki"), ProfileDirectory.Select(appData, Path.Combine(_root, "home"), windows: false, macOs: true, program));
+    }
+
     [Fact]
     public void ExplicitProfilePathsKeepTheirExistingMeaning()
     {

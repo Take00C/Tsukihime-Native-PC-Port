@@ -286,9 +286,25 @@ public sealed partial class StageRuntime
                 continue;
             }
 
+            // a turned window (angle +0x15C, 0x4C720) has no straight edge: its scissor is only its bounds, its mask the turned crop (without the effect passes
+            // there is no mask, and the window keeps the straight scissor of K2's plain emission)
             ClipWindow? clip = ClipOf(l, shock);
-            PixelRect? window = clip is { } cw ? ToScissor(cw.Scissor()) : null;
-            SoftWindow? soft = EffectPasses && clip is { } cs ? SoftOf(cs) : null;
+            PixelRect? window = clip is { } cw ? ToScissor(cw.Turn != 0 && EffectPasses ? cw.Bounds() : cw.Scissor()) : null;
+            SoftWindow? soft = EffectPasses && clip is { } cs ? (cs.Turn != 0 ? TurnedMaskOf(cs) : SoftOf(cs)) : null;
+
+            // only the window's own pass and the mask pass that lays its group over the screen see the screen shock (+0x124 == 1, 0x5AA7F and 0x5AD54): the
+            // re-mask of each held layer's picture is the bare crop without it (0x5216F..0x5218F: +0x124 = -1, inset +0x13A = 0) and so is the ridge (0x4DC60
+            // after 0x5AAE1). The held layers keep what lies in both cuts. (The re-masks before a held face layer and on the effect-0x42 path, 0x5248F, 0x524DB
+            // and 0x52325, keep the window's inset: the port does not model them)
+            ClipWindow? still = clip is not null && (shock.X != 0f || shock.Y != 0f) ? ClipOf(l, (0f, 0f)) : clip;
+            bool moved = still != clip;
+            PixelRect? heldWindow = window;
+            if (moved && window is { } wnd && still is { } sc)
+            {
+                ClipWindow bare = sc with { Inset = 0 };
+                heldWindow = Overlap(wnd, ToScissor(bare.Turn != 0 && EffectPasses ? bare.Bounds() : bare.Scissor()));
+            }
+
             bool windowed = HasCrop(r);
             bool kids = HasVisibleMaskedLayerAfter(order, i, l);
             bool group = windowed || r.Sttr >= 0 || kids;
@@ -300,6 +316,11 @@ public sealed partial class StageRuntime
                 _drawnLayers.Add(l);
             }
 
+            if (moved && _maskBuilt && EffectPasses && still is { Turn: not 0 } ts)
+            {
+                AddSoftMask(list, TurnedMaskOf(ts with { Inset = 0 }), MaskTarget, multiply: true);     // no scissor holds the turned bare crop
+            }
+
             byte kidMask = _maskBuilt ? MaskTarget : (byte)0;
 
             // layers that name this one as their mask are drawn inside its window, in z order; only those that come after it in z order are found (0x5A8E1 scans
@@ -307,17 +328,19 @@ public sealed partial class StageRuntime
             for (int k = i + 1; k < LayerCount; k++)
             {
                 int d = order[k];
-                if (d >= 0 && Drawn[d].Mask == l && Visible(Drawn[d]) && DrawLayer(list, d, window, windowed, false, false, kidMask))
+                if (d >= 0 && Drawn[d].Mask == l && Visible(Drawn[d]) && DrawLayer(list, d, heldWindow, windowed, false, false, kidMask))
                 {
                     count++;
                     _drawnLayers.Add(d);
                 }
             }
 
-            // the ridge of a window in the modes 1..6 lies over the window and the layers drawn in it
-            if (windowDrawn && EffectPasses && clip is { IsBand: true, Inset: > 0 } band)
+            // the ridge of a window in the modes 1..6 lies over the window and the layers drawn in it; the PS4 draws it into the group's offscreen list, which reaches
+            // the screen through the window's mask pass (0x5A5E0): a window at alpha 0 without a rule fade (sttr < 0) shows no ridge either
+            bool shown = r.Sttr >= 0 || MathF.Min(1.0f, r.Alpha + r.AlphaCur) > 0f;
+            if (windowDrawn && shown && EffectPasses && still is { IsBand: true, Inset: > 0 } band)
             {
-                AddBand(list, band, window);
+                AddBand(list, band, window, moved ? clip : null);
             }
         }
 
@@ -352,8 +375,8 @@ public sealed partial class StageRuntime
 
     /// <summary>
     /// The clip window a layer draws through: its own crop rectangle, or the one of its mask layer, in 1920 x 1080 pixels (STCH a12..a15; the window
-    /// moves with the shake offsets of its layer and with the screen shock, VA 0x49A60), with the inset and mode of STCH a16 / a17. Null when there is no
-    /// window. The rectangle is not cut to the screen (<see cref="ToScissor"/> does).
+    /// moves with the shake offsets of its layer, x 3.0 and y 1080 / 362, and with the screen shock, x 3.0 and y [0x1A6DBC] = 1080 / 448, VA 0x49A60), with
+    /// the inset and mode of STCH a16 / a17. Null when there is no window. The rectangle is not cut to the screen (<see cref="ToScissor"/> does).
     /// </summary>
     private ClipWindow? ClipOf(int l, (float X, float Y) shock)
     {
@@ -378,10 +401,53 @@ public sealed partial class StageRuntime
 
         (float shx, float shy) = NoShockPicture(wr.Pic) ? (0f, 0f) : shock;
         float x = wr.Crop[0] + (sx * 3.0f) + (shx * 3.0f);
-        float y = wr.Crop[1] + (sy * Ps4Math.YPixels) + (shy * Ps4Math.YPixels);
+        float y = wr.Crop[1] + (sy * Ps4Math.YPixels) + (shy * Ps4Math.ShockYMask);
         int x0 = (int)MathF.Round(x);
         int y0 = (int)MathF.Round(y);
-        return new ClipWindow(x0, y0, wr.Crop[2], wr.Crop[3], wr.A16, wr.A17);
+        return new ClipWindow(x0, y0, wr.Crop[2], wr.Crop[3], wr.A16, wr.A17, TurnOf(w));
+    }
+
+    /// <summary>
+    /// The turn of window <paramref name="w"/> (0x4C720 and 0x4DC60 read its +0x15C): a' = a + 36000 for a below 0, 0 for the straight branch, else
+    /// g = floor(a' * 65535 / 36000) 65536ths of a turn (0x4CAF9..0x4CB4A). -32768 (<c>_STRR(l, -99999)</c>) follows the window's own rotation +0x58 plus
+    /// its parents' (0x4C3E0), without the tween offset +0x7C, wrapped to [-18000, 18000] (0x4C944..0x4C9BD). The window's angle governs the layers it holds
+    /// (0x5218F); a held layer's own angle turns only the crop piece of its own record (0x4F983, effect 56: alpha := max), which can only widen the group's
+    /// mask, and the port ignores a held layer's own crop.
+    /// </summary>
+    private int TurnOf(int w)
+    {
+        LayerRecord r = Drawn[w];
+        long a = r.Angle;
+        if (a == -32768)
+        {
+            a = (uint)r.Parent <= 39 ? (long)MathF.Truncate(Projection.LayerRot(Drawn, r.Parent) + (float)r.Rot) : r.Rot;
+            a %= 36000;
+            if (a <= -18001)
+            {
+                a += 36000;
+            }
+            else if (a >= 18001)
+            {
+                a -= 36000;
+            }
+        }
+
+        if (a < 0)
+        {
+            a += 36000;
+        }
+
+        return a == 0 ? 0 : (int)(a * 65535 / 36000);
+    }
+
+    /// <summary>The pixels two scissor rectangles share (empty when they do not meet).</summary>
+    private static PixelRect Overlap(PixelRect a, PixelRect b)
+    {
+        int x0 = Math.Max(a.X, b.X);
+        int y0 = Math.Max(a.Y, b.Y);
+        int x1 = Math.Min(a.X + a.Width, b.X + b.Width);
+        int y1 = Math.Min(a.Y + a.Height, b.Y + b.Height);
+        return new PixelRect(x0, y0, Math.Max(x1 - x0, 0), Math.Max(y1 - y0, 0));
     }
 
     /// <summary>The window as a scissor rectangle: cut to the 1920 x 1080 frame.</summary>
@@ -455,13 +521,16 @@ public sealed partial class StageRuntime
 
         if (!visible)
         {
+            // the PS4 lays the group's capture over the screen through the destination alpha that only the window's own mask pass writes, at the window's
+            // alpha (0x5A5E0 -> 0x51060 with esi = 1, effect 58), and that pass draws nothing at alpha 0: crop window or not, the layers it holds see an
+            // empty mask
             if (windowOfKids)
             {
-                list.Add(ClearTarget(MaskTarget));      // the group is invisible with its window: the layers it masks see an empty mask
+                list.Add(ClearTarget(MaskTarget));
                 _maskBuilt = true;
             }
 
-            return true;        // the group pass draws the layer at alpha 1 as the mask source; at alpha 0 it leaves nothing for the display list
+            return true;        // the group pass draws the layer at alpha 1 into its offscreen list only; at alpha 0 nothing of the group reaches the screen
         }
 
         PictureLayout? layout = Layouts?.Get(r.Pic, Language);
@@ -543,6 +612,11 @@ public sealed partial class StageRuntime
         {
             list.Add(ClearTarget(MaskTarget));
             AddRuleMask(list, rf, alpha);
+            if (soft is { Window.Turn: not 0 } turnedRule)
+            {
+                AddSoftMask(list, turnedRule, MaskTarget, multiply: true);      // no scissor holds a turned window: the turned edge narrows its rule mask too
+            }
+
             _maskBuilt = true;
         }
         else if (windowOfKids)

@@ -7,9 +7,10 @@
 // overwritten), then the new file is moved in. Every step is written to update-staging\journal.txt before it is taken; when one step fails, the steps already taken
 // are undone in reverse (the new file removed, the .old file renamed back), so the folder is the old version again. The next start of the launcher deletes the .old
 // files of the journal and the staging folder (Cleanup). Files of the old version that the release no longer has are left alone, and nothing outside the launcher's
-// folder is touched: the saves and settings (%APPDATA%\Tsuki) and the game folder never are.
+// folder is touched: the per-user or portable saves and settings and the game folder never are.
 using System.Globalization;
 using System.IO.Compression;
+using Tsuki.App.Services;
 using Tsuki.Data.Icons;
 
 namespace Tsuki.Launcher.Core;
@@ -316,9 +317,11 @@ public static class UpdateInstaller
             {
                 string source = Path.Combine(release.Root, relative);
                 string target = Path.GetFullPath(Path.Combine(app, relative));
-                if (!target.StartsWith(appWithSlash, StringComparison.OrdinalIgnoreCase) || target.StartsWith(Path.Combine(app, UpdateStaging.FolderName) + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+                if (!target.StartsWith(appWithSlash, StringComparison.OrdinalIgnoreCase)
+                    || target.StartsWith(Path.Combine(app, UpdateStaging.FolderName) + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)
+                    || IsPortableProfile(target, app))
                 {
-                    throw new UpdateRefusedException($"{relative} would land outside the launcher's folder");
+                    throw new UpdateRefusedException($"{relative} would land outside the launcher's files, in its staging folder or in its portable save folder");
                 }
 
                 beforeStep?.Invoke(relative);
@@ -367,11 +370,13 @@ public static class UpdateInstaller
     public static bool Rollback(string journal)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(journal);
+        string? app = Directory.GetParent(Path.GetDirectoryName(Path.GetFullPath(journal))!)?.FullName;
+        string appWithSlash = app is null ? string.Empty : app + Path.DirectorySeparatorChar;
         var steps = new List<(string Kind, string Target)>();
         foreach (string line in File.ReadLines(journal))
         {
             string[] parts = line.Split('\t', 2);
-            if (parts.Length == 2 && parts[0] is "old" or "new") { steps.Add((parts[0], parts[1])); }
+            if (parts.Length == 2 && parts[0] is "old" or "new" && IsInside(parts[1], appWithSlash)) { steps.Add((parts[0], parts[1])); }
         }
 
         bool undone = Undo(steps);
@@ -540,14 +545,26 @@ public static class UpdateInstaller
         return Undo(steps) ? 0 : 1;
     }
 
-    /// <summary>True when <paramref name="path"/> (a journal's line) lies inside the launcher's folder, outside its staging folder.</summary>
+    private static bool IsPortableProfile(string path, string appDirectory)
+    {
+        string portable = Path.TrimEndingDirectorySeparator(Path.Combine(appDirectory, ProfileDirectory.PortableFolderName));
+        return path.Equals(portable, StringComparison.OrdinalIgnoreCase) || path.StartsWith(portable + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>True when <paramref name="path"/> (a journal's line) lies inside the launcher's folder, outside its staging folder and portable profile.</summary>
     private static bool IsInside(string path, string appWithSlash)
     {
+        if (string.IsNullOrEmpty(appWithSlash))
+        {
+            return false;
+        }
+
         try
         {
             string full = Path.GetFullPath(path);
             return full.StartsWith(appWithSlash, StringComparison.OrdinalIgnoreCase)
-                && !full.StartsWith(appWithSlash + UpdateStaging.FolderName + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
+                && !full.StartsWith(appWithSlash + UpdateStaging.FolderName + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)
+                && !IsPortableProfile(full, Path.TrimEndingDirectorySeparator(appWithSlash));
         }
         catch (Exception e) when (e is ArgumentException or NotSupportedException or IOException)
         {

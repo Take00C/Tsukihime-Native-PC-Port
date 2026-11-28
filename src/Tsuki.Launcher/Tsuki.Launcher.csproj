@@ -16,7 +16,7 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>..\..\assets\icon\tsukihime.ico</ApplicationIcon>
     <AllowUnsafeBlocks>false</AllowUnsafeBlocks>
-    <Version>0.1.10</Version>
+    <Version>0.1.11</Version>
     <Product>Tsukihime PC port</Product>
     <AssemblyTitle>Tsukihime Launcher</AssemblyTitle>
   </PropertyGroup>
@@ -38,6 +38,7 @@
   <ItemGroup>
     <!-- The one settings reader / writer is shared with the game: the same file is compiled into both programs (the launcher cannot reference Tsuki.App: it pulls SDL, OpenGL and FFmpeg). -->
     <Compile Include="..\Tsuki.App\Services\AppSettings.cs" Link="Core\Shared\AppSettings.cs" />
+    <Compile Include="..\Tsuki.App\Services\ProfileDirectory.cs" Link="Core\Shared\ProfileDirectory.cs" />
     <!-- Package K19: the window-size presets and the clamp to the monitor's work area, the same arithmetic as the game's (no SDL in that file). -->
     <Compile Include="..\Tsuki.Platform\WindowFit.cs" Link="Core\Shared\WindowFit.cs" />
     <!-- Package K23's Arcueid icon (FaceIcon, FaceIconCache) comes through Tsuki.Data since package K28 (src/Tsuki.Data/Icons). -->

@@ -204,6 +204,9 @@ public sealed partial class UnixLauncherModel
     /// </summary>
     internal Func<bool> AnyGameRunning { get; init; } = GameLauncher.IsGameRunning;
 
+    /// <summary>Called on the copying thread before each file of a portable switch is copied (tests hold the copy there); none in the launcher.</summary>
+    internal Action<string>? PortableCopyStep { get; init; }
+
     /// <summary>
     /// The folder whose chapter names, chapter scenes and pictures the page shows: the chosen folder once it looks like the game, also while the check still
     /// misses a file (what can be read of it is shown; the rest falls back to the launcher's own names and the grades' emblems).

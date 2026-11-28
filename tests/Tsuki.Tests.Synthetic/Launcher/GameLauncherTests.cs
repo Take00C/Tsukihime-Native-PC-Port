@@ -65,21 +65,24 @@ public sealed class GameLauncherTests : IDisposable
     {
         var paths = new LauncherPaths(Path.Combine(_root, "Tsuki Data"));
         string app = Path.Combine(_root, "Game Dir", "Tsukihime.exe");
-        LaunchPlan plan = GameLauncher.Plan(app, @"D:\My Games\CUSA47999", paths, fullscreen: false);
+        // rooted game folders of this OS (since issue #15 a folder that is not rooted is read relative to the program: D:\... is not rooted on Linux or macOS)
+        string games = OperatingSystem.IsWindows() ? @"D:\My Games\CUSA47999" : "/media/My Games/CUSA47999";
+        string g = OperatingSystem.IsWindows() ? @"D:\g" : "/g";
+        LaunchPlan plan = GameLauncher.Plan(app, games, paths, fullscreen: false);
         Assert.Equal(app, plan.ExePath);
         Assert.Equal(Path.Combine(_root, "Game Dir"), plan.WorkingDirectory);
         // a profile that is not the user's (--data) travels to the game as --save-dir, so PLAY from a verification launcher never touches the real %APPDATA%\Tsuki
         Assert.False(paths.IsUserProfile);
-        Assert.Equal(["--game", @"D:\My Games\CUSA47999", "--log", paths.LastRunLog, "--windowed", "--save-dir", paths.DataDirectory], plan.Arguments);
+        Assert.Equal(["--game", games, "--log", paths.LastRunLog, "--windowed", "--save-dir", paths.DataDirectory], plan.Arguments);
 
-        LaunchPlan test = GameLauncher.Plan(app, @"D:\g", paths, fullscreen: true, ["--hidden", "--mute"]);
-        Assert.Equal(["--game", @"D:\g", "--log", paths.LastRunLog, "--fullscreen", "--save-dir", paths.DataDirectory, "--hidden", "--mute"], test.Arguments);
+        LaunchPlan test = GameLauncher.Plan(app, g, paths, fullscreen: true, ["--hidden", "--mute"]);
+        Assert.Equal(["--game", g, "--log", paths.LastRunLog, "--fullscreen", "--save-dir", paths.DataDirectory, "--hidden", "--mute"], test.Arguments);
         Assert.Throws<ArgumentException>(() => GameLauncher.Plan(app, " ", paths, fullscreen: false));
 
         LauncherPaths user = LauncherPaths.ForUser();
         Assert.True(user.IsUserProfile);
         Assert.True(new LauncherPaths(user.DataDirectory.ToUpperInvariant() + Path.DirectorySeparatorChar).IsUserProfile);
-        Assert.DoesNotContain("--save-dir", GameLauncher.Plan(app, @"D:\g", user, fullscreen: false).Arguments);
+        Assert.DoesNotContain("--save-dir", GameLauncher.Plan(app, g, user, fullscreen: false).Arguments);
     }
 
     [Theory]

@@ -3,7 +3,7 @@
     <OutputType>WinExe</OutputType>
     <AssemblyName>TsukihimeLauncher</AssemblyName>
     <RootNamespace>Tsuki.Launcher.Avalonia</RootNamespace>
-    <Version>0.1.10</Version>
+    <Version>0.1.11</Version>
     <Product>Tsukihime PC port</Product>
     <AssemblyTitle>Tsukihime Launcher</AssemblyTitle>
     <ApplicationIcon>..\..\assets\icon\tsukihime.ico</ApplicationIcon>
@@ -35,6 +35,7 @@
     <Compile Include="..\Tsuki.Launcher\Core\LauncherLog.cs" Link="Core\LauncherLog.cs" />
     <Compile Include="..\Tsuki.Launcher\Core\KeyTable.cs" Link="Core\KeyTable.cs" />
     <Compile Include="..\Tsuki.Launcher\Core\SaveTools.cs" Link="Core\SaveTools.cs" />
+    <Compile Include="..\Tsuki.Launcher\Core\PortableProfile.cs" Link="Core\PortableProfile.cs" />
     <Compile Include="..\Tsuki.Launcher\Core\GameLauncher.cs" Link="Core\GameLauncher.cs" />
     <Compile Include="..\Tsuki.Launcher\Core\ReleaseSums.cs" Link="Core\ReleaseSums.cs" />
     <Compile Include="..\Tsuki.Launcher\Core\ReleaseVersion.cs" Link="Core\ReleaseVersion.cs" />

@@ -161,6 +161,7 @@ public sealed partial class LauncherModel
                 _cancelUpdate?.Raise();
                 _checkNow?.Raise();
                 (PlayCommand as RelayCommand)?.Raise();
+                ((RelayCommand)PortableSavesCommand).Raise();
                 RaiseUpdateButton();
             }
         }

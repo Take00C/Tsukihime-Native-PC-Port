@@ -236,6 +236,15 @@ public static partial class ReleaseRules
             return $"{path} is game data or a save; a release carries none";
         }
 
+        // v0.1.11: a folder named save beside the programs is the portable profile (ProfileDirectory.Select) and would become the profile of every player who
+        // installs the release; so would the folders the portable switch sets aside. No release carries a folder of those names, at any depth
+        string[] folders = path.Split('/')[..^1];
+        if (folders.Any(f => f.Equals("save", StringComparison.OrdinalIgnoreCase)
+            || f.StartsWith("save-backup-", StringComparison.OrdinalIgnoreCase) || f.StartsWith("save-incomplete-", StringComparison.OrdinalIgnoreCase)))
+        {
+            return $"{path} is in a portable profile folder (save); a release carries none: a player who installed it would use it as their profile";
+        }
+
         // the developer tools (a Debug publish brings the player's dev bridge along); no release of any platform has carried them
         if (DevPrograms.Any(dev => name.Equals(dev, StringComparison.OrdinalIgnoreCase) || name.StartsWith(dev + ".", StringComparison.OrdinalIgnoreCase)))
         {

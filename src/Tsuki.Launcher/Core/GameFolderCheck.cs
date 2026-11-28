@@ -142,7 +142,7 @@ public static class GameFolderCheck
             return string.Empty;
         }
 
-        GameLayout layout = GameLayoutResolver.Resolve(path);
+        GameLayout layout = GameLayoutResolver.Resolve(GameFolderPath.Resolve(path));
         return layout.IsGame && layout.PrimaryFolder is { } primary ? primary : path.Trim().Trim('"');
     }
 
@@ -156,8 +156,8 @@ public static class GameFolderCheck
             return NotSet;
         }
 
-        GameLayout layout = GameLayoutResolver.Resolve(folder);
-        string path = layout.PrimaryFolder ?? layout.Chosen ?? folder.Trim().Trim('"');
+        GameLayout layout = GameLayoutResolver.Resolve(GameFolderPath.Resolve(folder));
+        string path = layout.PrimaryFolder ?? layout.Chosen ?? GameFolderPath.Resolve(folder);
         switch (layout.Kind)
         {
             case GameLayoutKind.NotSet:

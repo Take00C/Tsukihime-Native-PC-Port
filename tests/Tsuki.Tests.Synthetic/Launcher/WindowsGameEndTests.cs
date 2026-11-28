@@ -87,6 +87,53 @@ public sealed class WindowsGameEndTests
     // -- the Windows launcher's own game end (WPF: pinned in its source) -------------------------------------------------
 
     [Fact]
+    public void TheWindowsPortableSwitchIsAskedAgainWhenTheGameStartsAndWhenItEnds()
+    {
+        // K53: the portable switch's command may not run while the game runs (its CanExecute reads GameRunning). WPF asks CanExecute again only when the
+        // command says CanExecuteChanged, so the model must say it wherever GameRunning changes, as it does for PLAY; the Linux and macOS model does
+        // (UnixLauncherModel's play-state change, tested on the real model). The WPF view model cannot be compiled here, so: the pin in LauncherModel.cs.
+        string model = File.ReadAllText(Path.Combine(Repo.Src, "Tsuki.Launcher", "LauncherModel.cs")).Replace("\r\n", "\n", StringComparison.Ordinal);
+        string[] lines = [.. WithoutComments(model).Split('\n').Select(line => line.Trim())];
+        int[] play = [.. lines.Select((line, i) => (line, i)).Where(x => x.line == "(PlayCommand as RelayCommand)?.Raise();").Select(x => x.i)];
+        Assert.Equal(2, play.Length);       // the game's start (Play) and its end (OnGameExited): the two places GameRunning changes
+        foreach (int i in play)
+        {
+            Assert.True(
+                i + 1 < lines.Length && lines[i + 1] == "((RelayCommand)PortableSavesCommand).Raise();",
+                $"line {i + 1} of LauncherModel.cs tells PLAY that GameRunning changed but not the portable switch");
+        }
+    }
+
+    [Fact]
+    public void TheWindowsLauncherRefusesProfileChangesWhileThePortableCopyRuns()
+    {
+        // v0.1.11 review: the portable switch asks once, before copying, whether a game runs, and PLAY, Back up, Import and Restore did not wait for the copy.
+        // The Linux and macOS model is tested on the real model (Avalonia LauncherHeadlessTests.WhileThePortableSwitchCopiesNothingElseTouchesTheProfile); the
+        // WPF view model cannot be compiled here, so the pins in LauncherModel.cs: the guard every profile change asks refuses while the copy runs, PLAY, Back
+        // up and Import are disabled then, and the switch asks them again when the copy starts and when it ends
+        string model = WithoutComments(File.ReadAllText(Path.Combine(Repo.Src, "Tsuki.Launcher", "LauncherModel.cs")).Replace("\r\n", "\n", StringComparison.Ordinal));
+        string Method(string signature)
+        {
+            int start = model.IndexOf(signature, StringComparison.Ordinal);
+            Assert.True(start >= 0, signature + " is not in LauncherModel.cs");
+            return model[start..model.IndexOf("\n    }\n", start, StringComparison.Ordinal)];
+        }
+
+        string guard = Method("    private bool ProfileChangeRefused()\n");
+        Assert.True(guard.IndexOf("if (_portableBusy)", StringComparison.Ordinal) is >= 0 and var busy && busy < guard.IndexOf("if (!_profileRestartRequired)", StringComparison.Ordinal),
+            "ProfileChangeRefused does not refuse while the portable copy runs");
+        Assert.Contains("PlayCommand = new RelayCommand(_ => Play(), _ => !GameRunning && !UpdateBusy && !_portableBusy);", model, StringComparison.Ordinal);
+        Assert.Contains("BackupNowCommand = new RelayCommand(_ => BackupNow(), _ => !GameRunning && !_portableBusy);", model, StringComparison.Ordinal);
+        Assert.Contains("ImportCommand = new RelayCommand(_ => ImportRequested?.Invoke(), _ => !GameRunning && !_portableBusy);", model, StringComparison.Ordinal);
+        string[] set = [.. Method("    private async Task SetPortableSavesAsync(bool enable)\n").Split('\n').Select(line => line.Trim()).Where(line => line.Length > 0)];
+        foreach (string state in new[] { "_portableBusy = true;", "_portableBusy = false;" })
+        {
+            int i = Array.IndexOf(set, state);
+            Assert.True(i >= 0 && i + 1 < set.Length && set[i + 1] == "RaiseProfileCommands();", $"SetPortableSavesAsync does not ask the buttons again after {state}");
+        }
+    }
+
+    [Fact]
     public void TheWindowsLauncherSaysTheGameEndedInAFinallyAroundItsRefresh()
     {
         string launcher = Path.Combine(Repo.Src, "Tsuki.Launcher");
@@ -106,6 +153,7 @@ public sealed class WindowsGameEndTests
             "Raise(nameof(GameRunning));",
             "Raise(nameof(PlayLabel));",
             "(PlayCommand as RelayCommand)?.Raise();",
+            "((RelayCommand)PortableSavesCommand).Raise();",
             "try",
             "{",
             "await RefreshAsync();",

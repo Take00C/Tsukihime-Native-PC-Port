@@ -1449,7 +1449,7 @@ public sealed class AchievementsPageTests : IDisposable
             {
                 model.Page = shown;
                 LauncherHeadlessTests.Pump(window);
-                foreach (CheckBox toggle in window.PageHost.GetVisualDescendants().OfType<CheckBox>().Where(box => box.Classes.Contains("Switch")))
+                foreach (CheckBox toggle in window.PageHost.GetVisualDescendants().OfType<CheckBox>().Where(box => box.Classes.Contains("Switch") && box.IsEffectivelyVisible))
                 {
                     // a setting's row, or (on the Play page) the grid of the title and the switch
                     Visual row = toggle.GetVisualAncestors().OfType<HeaderedContentControl>().FirstOrDefault(ancestor => ancestor.Classes.Contains("SettingRow")) ?? toggle.GetVisualParent()!;
@@ -1459,14 +1459,20 @@ public sealed class AchievementsPageTests : IDisposable
                 }
             }
 
-            Assert.Equal(
-                new (LauncherPage, string)[]
-                {
-                    (LauncherPage.Play, "Fullscreen"), (LauncherPage.Display, "Fullscreen"), (LauncherPage.Display, "VSync"),
-                    (LauncherPage.Achievements, LauncherTexts.AchievementsNoticeLabel), (LauncherPage.Achievements, LauncherTexts.AchievementsSoundLabel),
-                    (LauncherPage.Help, "Check for updates when the launcher starts"),
-                },
-                named);
+            var expected = new List<(LauncherPage Page, string Title)>
+            {
+                (LauncherPage.Play, "Fullscreen"), (LauncherPage.Display, "Fullscreen"), (LauncherPage.Display, "VSync"),
+            };
+            if (model.PortableSavesAvailable)
+            {
+                expected.Add((LauncherPage.Saves, "Keep saves next to the program (portable)"));
+            }
+
+            expected.AddRange([
+                (LauncherPage.Achievements, LauncherTexts.AchievementsNoticeLabel), (LauncherPage.Achievements, LauncherTexts.AchievementsSoundLabel),
+                (LauncherPage.Help, "Check for updates when the launcher starts"),
+            ]);
+            Assert.Equal(expected, named);
             window.Close();
         });
     }

@@ -31,6 +31,21 @@
         </StackPanel>
       </Border>
 
+      <Border Style="{StaticResource Card}" Margin="0,18,0,0" Visibility="{Binding PortableSavesAvailable, Converter={StaticResource B2V}}">
+        <Grid>
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="Auto"/>
+          </Grid.ColumnDefinitions>
+          <StackPanel Margin="0,0,16,0">
+            <TextBlock Text="Keep saves next to the program (portable)" Style="{StaticResource RowTitle}" TextWrapping="Wrap"/>
+            <TextBlock Text="Copies and verifies the profile in both directions. Close and reopen the launcher after switching." Style="{StaticResource Muted}" Margin="0,3,0,0" TextWrapping="Wrap"/>
+          </StackPanel>
+          <CheckBox Grid.Column="1" Style="{StaticResource Switch}" IsChecked="{Binding PortableSaves, Mode=OneWay}" Command="{Binding PortableSavesCommand}" VerticalAlignment="Center"
+                    AutomationProperties.Name="Keep saves next to the program (portable)"/>
+        </Grid>
+      </Border>
+
       <Border Style="{StaticResource Card}" Margin="0,18,0,0">
         <StackPanel>
           <Grid>

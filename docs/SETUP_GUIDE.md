@@ -4,7 +4,7 @@
 and macOS. Paths are given for Windows; the [Linux guide](LINUX.md) and [macOS guide](MACOS.md) give the
 paths, requirements and notes for those systems.
 
-This guide describes version 0.1.10. Downloaded builds may differ from the current source.
+This guide describes version 0.1.11. Downloaded builds may differ from the current source.
 Windows packages include `SETUP_GUIDE.txt` beside the programs, opened by
 **Help & about > Open the setup guide**; on Linux and macOS that button opens this Markdown copy in `docs/`.
 
@@ -146,7 +146,9 @@ Linux and macOS a second start only says it is already open.
 ### 4.3 Game files
 
 First select your game through **Game files > Browse…**, as in section 3.4. A valid folder is remembered
-in `%APPDATA%\Tsuki\game_dir.txt`, shared with the player. Invalid choices are explained and not saved.
+in the selected profile's `game_dir.txt`, shared with the player. Invalid choices are explained and not saved.
+Relative paths resolve from the program folder, never the working directory. Typed relative text is kept;
+With portable saves, Browse stores a folder on the program's drive relative to the program.
 
 ### 4.4 The Ready check
 
@@ -278,8 +280,14 @@ The game's Config screen is the PS4's, with a few rows the port adds at the bott
 
 ### 5.7 Your saves and settings on disk; backups; importing a PS4 save
 
-Saves and settings stay in **`%APPDATA%\Tsuki`**, including profiles made by older versions.
+Saves and settings stay in **`%APPDATA%\Tsuki`** by default, including profiles made by older versions.
 Paste that path into File Explorer or choose **Saves > Open folder**. Screenshots use Pictures instead.
+
+On Windows and Linux, an existing `save\` folder beside the programs is the profile for the game and both
+launchers instead. macOS keeps Application Support. `--save-dir` and `--data` take precedence. **Saves >
+Keep saves next to the program (portable)** backs up, copies and byte-verifies the profile in either direction.
+Close the game first, use a writable program folder, and reopen the launcher after switching. Turning off copies
+back and keeps the portable copy in `save-backup-<date>-<time>\`. Updates never touch `save\`.
 
 | File | Purpose |
 |---|---|

@@ -1,16 +1,17 @@
-// Where the launcher and the game keep their files (package K17). Everything is under %APPDATA%\Tsuki, the folder the game already uses; the programs became Tsukihime.exe
-// and TsukihimeLauncher.exe in package K20 and the folder kept its name, so existing saves keep working.
+// Where the launcher and the game keep their files (package K17): the per-user profile, or save beside Windows / Linux programs. The programs became Tsukihime.exe
+// and TsukihimeLauncher.exe in package K20 and the per-user folder kept its name, so existing saves keep working.
+using Tsuki.App.Services;
+
 namespace Tsuki.Launcher.Core;
 
 /// <summary>The files of one user profile of the port.</summary>
 /// <param name="DataDirectory">The folder (normally <c>%APPDATA%\Tsuki</c>).</param>
 public sealed record LauncherPaths(string DataDirectory)
 {
-    /// <summary>The paths of the current Windows user.</summary>
-    public static LauncherPaths ForUser() =>
-        new(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Tsuki"));
+    /// <summary>The paths of the current user, or the Windows / Linux portable folder when it exists.</summary>
+    public static LauncherPaths ForUser() => new(ProfileDirectory.ForUser());
 
-    /// <summary>True when this is the profile of the current Windows user (<c>%APPDATA%\Tsuki</c>), the one the game uses without <c>--save-dir</c>.</summary>
+    /// <summary>True when this is the profile the game selects without <c>--save-dir</c> (per-user, or portable when its folder exists).</summary>
     public bool IsUserProfile => SameFolder(DataDirectory, ForUser().DataDirectory);
 
     private static bool SameFolder(string a, string b)

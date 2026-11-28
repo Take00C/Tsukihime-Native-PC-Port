@@ -11,8 +11,7 @@ public partial class MainWindow
             IReadOnlyList<IStorageFolder> folders = await StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions { Title = "Choose the CUSA47999 folder (it holds eboot.bin and image/)", AllowMultiple = false });
             if (folders.Count == 1)
             {
-                _model.FolderText = folders[0].Path.LocalPath;
-                await _model.ApplyFolderText();
+                await _model.SetGameFolderAsync(folders[0].Path.LocalPath, picker: true);
             }
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException or InvalidOperationException)

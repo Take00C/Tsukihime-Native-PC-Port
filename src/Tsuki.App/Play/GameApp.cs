@@ -584,7 +584,7 @@ internal sealed class GameApp : IDisposable
         }
     }
 
-    /// <summary>The profile folder: <c>--save-dir</c>, else <c>%APPDATA%\Tsuki</c>. The remembered game folder lives there too (package K20: before, always in <c>%APPDATA%\Tsuki</c>, so a verification run on its own <c>--save-dir</c> still took the user's folder; the launcher's <c>--data</c> profile keeps it in the same place).</summary>
+    /// <summary>The profile folder: <c>--save-dir</c>, else the portable folder or per-user profile. The remembered game folder lives there too; the launcher's <c>--data</c> profile keeps it in the same place.</summary>
     private string ProfileFolder => StartupSettings.DataDirectory(_args);
 
     private string RememberedFolderFile => Path.Combine(ProfileFolder, "game_dir.txt");
@@ -597,7 +597,7 @@ internal sealed class GameApp : IDisposable
         {
             // Linux and macOS: a --game path that holds no game (a typo in Steam's Launch Options, where the console is not seen) is named before the other folders
             // are tried; Windows goes on to them without a word, as in v0.1.6
-            GameLayout given = GameLayoutResolver.Resolve(_args.GameDir);
+            GameLayout given = GameLayoutResolver.Resolve(GameFolderPath.Resolve(_args.GameDir));
             _log.WriteLine($"the --game folder {_args.GameDir} holds no game ({given.Describe()})");
             if (!_hidden)
             {
@@ -623,7 +623,7 @@ internal sealed class GameApp : IDisposable
     /// </summary>
     internal static string? LocateGame(string? path)
     {
-        GameLayout layout = GameLayoutResolver.Resolve(path);
+        GameLayout layout = GameLayoutResolver.Resolve(GameFolderPath.Resolve(path));
         return layout.IsGame ? layout.PrimaryFolder : null;
     }
 
@@ -633,7 +633,7 @@ internal sealed class GameApp : IDisposable
         try
         {
             string remembered = RememberedFolderFile;
-            if (File.Exists(remembered) && string.Equals(File.ReadAllText(remembered).Trim(), folder, StringComparison.OrdinalIgnoreCase))
+            if (File.Exists(remembered) && string.Equals(GameFolderPath.Resolve(File.ReadAllText(remembered)), GameFolderPath.Resolve(folder), StringComparison.OrdinalIgnoreCase))
             {
                 File.Delete(remembered);
                 _log.WriteLine($"forgot the remembered game folder {folder}");
@@ -774,7 +774,7 @@ internal sealed class GameApp : IDisposable
                 try
                 {
                     Directory.CreateDirectory(ProfileFolder);
-                    File.WriteAllText(RememberedFolderFile, found);
+                    File.WriteAllText(RememberedFolderFile, ProfileDirectory.IsPortable(ProfileFolder, AppContext.BaseDirectory) ? GameFolderPath.ForPicker(found) : found);
                 }
                 catch (Exception e) when (e is IOException or UnauthorizedAccessException)
                 {

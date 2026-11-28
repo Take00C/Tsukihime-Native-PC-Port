@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
 using Avalonia;
+using Avalonia.Automation.Peers;
 using Avalonia.Controls;
 using Avalonia.Controls.Presenters;
 using Avalonia.Controls.Shapes;
@@ -1017,6 +1018,115 @@ public sealed class LauncherHeadlessTests : IDisposable
 
     private static string PageText(MainWindow window) =>
         string.Join("\n", window.PageHost.GetVisualDescendants().OfType<TextBlock>().Select(t => t.Text).Where(t => !string.IsNullOrEmpty(t)));
+
+    [Fact]
+    public async Task ThePortableSwitchIsOnTheLinuxSavesPageOnly()
+    {
+        const string label = "Keep saves next to the program (portable)";
+        var linux = new UnixLauncherModel(Paths(), AppContext.BaseDirectory, Path.Combine(_root, "no-game")) { IsLinux = true };
+        await Run(() =>
+        {
+            var window = Show(linux);
+            linux.Page = LauncherPage.Saves;
+            Pump(window);
+            CheckBox toggle = window.PageHost.GetVisualDescendants().OfType<CheckBox>().Single(box => ControlAutomationPeer.CreatePeerForElement(box).GetName() == label);
+            Assert.True(toggle.IsEffectivelyVisible);
+            Assert.Same(linux.PortableSavesCommand, toggle.Command);
+            Assert.True(linux.PortableSavesCommand.CanExecute(null));
+            window.Close();
+            return Task.CompletedTask;
+        });
+
+        var mac = new UnixLauncherModel(Paths(), AppContext.BaseDirectory, Path.Combine(_root, "no-game")) { IsLinux = false };
+        await Run(() =>
+        {
+            var window = Show(mac);
+            mac.Page = LauncherPage.Saves;
+            Pump(window);
+            Assert.DoesNotContain(window.PageHost.GetVisualDescendants().OfType<CheckBox>(), box => ControlAutomationPeer.CreatePeerForElement(box).GetName() == label && box.IsEffectivelyVisible);
+            window.Close();
+            return Task.CompletedTask;
+        });
+    }
+
+    [Fact]
+    public async Task ThePortableSwitchCopiesTheCurrentProfile()
+    {
+        LauncherPaths paths = Paths();
+        Directory.CreateDirectory(paths.DataDirectory);
+        File.WriteAllText(paths.SettingsFile, "language=en\n");
+        string program = Path.Combine(_root, "program");
+        Directory.CreateDirectory(program);
+        var model = new UnixLauncherModel(paths, program, Path.Combine(_root, "no-game")) { IsLinux = true, AnyGameRunning = () => false };
+        await Run(async () =>
+        {
+            var window = Show(model);
+            model.Page = LauncherPage.Saves;
+            Pump(window);
+            Assert.True(model.PortableSavesCommand.CanExecute(null), $"portable command disabled; game running: {model.GameRunning}");
+            model.PortableSavesCommand.Execute(null);
+            await Until(window, () => model.Toast.Length > 0);
+            Assert.Contains("Close and reopen", model.Toast, StringComparison.Ordinal);
+            Assert.True(model.PortableSaves);
+            Assert.False(model.PortableSavesCommand.CanExecute(null), "the copied profile cannot be switched again before the launcher reopens");
+            Assert.Equal("language=en\n", File.ReadAllText(Path.Combine(program, "save", "settings.ini")));
+            Assert.True(File.Exists(paths.SettingsFile));
+            model.VSync = !model.VSync;
+            await model.SetGameFolderAsync(Path.Combine(_root, "still-not-a-game"));
+            Assert.Equal("language=en\n", File.ReadAllText(paths.SettingsFile));
+            Assert.Contains("before using the profile", model.Toast, StringComparison.Ordinal);
+            window.Close();
+        });
+    }
+
+    [Fact]
+    public async Task WhileThePortableSwitchCopiesNothingElseTouchesTheProfile()
+    {
+        // v0.1.11 review: the switch asks once, before copying, whether a game runs. PLAY, Back up, Import and Restore did not wait for the copy, so a game
+        // started or a save restored during it landed in the profile being left. They are disabled and refused until the copy has ended
+        LauncherPaths paths = Paths();
+        Directory.CreateDirectory(paths.DataDirectory);
+        File.WriteAllText(paths.SettingsFile, "language=en\n");
+        File.WriteAllBytes(paths.SaveFile, [1, 2, 3]);
+        string program = Path.Combine(_root, "program");
+        Directory.CreateDirectory(program);
+        using var copying = new ManualResetEventSlim();
+        using var release = new ManualResetEventSlim();
+        var model = new UnixLauncherModel(paths, program, Path.Combine(_root, "no-game"))
+        {
+            IsLinux = true,
+            AnyGameRunning = () => false,
+            PortableCopyStep = _ => { copying.Set(); release.Wait(TimeSpan.FromSeconds(60)); },
+        };
+        await Run(async () =>
+        {
+            var window = Show(model);
+            model.Page = LauncherPage.Saves;
+            Pump(window);
+            Assert.True(model.BackupNowCommand.CanExecute(null));
+            model.PortableSavesCommand.Execute(null);
+            await Until(window, () => copying.IsSet);
+            try
+            {
+                Assert.False(model.PlayCommand.CanExecute(null), "PLAY during the copy");
+                Assert.False(model.BackupNowCommand.CanExecute(null), "Back up during the copy");
+                Assert.False(model.ImportCommand.CanExecute(null), "Import during the copy");
+                Assert.False(model.RestoreCommand.CanExecute(null), "Restore during the copy");
+                int backups = Directory.GetDirectories(paths.BackupsDirectory).Length;
+                model.BackupNowCommand.Execute(null);                     // a direct call is refused too
+                Assert.Equal(backups, Directory.GetDirectories(paths.BackupsDirectory).Length);
+                Assert.Contains("copy", model.Toast, StringComparison.OrdinalIgnoreCase);
+            }
+            finally
+            {
+                release.Set();
+            }
+
+            await Until(window, () => model.Toast.Contains("Close and reopen", StringComparison.Ordinal));
+            Assert.True(model.PortableSaves);
+            window.Close();
+        });
+    }
 
     private void Offer(FakeGitHub server, string checksum, string? notes = null)
     {

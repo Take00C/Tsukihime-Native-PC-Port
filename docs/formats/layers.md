@@ -91,7 +91,7 @@ after `_STCC` / scene start.
 | 0xAF8 | 4 x i16 | crop | 0 | STCH a12..a15, motion f11..f14 | +0x132 |
 | 0xC38 | u16 | a16 | 0 | STCH a16, motion f16 | +0x13A |
 | 0xC88 | u8 | a17 | 0 | STCH a17, motion f15 | +0x13C |
-| 0xCB0 | i16 | angle | 0 | STCH a19, STRR, motion f8 | +0x15C (no reader in the draw path: no visible effect on PS4 [E]) |
+| 0xCB0 | i16 | angle | 0 | STCH a19, STRR, motion f8 | +0x15C: turns a crop window's clip and ridge about the crop centre (0x4C720, 0x4DC60; errata below) [E] |
 | 0xD00 | 24 B | motion | 0 | STMA SPMA, motion time (0xBE663) | +0x160 (0xBA8E0): +0 i16 id, +2 i16 divisor, +4..+7 unused, +8 i64 frame counter (the scene copy holds the quantised count), +0x10 u8 pause, +0x11..+0x17 unused |
 | 0x10C0 | 2 x u8 | shake_kind | 0 | SQK2 (slot 0 = 1), SHK2 (slot 1 = 2), SSW2 (slot 1 = 3) | +0x178 |
 | 0x1110 | 2 x i16 | shake_fade | 0 | a5 (SQK2/SHK2) / a7 (SSW2), frames | +0x17A |
@@ -180,7 +180,7 @@ a11 (mask) 6,029 STCH + 322 SCH2; a12..a17 (crop rectangle x, y, w, h, a16, a17)
 | STBR | 14,940 | (l, mode, _, f) | 0; 0..39 | blend = mode (absent 0); f == 1: flags \|= 0x80. Modes 0..28 used; their meaning: compositing.md |
 | STEC | 12,900 | (l, mode, colour) | -1; 0..39 | mode 0..81 stored (others ignored); colour = `strtol(a2, NULL, 0)` for mode 1, white for the rest; also sets the drawn colour at once [V-emu sweep -2..89] |
 | SNX2 / SNX3 | 1,678 / 845 | (l, n) | -1; 0..39 | fx_a = n (i16) / fx_b = n (i8): colour-effect parameters (keyframe fields 24/25) |
-| STRR | 448 | (l, r) | 0; 0..39 | angle = wrap(r) (-100001 -> -32768; absent 0) |
+| STRR | 448 | (l, r) | 0; 0..39 | angle = wrap(r) (-99999 -> -32768, cmp at 0x845EB; -100001 wraps to 7999; absent 0) |
 | STRA | 569 | (l, n, ms) | 0; -1..39 | stra = n; drawn record +0x2C8 = n, +0x2CA phase = 0, +0x2CC = frames(ms) (n != 0) or +0x2CE/+0x2D0 = frames (n == 0: fade the effect out). l = -1 and n <= 0: clear all. The update advances the phase by frames mod 6000 (VA 0x588A0) [E]; what it drives is not traced [H] |
 | STPV | 733 | (l, x, y, r) inline | own parser (0x86478) | anchor_x = `trunc(x*640/480*f)`, anchor_y = `trunc(y*480/360*f)` with f = size-class factor of the layer's picture (pic > 0); on a `_hh_vv` variant (hh_vv != 00_00) plus (variant anchor - base anchor); ext offset = -anchor; r present: rot = r. Also written to the drawn record at once |
 | SOXY | 208 | (l, x, y, _, _) | 0; no bound check (layer 40 writes soxy_y[0] and crop[0], 2 retail statements) | soxy_x = x, soxy_y = y (bytes); a3/a4 ignored |
@@ -908,8 +908,9 @@ Emulator harness (`tsuki.misc_layer_state_and_motions_emu`): `LayerEmu`, `Steppe
    how the offscreen pass combines a layer with its mask layer; FADS/STTR rule transitions
    (owner: compositing_transitions_shaders).
 3. STRA (569): the periodic value at +0x2C8 is advanced but no reader in the draw was found.
-   STCH a19 / STRR / motion field 8's +0x15C angle has no reader in the draw path either: no
-   visible effect on PS4 (Switch-era fields like SNX4) [E].
+   (Erratum 2026-11-27: STCH a19 / STRR / motion field 8's +0x15C angle IS read, by the crop
+   pieces 0x4C720 and the ridge 0x4DC60, through record+0x10 as displacement 0x14C, which the
+   earlier search missed; see the STRR entry below.)
 4. Picture-variant fields 22/23 (8.3a) are modelled and checked call by call, including the
    texture rebinding side (+0x14); what the draw does with the face slot 0x111+l of a switched
    picture is the renderer's (draw path of section 7, face = catalog name1) and was not
@@ -951,8 +952,14 @@ vm_variables_errata.
   the live tween; the scene keeps the end values [V-emu].
 * **STRT** `(l, r0, r1, ms, e, a5, a6)`: rotation r0 -> r1 over ms with easing a4; the scene keeps
   r1 (absent 0) [V-emu].
-* **STRR** is not a rotation: it sets the +0xCB0/+0x15C angle (same field as STCH a19), which no
-  draw code reads [V-emu + E].
+* **STRR** sets the +0xCB0/+0x15C angle (same field as STCH a19), the turn of a crop window's clip
+  and ridge (erratum 2026-11-27; it was described here as unread). 0x4C720 and 0x4DC60 turn every
+  clip, band, feather and ridge piece as one rigid body about the crop centre (X + W/2, Y + H/2),
+  clockwise on screen for a > 0, through 0xEB9C0 with flags 0x34 (g = a' * 65535 / 36000, a' = a + 36000
+  if a < 0); a' = 0 takes the straight branch. -32768 (from `_STRR(l,-99999)`) follows the window's
+  rotation +0x58 plus its parent chain (not +0x7C). The window picture and held layers are not
+  turned; they are cut by the turned destination-alpha mask (no scissor on this path). Evidence:
+  `scratch/K53/angle-check` (K53 section 4) [E + V-emu].
 * **STPV** sets the anchor (pivot) in picture coordinates: `trunc(x*640/480 * size class)`,
   `trunc(y*480/360 * size class)`, plus the anchor difference of a `_hh_vv` variant; a3 sets the
   rotation [V-emu].

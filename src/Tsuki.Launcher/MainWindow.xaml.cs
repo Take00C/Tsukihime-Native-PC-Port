@@ -110,7 +110,7 @@ public partial class MainWindow : Window
 
         if (dialog.ShowDialog(this) == true)
         {
-            await _model.SetGameFolderAsync(dialog.FolderName);
+            await _model.SetGameFolderAsync(dialog.FolderName, picker: true);
         }
     }
 

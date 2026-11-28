@@ -23,7 +23,7 @@ internal sealed class StartupSettings
     /// <summary>The values read.</summary>
     public AppSettingsData Data { get; }
 
-    /// <summary>The folder of <c>save.dat</c> and <c>settings.ini</c>: <c>--save-dir</c>, else <c>%APPDATA%\Tsuki</c>.</summary>
+    /// <summary>The folder of <c>save.dat</c> and <c>settings.ini</c>: <c>--save-dir</c>, else the portable folder or the per-user profile.</summary>
     public static string DataDirectory(AppArgs args)
     {
         if (args.SaveDir is { } directory)

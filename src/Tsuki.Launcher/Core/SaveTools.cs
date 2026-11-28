@@ -1,7 +1,7 @@
 // The saves page (package K17): what is in %APPDATA%\Tsuki\save.dat, backups of save.dat, settings.ini and (v0.1.9) trophies.ini, restoring one, and importing a
 // PS4 / shadPS4 save image. Restore and import replace save.dat; settings.ini stays as it is. Achievements belong to the profile and only grow: before save.dat
 // is replaced, what it implies is recorded in trophies.ini, and a restore adds the backup's record to the profile's (both only while no game runs).
-// The launcher only touches %APPDATA%\Tsuki; a PS4 image is read (never written) from wherever it lies.
+// The launcher only touches the selected profile; a PS4 image is read (never written) from wherever it lies.
 using System.Globalization;
 using Tsuki.App.Services;
 using Tsuki.Engine.Save;

@@ -262,6 +262,62 @@ public sealed class StageDrawTests
     }
 
     [Fact]
+    public void AnInvisibleCropWindowLeavesItsLayersAnEmptyMask()
+    {
+        // issue #16 review: the PS4 lays a window's group over the screen through the destination alpha that only the window's own mask pass writes
+        // (0x5A5E0 -> 0x51060 with esi = 1, effect 58), at the window's alpha; at alpha 0 that pass draws nothing, so the group shows nothing. A crop rectangle
+        // takes the same path: the crop twin of StageEffectTests.AWindowThatFadedOutLeavesItsLayersAnEmptyMask
+        DrawCmd[] Held(int alpha)
+        {
+            StageRuntime rt = Stage();
+            StageKit.Run(rt, $"_STCH(3,IMG0001,240,136,1000,{alpha},50,,CC,,,,0,0,1920,1080);");
+            StageKit.Run(rt, "_STCH(4,IMG0002,0,0,1000,255,60,,CC,,,3);");
+            StageKit.Run(rt, "_FADS(1,0,0);");
+            rt.Update(1);
+            return Frame(rt, out _);
+        }
+
+        DrawCmd[] cmds = Held(0);
+        int clear = Array.FindIndex(cmds, c => c.Kind == DrawKind.Clear && c.Target == StageRuntime.MaskTarget);
+        Assert.True(clear >= 0, "the mask target is cleared for the layers the window holds");
+        Assert.Empty(OnTarget(cmds, StageRuntime.MaskTarget));                                       // no silhouette goes into it
+        Assert.DoesNotContain(cmds, c => c.Kind == DrawKind.TexturedQuad && PicOf(c) == 2);           // nor is the window drawn
+        int held = Array.FindIndex(cmds, c => c.Kind == DrawKind.TexturedQuad && PicOf(c) == 3);
+        Assert.True(held > clear);
+        Assert.Equal(StageRuntime.MaskTarget, cmds[held].Fx.Mask);                                   // the held layer is masked by the empty target
+
+        // down to the last step above 0 the silhouette carries the window's alpha: no jump between 1 / 255 and 0
+        DrawCmd faint = Assert.Single(OnTarget(Held(1), StageRuntime.MaskTarget), c => PicOf(c) == 2);
+        Assert.Equal((58, 0x01FFFFFFu), (faint.EffectWord, faint.V0.Rgba));
+    }
+
+    [Fact]
+    public void AnInvisibleRidgeWindowDrawsNoRidge()
+    {
+        // the PS4 draws a window's ridge pieces into the group's offscreen list, before its capture (0x5A5E0): they reach the screen through the same
+        // destination alpha as the layers the window holds, so a window at alpha 0 shows no ridge either
+        DrawCmd[] Ridge(int alpha, bool holds)
+        {
+            StageRuntime rt = Stage();
+            StageKit.Run(rt, $"_STCH(3,IMG0001,240,136,1000,{alpha},50,,CC,,,,100,50,600,400,20,2);");
+            if (holds)
+            {
+                StageKit.Run(rt, "_STCH(4,IMG0002,0,0,1000,255,60,,CC,,,3);");
+            }
+
+            StageKit.Run(rt, "_FADS(1,0,0);");
+            rt.Update(1);
+            var scissor = new PixelRect(120, 70, 560, 360);
+            return Frame(rt, out _).Where(c => c.Target == 0 && c.Clip == scissor && (c.Kind == DrawKind.FillQuad || c.Texture.Kind == TextureKind.UiTile)).ToArray();
+        }
+
+        Assert.NotEmpty(Ridge(255, holds: true));
+        Assert.NotEmpty(Ridge(1, holds: true));
+        Assert.Empty(Ridge(0, holds: true));
+        Assert.Empty(Ridge(0, holds: false));
+    }
+
+    [Fact]
     public void ALayerHeldByASoftWindowIsMaskedByTheSilhouetteTimesTheWindowEdge()
     {
         StageRuntime rt = Stage();
@@ -277,6 +333,297 @@ public sealed class StageDrawTests
         Assert.Equal(1 + 9, mask.Length);
         Assert.Equal(58, mask[0].EffectWord);
         Assert.All(mask.Skip(1), c => Assert.Equal(0x80, c.BlendState));          // BlendStates.MaskMultiply
+    }
+
+    // --- turned crop windows (STCH a19 / STRR angle, +0x15C): the PS4's 0x4C720 and 0x4DC60 turn the window's mask and ridge pieces about the crop centre ---
+
+    private static void Near((float X, float Y) want, Vertex v, float tol = 0.15f)
+    {
+        Assert.InRange(v.X, want.X - tol, want.X + tol);
+        Assert.InRange(v.Y, want.Y - tol, want.Y + tol);
+    }
+
+    // p turned about c by g / 65536 of a turn, clockwise on the screen for positive g (0xDEC90 with flags 0x20)
+    private static (float X, float Y) TurnAbout((float X, float Y) p, (float X, float Y) c, int g)
+    {
+        double t = g * 2 * Math.PI / 65536;
+        double dx = p.X - c.X, dy = p.Y - c.Y;
+        return ((float)(c.X + (dx * Math.Cos(t)) - (dy * Math.Sin(t))), (float)(c.Y + (dx * Math.Sin(t)) + (dy * Math.Cos(t))));
+    }
+
+    private static (float X, float Y) Unturn(Vertex v, (float X, float Y) c, int g) => TurnAbout((v.X, v.Y), c, -g);
+
+    private static DrawCmd[] TurnedWindow(string window, string? held = null)
+    {
+        StageRuntime rt = Stage();
+        StageKit.Run(rt, window);
+        if (held is not null)
+        {
+            StageKit.Run(rt, held);
+        }
+
+        StageKit.Run(rt, "_FADS(1,0,0);");
+        rt.Update(1);
+        return Frame(rt, out _);
+    }
+
+    // scene 300's window 33 (issue #16): crop (580, -181, 1006, 1473), inset 15, ridge mode 2, angle 1153 (+11.525 deg, g = 1153 * 65535 / 36000 = 2098)
+    private const string Window33 = "_STCH(3,IMG0001,240,136,1000,255,50,,CC,,,,580,-181,1006,1473,15,2,,1153);";
+
+    [Fact]
+    public void ATurnedRidgeWindowIsCutByItsInnerRectangleTurnedAboutTheCropCentreNotByAStraightScissor()
+    {
+        // the PS4's engine trace of scene 300 at frame 800 logs the inner piece (the crop shrunk by the inset on every side) of window 33 drawn through 0xEB9C0
+        // with flags 0x34 at these corners (scratch K53 judge-trace-f800); the scissor is only the turned crop's bounds cut to the screen
+        DrawCmd[] cmds = TurnedWindow(Window33);
+        DrawCmd window = cmds.Single(c => c.Kind == DrawKind.TexturedQuad && c.Target == 0 && PicOf(c) == 2);
+        Assert.Equal(new PixelRect(442, 0, 1724 - 442, 1080), window.Clip);
+        Assert.Equal(StageRuntime.SoftTarget, window.Fx.Mask);
+        DrawCmd[] inner = OnTarget(cmds, StageRuntime.SoftTarget);                   // nine cells on the ridge's grid, row by row
+        Assert.Equal(9, inner.Length);
+        Assert.All(inner, c => Assert.Equal((DrawKind.FillQuad, (short)58), (c.Kind, c.EffectWord)));
+        Near((749.0f, -249.0f), inner[0].V0);
+        Near((1705.3f, -54.0f), inner[2].V1);
+        Near((460.7f, 1165.0f), inner[6].V2);
+        Near((1417.0f, 1360.0f), inner[8].V3);
+    }
+
+    [Fact]
+    public void ANegativeAngleTurnsTheWindowTheOtherWay()
+    {
+        // scene 300's window 28: crop (1273, -255, 980, 1587), angle -1386 (-13.87 deg): a' = 34614, g = 63011; the trace's inner corners
+        DrawCmd[] cmds = TurnedWindow("_STCH(3,IMG0001,240,136,1000,255,50,,CC,,,,1273,-255,980,1587,15,2,,-1386);");
+        DrawCmd[] inner = OnTarget(cmds, StageRuntime.SoftTarget);
+        Assert.Equal(9, inner.Length);
+        Near((1115.2f, -103.4f), inner[0].V0);
+        Near((2037.5f, -331.2f), inner[2].V1);
+        Near((1488.5f, 1408.2f), inner[6].V2);
+        Near((2410.8f, 1180.4f), inner[8].V3);
+    }
+
+    [Fact]
+    public void AnAngleOfZeroOrAFullTurnKeepsTheStraightScissor()
+    {
+        // a' == 0 takes the straight branch (0x4CB5F -> 0x4D7A5); a19 = 36000 wraps to 0
+        foreach (string a in new[] { "0", "36000" })
+        {
+            DrawCmd[] cmds = TurnedWindow($"_STCH(3,IMG0001,240,136,1000,255,50,,CC,,,,100,50,600,400,20,2,,{a});");
+            DrawCmd window = cmds.Single(c => c.Kind == DrawKind.TexturedQuad && c.Target == 0 && PicOf(c) == 2);
+            Assert.Equal(new PixelRect(120, 70, 560, 360), window.Clip);
+            Assert.Equal(0, window.Fx.Mask);
+            Assert.Empty(OnTarget(cmds, StageRuntime.SoftTarget));
+        }
+    }
+
+    [Fact]
+    public void TheLayersATurnedWindowHoldsAreCutByTheSameTurnedEdgeAndTheirOwnAngleIsIgnored()
+    {
+        // 0x5218F re-masks a held layer through 0x51060 of the window: the window's angle governs; the held layer's own a19 (9000) turns nothing
+        DrawCmd[] cmds = TurnedWindow(Window33, "_STCH(4,IMG0002,0,0,1000,255,60,,CC,,,3,,,,,,,,9000);");
+        DrawCmd window = cmds.Single(c => c.Kind == DrawKind.TexturedQuad && c.Target == 0 && PicOf(c) == 2);
+        DrawCmd held = cmds.Single(c => c.Kind == DrawKind.TexturedQuad && c.Target == 0 && PicOf(c) == 3);
+        Assert.Equal(StageRuntime.MaskTarget, held.Fx.Mask);
+        Assert.Equal(window.Clip, held.Clip);
+        DrawCmd[] mask = OnTarget(cmds, StageRuntime.MaskTarget);
+        // the window's silhouette, the turned inner rectangle (nine cells) that narrows it, and turned band cells of effect 55 (alpha := 0) around it: the bounds
+        // scissor lets the silhouette through outside the turned edge, so the PS4's way of clearing the rest of the window's alpha is needed here as well
+        Assert.Equal(1 + 9 + 16, mask.Length);
+        Assert.Equal(58, mask[0].EffectWord);
+        Assert.All(mask[1..10], c => Assert.Equal((DrawKind.FillQuad, (byte)0x80), (c.Kind, c.BlendState)));
+        Near((749.0f, -249.0f), mask[1].V0);
+        Near((1417.0f, 1360.0f), mask[9].V3);
+        Assert.All(mask[10..], c => Assert.Equal((DrawKind.FillQuad, (short)55, 0xFFu), (c.Kind, c.EffectWord, c.V0.Rgba >> 24)));
+
+        // a straight window keeps its scissor for the held layer, whatever the held layer's own angle
+        DrawCmd[] straight = TurnedWindow("_STCH(3,IMG0001,240,136,1000,255,50,,CC,,,,100,50,600,400,20,2);", "_STCH(4,IMG0002,0,0,1000,255,60,,CC,,,3,,,,,,,,9000);");
+        DrawCmd sheld = straight.Single(c => c.Kind == DrawKind.TexturedQuad && c.Target == 0 && PicOf(c) == 3);
+        Assert.Equal(new PixelRect(120, 70, 560, 360), sheld.Clip);
+        Assert.Single(OnTarget(straight, StageRuntime.MaskTarget));
+    }
+
+    [Fact]
+    public void AngleMinus32768FollowsTheWindowsOwnRotationAndItsParentsButNotTheRotationTween()
+    {
+        // 0x4C944..0x4C9BD: a = trunc(rot (+0x58) + 0x4C3E0(parent)), wrapped; the tween offset +0x7C is not read. _STRR(l, -99999) stores -32768
+        int Turned(bool parent, out (float X, float Y) v0)
+        {
+            StageRuntime rt = Stage();
+            StageKit.Run(rt, "_STCH(3,IMG0001,240,136,1000,255,50,,CC,,,,580,-181,1006,1473,15,2);");
+            StageKit.Run(rt, "_STRR(3,-99999);");
+            if (parent)
+            {
+                StageKit.Run(rt, "_STCH(5,IMG0003,240,136,1000,255,10,,CC);");
+                StageKit.Run(rt, "_STRT(5,,-587,0,0);");
+                StageKit.Run(rt, "_SBAS(3,5);");
+            }
+
+            StageKit.Run(rt, "_FADS(1,0,0);");
+            rt.Update(1);
+            StageKit.Run(rt, "_STRT(3,0,-532,1000,0);");                                // rot -532 after the commit, its tween still running when the frame is drawn
+            DrawCmd[] cmds = Frame(rt, out _);
+            Assert.Equal(-32768, rt.Drawn[3].Angle);
+            Assert.NotEqual(0, rt.Drawn[3].RotCur);
+            DrawCmd inner = OnTarget(cmds, StageRuntime.SoftTarget)[0];
+            v0 = (inner.V0.X, inner.V0.Y);
+            return 0;
+        }
+
+        Turned(parent: false, out (float X, float Y) own);
+        (float X, float Y) want = TurnAbout((595f, -166f), (1083f, 555.5f), 64566);       // a' = 35468: g = 64566
+        Assert.InRange(own.X, want.X - 0.15f, want.X + 0.15f);
+        Assert.InRange(own.Y, want.Y - 0.15f, want.Y + 0.15f);
+
+        Turned(parent: true, out (float X, float Y) chained);
+        want = TurnAbout((595f, -166f), (1083f, 555.5f), 63497);                           // -532 - 587 = -1119: g = 63497
+        Assert.InRange(chained.X, want.X - 0.15f, want.X + 0.15f);
+        Assert.InRange(chained.Y, want.Y - 0.15f, want.Y + 0.15f);
+    }
+
+    [Fact]
+    public void TheRidgeOfATurnedWindowIsTurnedAboutTheCropCentreAndCutByItsInnerRectangle()
+    {
+        // 0x4DC60 (a' != 0): every ridge piece through 0xEB9C0 with flags 0x34 at the window's angle, on all four sides. The port keeps what lies inside the
+        // inner rectangle (the straight branch's scissor cut): the four inner corner pieces and the four gradation strips; the solid outer halves fall outside
+        DrawCmd[] cmds = TurnedWindow(Window33);
+        DrawCmd window = cmds.Single(c => c.Kind == DrawKind.TexturedQuad && c.Target == 0 && PicOf(c) == 2);
+        DrawCmd[] ridge = [.. cmds.SkipWhile(c => !c.Equals(window)).Skip(1).Where(c => c.Target == 0 && (c.Kind == DrawKind.FillQuad || c.Texture.A == (int)UiSet.BorderParts))];
+        Assert.Equal(8, ridge.Length);
+        Assert.All(ridge, c => Assert.Equal((DrawKind.TexturedQuad, (byte)1, window.Clip), (c.Kind, c.BlendState, c.Clip)));
+        (float X, float Y) centre = (1083f, 555.5f);
+        foreach (DrawCmd c in ridge)
+        {
+            foreach (Vertex v in new[] { c.V0, c.V1, c.V2, c.V3 })
+            {
+                (float x, float y) = Unturn(v, centre, 2098);
+                Assert.InRange(x, 595f - 0.01f, 1571f + 0.01f);
+                Assert.InRange(y, -166f - 0.01f, 1277f + 0.01f);
+            }
+        }
+
+        // the left gradation strip: x 595..610, y -151..1262 before the turn
+        Assert.Contains(ridge, c => Math.Abs(Unturn(c.V0, centre, 2098).X - 595f) < 0.01f && Math.Abs(Unturn(c.V3, centre, 2098).X - 610f) < 0.01f
+            && Math.Abs(Unturn(c.V0, centre, 2098).Y + 151f) < 0.01f && Math.Abs(Unturn(c.V3, centre, 2098).Y - 1262f) < 0.01f);
+    }
+
+    [Fact]
+    public void ATurnedMaskAndItsBandsMeetOnlyAtSharedVerticesSoNoPixelOnTheEdgeIsMissed()
+    {
+        // review of 1641bac: the four long effect-55 bands met the feather pieces at T-junctions on the turned edge; once the GPU snapped the vertices a few
+        // pixels were covered by neither, and the held layer showed there at full strength (scene 432 steps 1705 and 3883). Every edge on the outline must be
+        // drawn by exactly two quads with the same two end points: one piece inside, one band cell outside
+        foreach (string window in new[]
+        {
+            "_STCH(3,IMG0001,240,136,1000,255,50,,CC,,,,-258,-242,984,1642,99,0,,-1917);",       // scene 432: soft edge
+            Window33,                                                                              // scene 300: ridge
+            "_STCH(3,IMG0001,240,136,1000,255,50,,CC,,,,398,446,225,54,,,,1257);",                // scene 742: bare crop
+        })
+        {
+            DrawCmd[] cmds = TurnedWindow(window, "_STCH(4,IMG0002,0,0,1000,255,60,,CC,,,3);");
+            DrawCmd[] mask = OnTarget(cmds, StageRuntime.MaskTarget)[1..];                        // after the silhouette
+            Vertex[] inside = [.. mask.Where(c => c.BlendState == 0x80).SelectMany(c => new[] { c.V0, c.V1, c.V2, c.V3 })];
+            (float cx, float cy) = (inside.Average(v => v.X), inside.Average(v => v.Y));
+            float reach = inside.Max(v => MathF.Sqrt(((v.X - cx) * (v.X - cx)) + ((v.Y - cy) * (v.Y - cy)))) + 1f;
+            var edges = new Dictionary<((float, float), (float, float)), int>();
+            foreach (DrawCmd q in mask)
+            {
+                foreach ((Vertex a, Vertex z) in new[] { (q.V0, q.V1), (q.V1, q.V3), (q.V3, q.V2), (q.V2, q.V0) })
+                {
+                    ((float, float) p, (float, float) r) = ((a.X, a.Y), (z.X, z.Y));
+                    var key = p.CompareTo(r) < 0 ? (p, r) : (r, p);
+                    edges[key] = edges.GetValueOrDefault(key) + 1;
+                }
+            }
+
+            // the edges that do not run out to the far side of a band: the outline and the pieces' own seams
+            bool Near2((float X, float Y) v) => MathF.Sqrt(((v.X - cx) * (v.X - cx)) + ((v.Y - cy) * (v.Y - cy))) <= reach;
+            KeyValuePair<((float, float), (float, float)), int>[] near = [.. edges.Where(e => Near2(e.Key.Item1) && Near2(e.Key.Item2))];
+            Assert.NotEmpty(near);
+            Assert.All(near, e => Assert.True(e.Value == 2, $"{window}: edge {e.Key} is drawn by {e.Value} quad(s)"));
+        }
+    }
+
+    [Fact]
+    public void ATurnedRidgeWindowsMaskCellsAreItsRidgePieces()
+    {
+        // the window's mask and its ridge rasterise the turned edge alike only with the same vertices: each ridge piece kept inside the inner rectangle (four
+        // inner corner pieces, four strips) is one of the mask's outer cells (scene 742 step 5071 showed four picture pixels with no ridge over them before)
+        DrawCmd[] cmds = TurnedWindow(Window33);
+        DrawCmd window = cmds.Single(c => c.Kind == DrawKind.TexturedQuad && c.Target == 0 && PicOf(c) == 2);
+        DrawCmd[] ridge = [.. cmds.SkipWhile(c => !c.Equals(window)).Skip(1).Where(c => c.Target == 0 && c.Texture.A == (int)UiSet.BorderParts)];
+        DrawCmd[] cells = OnTarget(cmds, StageRuntime.SoftTarget);
+        Assert.Equal(8, ridge.Length);
+        foreach (DrawCmd r in ridge)
+        {
+            Assert.Contains(cells, c => (c.V0.X, c.V0.Y, c.V1.X, c.V1.Y, c.V2.X, c.V2.Y, c.V3.X, c.V3.Y) == (r.V0.X, r.V0.Y, r.V1.X, r.V1.Y, r.V2.X, r.V2.Y, r.V3.X, r.V3.Y));
+        }
+    }
+
+    [Fact]
+    public void WithTheEffectPassesOffATurnedWindowKeepsItsStraightScissor()
+    {
+        // EffectPasses = false reproduces K2's plain emission (no masks): a turned window then keeps the straight scissor it had, not the bounds of its turn
+        StageRuntime rt = Stage();
+        rt.EffectPasses = false;
+        StageKit.Run(rt, Window33);
+        StageKit.Run(rt, "_FADS(1,0,0);");
+        rt.Update(1);
+        DrawCmd[] cmds = Frame(rt, out _);
+        DrawCmd window = cmds.Single(c => c.Kind == DrawKind.TexturedQuad && c.Target == 0 && PicOf(c) == 2);
+        Assert.Equal(new PixelRect(595, 0, 976, 1080), window.Clip);
+        Assert.Equal(0, window.Fx.Mask);
+        Assert.Empty(OnTarget(cmds, StageRuntime.SoftTarget));
+    }
+
+    [Fact]
+    public void ATurnedWindowAtAlphaZeroShowsNothingOfItsGroup()
+    {
+        // the alpha-0 rule comes first (0x51060 draws nothing at alpha 0): no turned mask, no ridge, the held layers see an empty mask
+        DrawCmd[] cmds = TurnedWindow("_STCH(3,IMG0001,240,136,1000,0,50,,CC,,,,580,-181,1006,1473,15,2,,1153);", "_STCH(4,IMG0002,0,0,1000,255,60,,CC,,,3);");
+        Assert.Empty(OnTarget(cmds, StageRuntime.MaskTarget));
+        Assert.Empty(OnTarget(cmds, StageRuntime.SoftTarget));
+        Assert.DoesNotContain(cmds, c => c.Target == 0 && c.Texture.A == (int)UiSet.BorderParts && c.Texture.Kind == TextureKind.UiTile);
+        Assert.Equal(StageRuntime.MaskTarget, cmds.Single(c => c.Kind == DrawKind.TexturedQuad && PicOf(c) == 3).Fx.Mask);
+    }
+
+    [Fact]
+    public void ATurnedSoftWindowFeathersAllFourSides()
+    {
+        // scene 334's layer 38: crop (-404, -1492, 1120, 3100), inset 154, mode 0, angle 9000 (g = 16383, a quarter turn): the tall strip becomes a band across
+        // the top of the screen (trace s334: g 16383 at 0x4CBBA). r = 77 (radius class 128, child 4) on every side, the turn moves the sides on screen
+        DrawCmd[] cmds = TurnedWindow("_STCH(3,IMG0001,240,136,1000,255,50,,CC,,,,-404,-1492,1120,3100,154,0,,9000);");
+        DrawCmd window = cmds.Single(c => c.Kind == DrawKind.TexturedQuad && c.Target == 0 && PicOf(c) == 2);
+        Assert.Equal(new PixelRect(0, 0, 1707, 619), window.Clip);
+        Assert.Equal(StageRuntime.SoftTarget, window.Fx.Mask);
+        DrawCmd[] soft = OnTarget(cmds, StageRuntime.SoftTarget);
+        Assert.Equal(8, soft.Count(c => c.Kind == DrawKind.TexturedQuad));
+        Assert.All(soft.Where(c => c.Kind == DrawKind.TexturedQuad), c => Assert.Equal(4, c.Texture.C));
+        DrawCmd fill = soft.Single(c => c.Kind == DrawKind.FillQuad);
+        Near((1552f, -348f), fill.V0, 0.2f);
+        Near((1552f, 464f), fill.V1, 0.2f);
+        Near((-1240f, -348f), fill.V2, 0.2f);
+        Near((-1240f, 464f), fill.V3, 0.2f);
+        DrawCmd topLeft = soft[0];                                                     // the outer corner of the crop's top-left quadrant, turned to the top right
+        Near(TurnAbout((-404f, -1492f), (156f, 58f), 16383), topLeft.V0, 0.2f);
+    }
+
+    [Fact]
+    public void ATurnedWindowWithARuleFadeIsCutByTheRuleTimesTheTurnedEdge()
+    {
+        // no scissor holds a turned window: its rule mask (STTR) is narrowed by the turned inner rectangle as well (no retail script turns a rule window)
+        StageRuntime rt = Stage();
+        StageKit.Run(rt, Window33);
+        StageKit.Run(rt, "_FADS(1,0,0);");
+        rt.Update(1);
+        StageKit.Run(rt, "_STTR(3,4,1);");
+        Assert.True(rt.Drawn[3].Sttr >= 0, $"sttr {rt.Drawn[3].Sttr}");
+        DrawCmd[] cmds = Frame(rt, out _);
+        DrawCmd window = cmds.Single(c => c.Kind == DrawKind.TexturedQuad && c.Target == 0 && PicOf(c) == 2);
+        Assert.Equal(StageRuntime.MaskTarget, window.Fx.Mask);
+        DrawCmd[] turned = [.. OnTarget(cmds, StageRuntime.MaskTarget).Where(c => c.Kind == DrawKind.FillQuad && c.BlendState == 0x80)];
+        Assert.Equal(9, turned.Length);
+        Near((749.0f, -249.0f), turned[0].V0);
+        Assert.True(Array.IndexOf(cmds, turned[^1]) < Array.IndexOf(cmds, window));
+        Assert.Equal(16, OnTarget(cmds, StageRuntime.MaskTarget).Count(c => c.Kind == DrawKind.FillQuad && c.EffectWord == 55));      // the rule outside the window: 0
     }
 
     [Fact]
@@ -346,6 +693,146 @@ public sealed class StageDrawTests
         // the seven colour fills (BLACK here) ignore the screen shock
         DrawCmd fill = Frame(rt, out _).Single(c => c.Kind == DrawKind.TexturedQuad && PicOf(c) == 0);
         Assert.InRange(fill.V0.Y, -0.01f, 0.01f);
+    }
+
+    // the stage with the window statements committed and a screen shock (_SHOK(4,6,300,10)) running for a few updates, so that its y is several canvas units
+    private static StageRuntime Shocked(string window, string? held = null, bool shock = true)
+    {
+        StageRuntime rt = Stage();
+        StageKit.Run(rt, window);
+        if (held is not null)
+        {
+            StageKit.Run(rt, held);
+        }
+
+        StageKit.Run(rt, "_FADS(1,0,0);");
+        rt.Update(1);
+        if (shock)
+        {
+            StageKit.Run(rt, "_SHOK(4,6,300,10,0);");
+        }
+
+        for (int i = 0; i < 4; i++)
+        {
+            rt.Update(1);
+        }
+
+        return rt;
+    }
+
+    // the crop origin (x, y) moved by the screen shock as 0x49A60 adds it while +0x124 == 1: x * 3.0, y * [0x1A6DBC] = 1080 / 448
+    private static (int X, int Y) ShockedOrigin(StageRuntime rt, float x, float y) =>
+        ((int)MathF.Round(x + (rt.Shock.X * 3.0f)), (int)MathF.Round(y + (rt.Shock.Y * Ps4Math.ShockYMask)));
+
+    private static PixelRect Overlap(PixelRect a, PixelRect b)
+    {
+        int x0 = Math.Max(a.X, b.X), y0 = Math.Max(a.Y, b.Y);
+        int x1 = Math.Min(a.X + a.Width, b.X + b.Width), y1 = Math.Min(a.Y + a.Height, b.Y + b.Height);
+        return new PixelRect(x0, y0, Math.Max(x1 - x0, 0), Math.Max(y1 - y0, 0));
+    }
+
+    [Fact]
+    public void DuringAScreenShockAWindowsOwnCutMovesByTheShockTimes3InXAnd1080Over448InY()
+    {
+        // 0x49A60 adds the shock to the crop origin only while the window is drawn into its own target (+0x124 == 1: its pass at 0x5AA7F and the mask pass
+        // that lays its group over the screen at 0x5AD54), y times [0x1A6DBC] = 1080 / 448 where the shake slots and the picture take 1080 / 362; the engine
+        // probe (scratch K53/shock) moves the pieces of crop (400, 200, 800, 600) by (5.442, 6.559) px for a shock of (1.814, 2.7209)
+        StageRuntime rt = Shocked("_STCH(3,IMG0001,240,136,1000,255,50,,CC,,,,100,50,600,400,60,0);");
+        Assert.True(MathF.Abs(rt.Shock.Y) * (Ps4Math.YPixels - Ps4Math.ShockYMask) > 1.5f, "the shock tells the two y factors apart");
+        DrawCmd[] cmds = Frame(rt, out _);
+        DrawCmd window = cmds.Single(c => c.Kind == DrawKind.TexturedQuad && c.Target == 0 && PicOf(c) == 2);
+        (int x0, int y0) = ShockedOrigin(rt, 100f, 50f);
+        Assert.Equal(new PixelRect(x0, y0, 600, 400), window.Clip);
+        Assert.Equal(new PixelRect(115, 69, 600, 400), window.Clip);       // this run's shock (5.136, 7.703): 100 + 15.41, 50 + 18.57 (1080 / 362 would give 73)
+        DrawCmd topLeft = OnTarget(cmds, StageRuntime.SoftTarget)[0];
+        Assert.Equal(((float)x0, (float)y0, x0 + 60f, y0 + 60f), (topLeft.V0.X, topLeft.V0.Y, topLeft.V3.X, topLeft.V3.Y));
+    }
+
+    [Fact]
+    public void DuringAScreenShockTheLayersAWindowHoldsAndItsRidgeAreCutWhereTheWindowIsWithoutTheShock()
+    {
+        // 0x5A5E0 sets the window's +0x124 back to -1 after its own pass (0x5AAE1), and 0x51060 forces it to -1, with the inset +0x13A = 0, around the re-mask of a
+        // held layer by its window (0x5216F..0x5218F): the held layers' bare crop and the ridge (0x4DC60 at 0x5ABB4) take no shock, and reach the screen through
+        // the window's mask pass, which does (0x5AD54). The engine probe (scratch K53/shock) keeps the re-mask and the ridge pieces where they are without it
+        StageRuntime rt = Shocked("_STCH(3,IMG0001,240,136,1000,255,50,,CC,,,,100,50,600,400);", "_STCH(4,IMG0002,0,0,1000,255,60,,CC,,,3);");
+        DrawCmd[] cmds = Frame(rt, out _);
+        DrawCmd window = cmds.Single(c => c.Kind == DrawKind.TexturedQuad && c.Target == 0 && PicOf(c) == 2);
+        DrawCmd held = cmds.Single(c => c.Kind == DrawKind.TexturedQuad && c.Target == 0 && PicOf(c) == 3);
+        (int x0, int y0) = ShockedOrigin(rt, 100f, 50f);
+        Assert.Equal(new PixelRect(x0, y0, 600, 400), window.Clip);
+        Assert.Equal(Overlap(window.Clip!.Value, new PixelRect(100, 50, 600, 400)), held.Clip);
+        Assert.NotEqual(window.Clip, held.Clip);
+
+        // the ridge: its pieces stay where the window is without the shock, under the moved scissor of the mask pass
+        DrawCmd[] Ridge(StageRuntime r, out PixelRect? clip)
+        {
+            DrawCmd[] c = Frame(r, out _);
+            DrawCmd w = c.Single(x => x.Kind == DrawKind.TexturedQuad && x.Target == 0 && PicOf(x) == 2);
+            clip = w.Clip;
+            return [.. c.SkipWhile(x => !x.Equals(w)).Skip(1).Where(x => x.Target == 0 && (x.Kind == DrawKind.FillQuad || x.Texture.A == (int)UiSet.BorderParts))];
+        }
+
+        const string Band = "_STCH(3,IMG0001,240,136,1000,255,50,,CC,,,,100,50,600,400,20,2);";
+        const string Held = "_STCH(4,IMG0002,0,0,1000,255,60,,CC,,,3);";
+        StageRuntime shocked = Shocked(Band, Held);
+        DrawCmd[] moved = Ridge(shocked, out PixelRect? scissor);
+        DrawCmd[] still = Ridge(Shocked(Band, Held, shock: false), out _);
+        (int bx, int by) = ShockedOrigin(shocked, 100f, 50f);
+        Assert.Equal(new PixelRect(bx + 20, by + 20, 560, 360), scissor);
+
+        // the held layer of the ridge window: the re-mask is the bare crop (inset +0x13A = 0 at 0x52184), so it is cut by the moved inner scissor and by the whole
+        // crop without the shock, not by the crop's inner rectangle without it
+        DrawCmd bandHeld = Frame(shocked, out _).Single(c => c.Kind == DrawKind.TexturedQuad && c.Target == 0 && PicOf(c) == 3);
+        Assert.Equal(Overlap(new PixelRect(bx + 20, by + 20, 560, 360), new PixelRect(100, 50, 600, 400)), bandHeld.Clip);
+        Assert.NotEqual(Overlap(new PixelRect(bx + 20, by + 20, 560, 360), new PixelRect(120, 70, 560, 360)), bandHeld.Clip);
+        Assert.NotEmpty(still);
+        Assert.Equal(still.Length, moved.Length);
+        for (int i = 0; i < still.Length; i++)
+        {
+            Assert.Equal((still[i].V0.X, still[i].V0.Y, still[i].V3.X, still[i].V3.Y), (moved[i].V0.X, moved[i].V0.Y, moved[i].V3.X, moved[i].V3.Y));
+            Assert.Equal(scissor, moved[i].Clip);
+        }
+
+        // a turned window: the held layers' mask is narrowed once more by the bare turned crop where it is without the shock (one fill, 8 band cells around it)
+        StageRuntime turned = Shocked(Window33, Held);
+        DrawCmd[] tc = Frame(turned, out _);
+        DrawCmd[] mask = OnTarget(tc, StageRuntime.MaskTarget);
+        Assert.Equal(1 + 9 + 16 + 1 + 8, mask.Length);
+        DrawCmd bare = mask[26];
+        Assert.Equal((DrawKind.FillQuad, (byte)0x80), (bare.Kind, bare.BlendState));
+        Near(TurnAbout((580f, -181f), (1083f, 555.5f), 2098), bare.V0);
+        Near(TurnAbout((1586f, 1292f), (1083f, 555.5f), 2098), bare.V3);
+        DrawCmd twindow = tc.Single(c => c.Kind == DrawKind.TexturedQuad && c.Target == 0 && PicOf(c) == 2);
+        DrawCmd theld = tc.Single(c => c.Kind == DrawKind.TexturedQuad && c.Target == 0 && PicOf(c) == 3);
+        DrawCmd unshocked = Frame(Shocked(Window33, Held, shock: false), out _).Single(c => c.Kind == DrawKind.TexturedQuad && c.Target == 0 && PicOf(c) == 3);
+        Assert.Equal(Overlap(twindow.Clip!.Value, unshocked.Clip!.Value), theld.Clip);
+    }
+
+    [Fact]
+    public void DuringAScreenShockATurnedRidgeKeepsInsideTheInnerEdgesOfBothCuts()
+    {
+        // the ridge is drawn at the crop without the shock (0x4DC60 with +0x124 = -1) and reaches the screen through the window's mask pass, which has it
+        // (0x5AD54): for a turned window, whose scissor is only its bounds, the ridge must keep inside the turned inner rectangle of both, as a straight
+        // window's ridge keeps inside its moved scissor
+        StageRuntime rt = Shocked(Window33);
+        DrawCmd[] cmds = Frame(rt, out _);
+        DrawCmd window = cmds.Single(c => c.Kind == DrawKind.TexturedQuad && c.Target == 0 && PicOf(c) == 2);
+        DrawCmd[] ridge = [.. cmds.SkipWhile(c => !c.Equals(window)).Skip(1).Where(c => c.Target == 0 && (c.Kind == DrawKind.FillQuad || c.Texture.A == (int)UiSet.BorderParts))];
+        Assert.NotEmpty(ridge);
+        (int sx, int sy) = ShockedOrigin(rt, 580f, -181f);
+        Assert.True(Math.Abs(sx - 580) + Math.Abs(sy + 181) >= 10, "the shock moves the window by several pixels");
+        foreach (DrawCmd c in ridge)
+        {
+            foreach (Vertex v in new[] { c.V0, c.V1, c.V2, c.V3 })
+            {
+                (float x, float y) = Unturn(v, (1083f, 555.5f), 2098);                   // the inner rectangle without the shock: (595, -166) .. (1571, 1277)
+                Assert.InRange(x, 595f - 0.05f, 1571f + 0.05f);
+                Assert.InRange(y, -166f - 0.05f, 1277f + 0.05f);
+                (x, y) = Unturn(v, (sx + 503f, sy + 736.5f), 2098);                    // and with it
+                Assert.InRange(x, sx + 15f - 0.05f, sx + 991f + 0.05f);
+                Assert.InRange(y, sy + 15f - 0.05f, sy + 1458f + 0.05f);
+            }
+        }
     }
 
     [Fact]

@@ -137,6 +137,88 @@ public sealed class GameFolderTests : IDisposable
     }
 
     [Fact]
+    public async Task TypedRelativeFoldersStayAsWrittenAndResolveFromTheProgram()
+    {
+        string game = Make("relative-game");
+        string relative = Path.GetRelativePath(AppContext.BaseDirectory, game);
+        var paths = new LauncherPaths(Path.Combine(_root, "profile"));
+        LauncherFolderChoice choice = await LauncherFolderChoice.ChooseAsync(paths, relative);
+        Assert.True(choice.Accepted, choice.Message);
+        Assert.True(choice.Saved);
+        Assert.Equal(relative, choice.DisplayPath);
+        Assert.Equal(relative, paths.ReadGameDirectory());
+        Assert.Equal(game, GameFolderPath.Resolve(relative));
+        Assert.Equal(game, GameFolderCheck.Resolve(relative));
+        Assert.Equal(game, GameFolderCheck.Inspect(relative).Path);
+        Assert.Equal(game, Tsuki.App.Play.GameApp.LocateGame(relative));
+        LaunchPlan plan = GameLauncher.Plan(Path.Combine(_root, "Tsukihime.exe"), relative, paths, fullscreen: false);
+        Assert.Equal(game, plan.Arguments[1]);
+    }
+
+    [Fact]
+    public async Task APerUserProfileRemembersAPickedFolderInFullAndForPickerIsRelativeOnTheProgramsDrive()
+    {
+        // b335279: a per-user profile remembers a picked folder in full (its game_dir.txt is shared by every copy of the port on the PC); ForPicker itself makes a
+        // folder on the program's drive relative, which only the portable profile stores (the next test). This test once expected the relative path in a
+        // per-user profile; it passed on Windows only because the test's temp folder and the program are on different drives there, and failed on Linux
+        string game = Make("picked-game");
+        var paths = new LauncherPaths(Path.Combine(_root, "profile"));
+        LauncherFolderChoice choice = await LauncherFolderChoice.ChooseAsync(paths, game, picker: true);
+        Assert.True(choice.Accepted, choice.Message);
+        Assert.Equal(game, paths.ReadGameDirectory());
+        string program = Path.Combine(_root, "program");
+        string relative = GameFolderPath.ForPicker(game, program);
+        Assert.Equal(Path.Combine("..", "picked-game"), relative);
+        Assert.Equal(game, GameFolderPath.Resolve(relative, program));
+    }
+
+    [Fact]
+    public async Task APickedFolderOnTheProgramsDriveIsRememberedInFullByAPerUserProfileAndRelativeByThePortableOne()
+    {
+        // game_dir.txt of a per-user profile is shared by every copy of the port on the PC (a second download, a moved folder), so a picked folder stays absolute
+        // there; only the portable profile, which moves with the programs, remembers it relative to them. The folder must be on the programs' drive for this.
+        string beside = Path.Combine(Path.GetDirectoryName(Path.TrimEndingDirectorySeparator(AppContext.BaseDirectory))!, "tsuki-k53-picker-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            string game = Path.Combine(beside, "game");
+            Directory.CreateDirectory(Path.Combine(game, "image"));
+            Directory.CreateDirectory(Path.Combine(game, "sce_sys"));
+            File.WriteAllBytes(Path.Combine(game, "eboot.bin"), new byte[4096]);
+            File.WriteAllBytes(Path.Combine(game, "sce_sys", "param.sfo"), Sfo(("APP_VER", "01.00"), ("CONTENT_ID", "HP3279-CUSA47999_00-GAME000TSUKIHIME"), ("TITLE", "TSUKIHIME")));
+
+            var perUser = new LauncherPaths(Path.Combine(_root, "profile"));
+            LauncherFolderChoice choice = await LauncherFolderChoice.ChooseAsync(perUser, game, picker: true);
+            Assert.True(choice.Accepted, choice.Message);
+            Assert.Equal(game, perUser.ReadGameDirectory());
+
+            // the portable profile's rule (not driven through ChooseAsync here: a real save folder beside the test programs would make every test portable)
+            Assert.Equal(Path.GetRelativePath(AppContext.BaseDirectory, game), GameFolderPath.ForPicker(game));
+        }
+        finally
+        {
+            if (Directory.Exists(beside))
+            {
+                Directory.Delete(beside, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public void PathResolutionNeverUsesTheWorkingDirectoryForTheProgramRelativeCase()
+    {
+        string program = Path.Combine(_root, "program");
+        Assert.Equal(Path.Combine(program, "game"), GameFolderPath.Resolve("game", program));
+        Assert.Equal("game", GameFolderPath.ForPicker(Path.Combine(program, "game"), program));
+        Assert.Equal("/games/CUSA47999", GameFolderPath.Resolve("/games/CUSA47999", program));
+        Assert.Equal(Path.Combine(program, "absolute"), GameFolderPath.Resolve(Path.Combine(program, "absolute"), program));
+        if (OperatingSystem.IsWindows())
+        {
+            char drive = Path.GetPathRoot(program)![0];
+            Assert.Equal(Path.Combine(program, "drive-relative"), GameFolderPath.Resolve(drive + ":drive-relative", program));
+        }
+    }
+
+    [Fact]
     public void ParamSfoIsReadAndABrokenFileIsRefused()
     {
         ParamSfo? sfo = ParamSfo.TryParse(Sfo(("APP_VER", "01.00"), ("TITLE", "TSUKIHIME"), ("TITLE_ID", "CUSA47999")));

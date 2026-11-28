@@ -44,6 +44,7 @@ It has not been tested on a real Mac yet: please [report problems in Issues](htt
 - **Linux from v0.1.6** (it had no launcher): extract the new archive into a new folder and delete the old one. If you added the old `Tsukihime` to Steam, add the new one again.
 
 Saves, settings and your game folder are kept: `%APPDATA%\Tsuki` (Windows), `~/.config/Tsuki` (Linux), `~/Library/Application Support/Tsuki` (macOS).
+On Windows and Linux, an existing `save` folder beside the programs enables portable saves; the Saves page copies profiles safely, and relative game paths resolve from the program folder.
 
 ## Requirements
 
@@ -79,7 +80,7 @@ The game files are only read, never changed. The setup guide explains the suppor
 
 ## Status and support
 
-The port was developed against **CUSA47999, update 1.01**. Other builds are checked at startup and may be refused if required tables or files cannot be found. Only languages present in your game files are offered. Current source version is **0.1.10**. The Linux download is newer and less tested than the Windows one.
+The port was developed against **CUSA47999, update 1.01**. Other builds are checked at startup and may be refused if required tables or files cannot be found. Only languages present in your game files are offered. Current source version is **0.1.11**. The Linux download is newer and less tested than the Windows one.
 
 Report problems through Issues with reproduction steps and the relevant log. Include the build information and your operating system, graphics card and driver. See [CONTRIBUTING.md](CONTRIBUTING.md) for details. Do not attach game files, saves, story text or screenshots of the game.
 

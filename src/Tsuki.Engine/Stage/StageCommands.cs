@@ -115,7 +115,7 @@ public sealed partial class StageRuntime
                     if (a.Has(1))
                     {
                         int r = a.Expr(1);
-                        v = r == -100001 ? -32768 : WrapAngle(r);
+                        v = r == -99999 ? -32768 : WrapAngle(r);           // 0x845EB: cmp eax, 0xFFFE7961
                     }
 
                     Scene.SetAngle(l, I16(v));
